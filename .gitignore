@@ -1,0 +1,66 @@
+# -------------------------
+# Python
+# -------------------------
+
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+# Python build
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# pip
+pip-wheel-metadata/
+
+# virtual environments
+.venv/
+
+# pytest
+.pytest_cache/
+
+# mypy
+.mypy_cache/
+
+# Ruff / linters
+.ruff_cache/
+
+
+# -------------------------
+# LaTeX artifacts
+# -------------------------
+
+*.aux
+*.bbl
+*.blg
+*.log
+*.out
+*.toc
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+
+# -------------------------
+# Editor / IDE
+# -------------------------
+
+.vscode/
+.idea/
+.run/
+
+# -------------------------
+# GitHub Actions artifacts
+# -------------------------
+
+artifacts/
+
+# -------------------------
+# Datasets
+# -------------------------
+
+/data/
+

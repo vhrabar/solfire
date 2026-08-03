@@ -4,16 +4,60 @@ version = "0.1.0"
 requires-python = "==3.14.*"
 dependencies = [
     "numpy",
-    "torch",
-    "torchvision",
-    "kaggle"
+    "kaggle",
+    "pycocotools",
+    "tqdm",
+]
+
+[dependency-groups]
+dev = [
+    "mypy",
+    "ruff",
+    "py-spy"
+]
+cpu      = ["torch", "torchvision", "torchmetrics"]
+cuda-130 = ["torch", "torchvision", "torchmetrics"]
+cuda-132 = ["torch", "torchvision", "torchmetrics"]
+
+[tool.uv]
+required-environments = [
+    "sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "sys_platform == 'linux' and platform_machine == 'aarch64'",
+]
+conflicts = [
+    [
+        { group = "cpu" },
+        { group = "cuda-130" },
+        { group = "cuda-132" },
+    ],
+]
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cpu", group = "cpu" },
+    { index = "pytorch-cu130", group = "cuda-130" },
+    { index = "pytorch-cu132", group = "cuda-132" },
+]
+torchvision = [
+    { index = "pytorch-cpu", group = "cpu" },
+    { index = "pytorch-cu130", group = "cuda-130" },
+    { index = "pytorch-cu132", group = "cuda-132" },
 ]
 
 [[tool.uv.index]]
-name = "pytorch"
-url = "https://download.pytorch.org/whl/cpu"
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+default = false
 explicit = true
 
-[tool.uv.sources]
-torch = { index = "pytorch" }
-torchvision = { index = "pytorch" }
+[[tool.uv.index]]
+name = "pytorch-cu132"
+url = "https://download.pytorch.org/whl/cu132"
+default = false
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+default = false
+explicit = true

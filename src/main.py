@@ -7,16 +7,16 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset
 
-from data import FilamentDataset, TestImageDataset, load_annotations, train_val_split
-from inference import (
+from .data import FilamentDataset, TestImageDataset, load_annotations, train_val_split
+from .inference import (
     SUBMISSION_SIZE,
     load_model,
     predict_dataset,
     write_detections,
     write_submission,
 )
-from networks import UNet
-from training import (
+from .networks import UNet
+from .training import (
     AugmentedDataset,
     BCEDiceLoss,
     build_optimizer,

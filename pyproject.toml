@@ -93,7 +93,7 @@ ignore = [
 
 
 [tool.ruff.lint.isort]
-known-first-party = ["data", "inference", "networks", "training"]
+known-first-party = ["src"]
 
 [tool.ruff.format]
 quote-style           = "double"
@@ -103,7 +103,6 @@ docstring-code-format = true
 
 [tool.mypy]
 python_version = "3.14"
-mypy_path      = "src"
 files          = ["src"]
 
 

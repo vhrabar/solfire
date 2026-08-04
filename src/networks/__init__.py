@@ -1,5 +1,3 @@
-from .unet import UNet
+from .UNet import UNet
 
-__all__ = [
-    "UNet",
-]
+__all__ = ["UNet"]

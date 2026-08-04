@@ -9,8 +9,7 @@ import torch.nn.functional as F
 from PIL import Image
 from tqdm import tqdm
 
-from networks import UNet
-
+from ..networks import UNet
 from .postprocess import encode_rle, instances_from_mask
 
 

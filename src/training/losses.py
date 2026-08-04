@@ -6,7 +6,7 @@ import numpy as np
 import torch
 from torch import Tensor, nn
 
-from data import polygon_to_mask
+from ..data import polygon_to_mask
 
 
 def soft_dice_loss(logits: Tensor, targets: Tensor, eps: float = 1.0) -> Tensor:

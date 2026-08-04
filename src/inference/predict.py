@@ -48,13 +48,13 @@ def predict_probabilities(model, images, tta=True) -> torch.Tensor:
             transformed = torch.flip(images, dims) if dims else images
             probabilities = torch.sigmoid(model(transformed).float())
             total += torch.flip(probabilities, dims) if dims else probabilities
-    return total / 4.
-
+    return total / 4.0
 
 
 @torch.no_grad()
-def predict_dataset(model, loader, device, threshold=0.5, tta=True, original_size=None,
-                    min_area=0, category_id=1, save_masks_dir=None) -> list[dict]:
+def predict_dataset(
+    model, loader, device, threshold=0.5, tta=True, original_size=None, min_area=0, category_id=1, save_masks_dir=None
+) -> list[dict]:
     """
     Run the model over a loader of unlabelled observations.
 
@@ -78,17 +78,17 @@ def predict_dataset(model, loader, device, threshold=0.5, tta=True, original_siz
         probabilities = predict_probabilities(model, images.to(device), tta=tta).cpu()
         if original_size is not None and probabilities.shape[-1] != original_size:
             probabilities = F.interpolate(
-                probabilities, size=(original_size, original_size),
-                mode="bilinear", align_corners=False,
+                probabilities,
+                size=(original_size, original_size),
+                mode="bilinear",
+                align_corners=False,
             )
 
         for probability, file_name in zip(probabilities[:, 0].numpy(), file_names):
             image_id = Path(file_name).stem
             mask = probability >= threshold
             if save_masks_dir is not None:
-                Image.fromarray((mask * 255).astype("uint8")).save(
-                    save_masks_dir / f"{image_id}.png"
-                )
+                Image.fromarray((mask * 255).astype("uint8")).save(save_masks_dir / f"{image_id}.png")
             instances = instances_from_mask(mask, probability, min_area)
             for number, instance in enumerate(instances, start=1):
                 detections.append(

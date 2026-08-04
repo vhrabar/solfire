@@ -63,6 +63,4 @@ def build_scheduler(optimizer, epochs, steps_per_epoch, warmup_epochs=1, min_lr_
         T_max=total_steps - warmup_steps,
         eta_min=min_lr_factor * peak_lr,
     )
-    return torch.optim.lr_scheduler.SequentialLR(
-        optimizer, [warmup, decay], milestones=[warmup_steps]
-    )
+    return torch.optim.lr_scheduler.SequentialLR(optimizer, [warmup, decay], milestones=[warmup_steps])

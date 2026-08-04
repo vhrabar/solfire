@@ -26,8 +26,9 @@ def autocast_context(device, enabled):
     return torch.autocast(device_type=device.type, dtype=dtype), dtype
 
 
-def train_one_epoch(model, loader, criterion, optimizer, device, scheduler=None,
-                    scaler=None, grad_clip=1.0, amp=False, epoch=0, epochs=0) -> float:
+def train_one_epoch(
+    model, loader, criterion, optimizer, device, scheduler=None, scaler=None, grad_clip=1.0, amp=False, epoch=0, epochs=0
+) -> float:
     """
     Run one pass over the training split.
     :param model: Model to update
@@ -141,9 +142,23 @@ def save_checkpoint(path, model, model_config, epoch, metrics, image_size) -> No
     )
 
 
-def fit(model, train_loader, val_loader, criterion, optimizer, device, epochs,
-        scheduler=None, model_config=None, image_size=None, output_dir="runs/unet",
-        amp=False, grad_clip=1.0, patience=0, thresholds=DEFAULT_THRESHOLDS) -> dict:
+def fit(
+    model,
+    train_loader,
+    val_loader,
+    criterion,
+    optimizer,
+    device,
+    epochs,
+    scheduler=None,
+    model_config=None,
+    image_size=None,
+    output_dir="runs/unet",
+    amp=False,
+    grad_clip=1.0,
+    patience=0,
+    thresholds=DEFAULT_THRESHOLDS,
+) -> dict:
     """
     Train for a fixed budget, keeping the checkpoint with the best validation Dice.
 
@@ -179,9 +194,17 @@ def fit(model, train_loader, val_loader, criterion, optimizer, device, epochs,
     for epoch in range(epochs):
         started = time.time()
         train_loss = train_one_epoch(
-            model, train_loader, criterion, optimizer, device,
-            scheduler=scheduler, scaler=scaler, grad_clip=grad_clip,
-            amp=amp, epoch=epoch, epochs=epochs,
+            model,
+            train_loader,
+            criterion,
+            optimizer,
+            device,
+            scheduler=scheduler,
+            scaler=scaler,
+            grad_clip=grad_clip,
+            amp=amp,
+            epoch=epoch,
+            epochs=epochs,
         )
         metrics = evaluate(model, val_loader, criterion, device, thresholds, amp=amp)
 
@@ -208,9 +231,7 @@ def fit(model, train_loader, val_loader, criterion, optimizer, device, epochs,
             best_epoch = epoch + 1
             best_threshold = metrics["best_threshold"]
             epochs_without_improvement = 0
-            save_checkpoint(
-                output_dir / "best.pt", model, model_config, epoch + 1, metrics, image_size
-            )
+            save_checkpoint(output_dir / "best.pt", model, model_config, epoch + 1, metrics, image_size)
             print(f"  saved best.pt (dice {best_dice:.4f})")
         else:
             epochs_without_improvement += 1

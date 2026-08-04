@@ -5,7 +5,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
 
 from data import FilamentDataset, TestImageDataset, load_annotations, train_val_split
 from inference import (
@@ -46,10 +46,10 @@ def parse_args() -> argparse.Namespace:
     train.add_argument("--depth", type=int, default=4)
     train.add_argument("--bilinear", action=argparse.BooleanOptionalAction, default=True)
     train.add_argument("--val-fraction", type=float, default=0.2)
-    train.add_argument("--categories", type=int, nargs="*", default=[1, 2],
-                       help="annotation category ids to segment")
-    train.add_argument("--pos-weight", type=float, default=None,
-                       help="positive class weight in the BCE term (default: estimated)")
+    train.add_argument("--categories", type=int, nargs="*", default=[1, 2], help="annotation category ids to segment")
+    train.add_argument(
+        "--pos-weight", type=float, default=None, help="positive class weight in the BCE term (default: estimated)"
+    )
     train.add_argument("--dice-weight", type=float, default=0.5)
     train.add_argument("--warmup-epochs", type=int, default=1)
     train.add_argument("--grad-clip", type=float, default=1.0)
@@ -61,13 +61,11 @@ def parse_args() -> argparse.Namespace:
 
     predict = subparsers.add_parser("predict", help="write predictions for the test observations")
     predict.add_argument("--checkpoint", default="runs/unet/best.pt")
-    predict.add_argument("--threshold", type=float, default=None,
-                         help="default: the value tuned on validation")
+    predict.add_argument("--threshold", type=float, default=None, help="default: the value tuned on validation")
     predict.add_argument("--batch-size", type=int, default=4)
     predict.add_argument("--workers", type=int, default=4)
     predict.add_argument("--tta", action=argparse.BooleanOptionalAction, default=True)
-    predict.add_argument("--min-area", type=int, default=32,
-                         help="drop predicted instances smaller than this many pixels")
+    predict.add_argument("--min-area", type=int, default=32, help="drop predicted instances smaller than this many pixels")
     predict.add_argument("--category-id", type=int, default=1)
     predict.add_argument("--save-masks", action="store_true", help="also write mask PNGs")
     predict.add_argument("--output-dir", default="runs/unet/predictions")
@@ -106,18 +104,17 @@ def run_training(args, device) -> None:
         pos_weight = estimate_pos_weight(train_dataset)
         print(f"estimated pos_weight: {pos_weight:.1f}")
 
+    train_data: Dataset = train_dataset
     if not args.no_augment:
-        train_dataset = AugmentedDataset(train_dataset)
+        train_data = AugmentedDataset(train_dataset)
 
     loader_kwargs = {
         "num_workers": args.workers,
         "pin_memory": device.type == "cuda",
         "persistent_workers": args.workers > 0,
     }
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True,
-                              drop_last=True, **loader_kwargs)
-    val_loader = DataLoader(valid_dataset, batch_size=args.batch_size, shuffle=False,
-                            **loader_kwargs)
+    train_loader = DataLoader(train_data, batch_size=args.batch_size, shuffle=True, drop_last=True, **loader_kwargs)
+    val_loader = DataLoader(valid_dataset, batch_size=args.batch_size, shuffle=False, **loader_kwargs)
 
     model_config = {
         "in_channels": 1,
@@ -130,18 +127,24 @@ def run_training(args, device) -> None:
     n_params = sum(p.numel() for p in model.parameters())
     print(f"UNet: {n_params / 1e6:.2f}M parameters")
 
-    criterion = BCEDiceLoss(
-        bce_weight=1.0 - args.dice_weight, dice_weight=args.dice_weight, pos_weight=pos_weight
-    ).to(device)
+    criterion = BCEDiceLoss(bce_weight=1.0 - args.dice_weight, dice_weight=args.dice_weight, pos_weight=pos_weight).to(device)
     optimizer = build_optimizer(model, lr=args.lr, weight_decay=args.weight_decay)
-    scheduler = build_scheduler(
-        optimizer, args.epochs, max(1, len(train_loader)), warmup_epochs=args.warmup_epochs
-    )
+    scheduler = build_scheduler(optimizer, args.epochs, max(1, len(train_loader)), warmup_epochs=args.warmup_epochs)
 
     summary = fit(
-        model, train_loader, val_loader, criterion, optimizer, device, args.epochs,
-        scheduler=scheduler, model_config=model_config, image_size=args.size,
-        output_dir=args.output_dir, amp=args.amp, grad_clip=args.grad_clip,
+        model,
+        train_loader,
+        val_loader,
+        criterion,
+        optimizer,
+        device,
+        args.epochs,
+        scheduler=scheduler,
+        model_config=model_config,
+        image_size=args.size,
+        output_dir=args.output_dir,
+        amp=args.amp,
+        grad_clip=args.grad_clip,
         patience=args.patience,
     )
     print(
@@ -163,14 +166,20 @@ def run_prediction(args, device) -> None:
     print(f"checkpoint epoch {checkpoint.get('epoch')}, size {size}, threshold {threshold:.2f}")
 
     dataset = TestImageDataset(size=size)
-    loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False,
-                        num_workers=args.workers, pin_memory=device.type == "cuda")
+    loader = DataLoader(
+        dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.workers, pin_memory=device.type == "cuda"
+    )
     print(f"{len(dataset)} test observations")
 
     output_dir = Path(args.output_dir)
     detections = predict_dataset(
-        model, loader, device, threshold=threshold, tta=args.tta,
-        original_size=SUBMISSION_SIZE, min_area=args.min_area,
+        model,
+        loader,
+        device,
+        threshold=threshold,
+        tta=args.tta,
+        original_size=SUBMISSION_SIZE,
+        min_area=args.min_area,
         category_id=args.category_id,
         save_masks_dir=output_dir / "masks" if args.save_masks else None,
     )
@@ -180,8 +189,7 @@ def run_prediction(args, device) -> None:
     write_detections(detections, output_dir / "detections.json")
 
     n_images = len({d["image_id"] for d in detections})
-    print(f"{len(detections)} filaments over {n_images}/{len(dataset)} observations "
-          f"-> {submission_path}")
+    print(f"{len(detections)} filaments over {n_images}/{len(dataset)} observations -> {submission_path}")
     if not detections:
         print("warning: no filaments predicted; lower --threshold or train for longer")
 
@@ -212,11 +220,12 @@ def set_seeds(seed: int) -> None:
 
     random.seed(seed)
 
-    np.random.seed(seed)
+    np.random.seed(seed)  # noqa: NPY002
 
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()

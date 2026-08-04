@@ -5,6 +5,7 @@ Turning probability maps into scored instances and submission records.
 import csv
 import json
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 from pycocotools import mask as coco_mask
@@ -24,8 +25,8 @@ def connected_components(mask) -> tuple[np.ndarray, int]:
     """
     height, width = mask.shape
     padded = np.zeros(width + 2, dtype=np.int8)
-    runs = []
-    row_slices = []
+    runs: list[tuple[int, int, int]] = []
+    row_slices: list[tuple[int, int]] = []
 
     for y in range(height):
         padded[1:-1] = mask[y]
@@ -61,7 +62,7 @@ def connected_components(mask) -> tuple[np.ndarray, int]:
                 k += 1
 
     labels = np.zeros((height, width), dtype=np.int32)
-    remap = {}
+    remap: dict[int, int] = {}
     for index, (y, start, end) in enumerate(runs):
         label = remap.setdefault(find(index), len(remap) + 1)
         labels[y, start:end] = label
@@ -97,13 +98,13 @@ def instances_from_mask(mask, probabilities, min_area=0) -> list[dict]:
     return instances
 
 
-def encode_rle(mask) -> dict:
+def encode_rle(mask) -> dict[str, Any]:
     """
     Encode a boolean mask as a COCO compressed RLE.
     :param mask: ``(H, W)`` boolean array
     :return: Dict with ``size`` and a JSON-serialisable ``counts`` string
     """
-    rle = coco_mask.encode(np.asfortranarray(mask.astype(np.uint8)))
+    rle: dict[str, Any] = coco_mask.encode(np.asfortranarray(mask.astype(np.uint8)))
     rle["counts"] = rle["counts"].decode("ascii")
     return rle
 
@@ -139,11 +140,10 @@ def write_submission(detections, path) -> int:
             height, width = detection["segmentation"]["size"]
             if (height, width) != (SUBMISSION_SIZE, SUBMISSION_SIZE):
                 raise ValueError(
-                    f"{detection['filament_id']}: masks must be "
-                    f"{SUBMISSION_SIZE}x{SUBMISSION_SIZE}, got {height}x{width}"
+                    f"{detection['filament_id']}: masks must be {SUBMISSION_SIZE}x{SUBMISSION_SIZE}, got {height}x{width}"
                 )
             counts = detection["segmentation"]["counts"]
-            if any(character in counts for character in ',"\'\r\n'):
+            if any(character in counts for character in ",\"'\r\n"):
                 raise ValueError(f"{detection['filament_id']}: counts need escaping")
             writer.writerow([detection["filament_id"], counts])
 

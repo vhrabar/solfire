@@ -74,6 +74,7 @@ class Up(nn.Module):
         :param bilinear: Upsample bilinearly instead of with a transposed convolution
         """
         super().__init__()
+        self.up: nn.Module
         if bilinear:
             self.up = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
             up_channels = in_channels

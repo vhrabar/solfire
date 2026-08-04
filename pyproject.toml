@@ -7,13 +7,15 @@ dependencies = [
     "kaggle",
     "pycocotools",
     "tqdm",
+    "pillow",
 ]
 
 [dependency-groups]
 dev = [
     "mypy",
     "ruff",
-    "py-spy"
+    "py-spy",
+    "types-tqdm",
 ]
 cpu      = ["torch", "torchvision", "torchmetrics"]
 cuda-130 = ["torch", "torchvision", "torchmetrics"]
@@ -61,3 +63,59 @@ name = "pytorch-cpu"
 url = "https://download.pytorch.org/whl/cpu"
 default = false
 explicit = true
+
+[tool.ruff]
+line-length = 130
+
+
+[tool.ruff.lint]
+select = [
+    "E",
+    "F",
+    "W",
+    "I",
+    "UP",
+    "B",
+    "SIM",
+    "NPY",
+    "RUF",
+]
+ignore = [
+    "E501",
+    "RUF012",
+    "E741",
+    "B905",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py"  = ["F401"]
+"*.ipynb"      = ["E402", "F401", "F811"]
+
+
+[tool.ruff.lint.isort]
+known-first-party = ["data", "inference", "networks", "training"]
+
+[tool.ruff.format]
+quote-style           = "double"
+indent-style          = "space"
+docstring-code-format = true
+
+
+[tool.mypy]
+python_version = "3.14"
+mypy_path      = "src"
+files          = ["src"]
+
+
+check_untyped_defs   = true
+warn_return_any      = true
+warn_redundant_casts = true
+warn_unused_configs  = true
+warn_unused_ignores  = true
+show_error_codes     = true
+pretty               = true
+
+
+[[tool.mypy.overrides]]
+module = ["pycocotools.*"]
+ignore_missing_imports = true

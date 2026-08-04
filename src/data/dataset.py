@@ -28,7 +28,7 @@ def load_annotations(path=TRAIN_ANNOTATIONS) -> tuple[Any, dict[Any, list[Any]]]
     """
     with open(path, encoding="utf-8") as fh:
         raw = json.load(fh)
-    by_image = {img["id"]: [] for img in raw["images"]}
+    by_image: dict[Any, list[Any]] = {img["id"]: [] for img in raw["images"]}
     for ann in raw["annotations"]:
         by_image[ann["image_id"]].append(ann)
     return raw["images"], by_image
@@ -57,13 +57,13 @@ def train_val_split(images, val_fraction=0.2, seed=0) -> tuple[list[Any], list[A
     :param seed: Random seed for reproducibility
     :return: Tuple of (train_ids, val_ids)
     """
-    groups = {}
+    groups: dict[str, list[Any]] = {}
     for img in images:
         groups.setdefault(img["file_name"], []).append(img["id"])
 
     file_names = sorted(groups)
     random.Random(seed).shuffle(file_names)
-    n_val = int(round(len(file_names) * val_fraction))
+    n_val = round(len(file_names) * val_fraction)
 
     val_ids = [i for f in file_names[:n_val] for i in groups[f]]
     train_ids = [i for f in file_names[n_val:] for i in groups[f]]
@@ -77,10 +77,10 @@ def load_image(path, size=None) -> torch.Tensor:
     :param size: Edge length to resize to, or ``None`` to keep the original size
     :return: ``(1, H, W)`` float tensor
     """
-    with Image.open(path) as img:
+    with Image.open(path) as handle:
         if size is not None:
-            img.draft("L", (size, size))  # fast approximate JPEG downscale
-        img = img.convert("L")
+            handle.draft("L", (size, size))  # fast approximate JPEG downscale
+        img = handle.convert("L")
         if size is not None and img.size != (size, size):
             img = img.resize((size, size), Image.Resampling.BILINEAR)
         array = np.asarray(img, dtype=np.uint8)
@@ -95,8 +95,7 @@ class FilamentDataset(Dataset):
     annotated filament polygon of the selected categories.
     """
 
-    def __init__(self, image_ids=None, size=512, category_ids=None,
-                 images_dir=TRAIN_IMAGES, annotations_path=TRAIN_ANNOTATIONS):
+    def __init__(self, image_ids=None, size=512, category_ids=None, images_dir=TRAIN_IMAGES, annotations_path=TRAIN_ANNOTATIONS):
         """
         Build the dataset from a COCO-style annotation file.
         :param image_ids: Image ids to include, or ``None`` for all of them

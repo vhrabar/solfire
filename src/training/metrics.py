@@ -3,7 +3,7 @@ Overlap metrics accumulated over a whole split.
 """
 
 import torch
-from torchmetrics import MetricCollection
+from torchmetrics import Metric, MetricCollection
 from torchmetrics.classification import BinaryF1Score, BinaryJaccardIndex
 
 DEFAULT_THRESHOLDS = (0.2, 0.3, 0.4, 0.5, 0.6, 0.7)
@@ -19,15 +19,13 @@ class SegmentationMetrics:
         :param thresholds: Probability thresholds to score the predictions at
         """
         self.thresholds = tuple(thresholds)
-        metrics = {}
+        metrics: dict[str, Metric | MetricCollection] = {}
 
         for i, threshold in enumerate(self.thresholds):
             metrics[f"dice_{i}"] = BinaryF1Score(threshold=threshold)
             metrics[f"iou_{i}"] = BinaryJaccardIndex(threshold=threshold)
 
-            metrics[f"image_dice_{i}"] = BinaryF1Score(
-                threshold=threshold, multidim_average="samplewise", zero_division=1.0
-            )
+            metrics[f"image_dice_{i}"] = BinaryF1Score(threshold=threshold, multidim_average="samplewise", zero_division=1.0)
 
         self.metrics = MetricCollection(metrics, compute_groups=False)
 

@@ -2,8 +2,10 @@
 U-Net for binary segmentation of solar filaments.
 """
 
-from layers import DoubleConv, Down, Up
 from torch import nn
+
+from .layers import DoubleConv, Down, Up
+
 
 class UNet(nn.Module):
     """
@@ -27,15 +29,11 @@ class UNet(nn.Module):
 
         self.depth = depth
         # Channels held by the encoder at each resolution, e.g. [64, 128, 256, 512, 1024].
-        channels = [base_channels * 2 ** i for i in range(depth + 1)]
+        channels = [base_channels * 2**i for i in range(depth + 1)]
 
         self.stem = DoubleConv(in_channels, channels[0])
-        self.downs = nn.ModuleList(
-            Down(channels[i], channels[i + 1]) for i in range(depth)
-        )
-        self.ups = nn.ModuleList(
-            Up(channels[i + 1], channels[i], channels[i], bilinear) for i in reversed(range(depth))
-        )
+        self.downs = nn.ModuleList(Down(channels[i], channels[i + 1]) for i in range(depth))
+        self.ups = nn.ModuleList(Up(channels[i + 1], channels[i], channels[i], bilinear) for i in reversed(range(depth)))
         self.head = nn.Conv2d(channels[0], out_channels, kernel_size=1)
 
     def forward(self, x):
@@ -43,12 +41,10 @@ class UNet(nn.Module):
         :param x: ``(B, in_channels, H, W)`` batch of observations
         :return: ``(B, out_channels, H, W)`` logits
         """
-        divisor = 2 ** self.depth
+        divisor = 2**self.depth
         height, width = x.shape[-2:]
         if height % divisor or width % divisor:
-            raise ValueError(
-                f"input size ({height}, {width}) must be divisible by {divisor} for depth {self.depth}"
-            )
+            raise ValueError(f"input size ({height}, {width}) must be divisible by {divisor} for depth {self.depth}")
 
         skips = []
         x = self.stem(x)

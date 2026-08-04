@@ -9,7 +9,7 @@ from torch import Tensor, nn
 from data import polygon_to_mask
 
 
-def soft_dice_loss(logits, targets, eps=1.0) -> float | int | Tensor:
+def soft_dice_loss(logits: Tensor, targets: Tensor, eps: float = 1.0) -> Tensor:
     """
     Soft Dice loss, computed per sample and averaged over the batch.
 
@@ -35,6 +35,8 @@ class BCEDiceLoss(nn.Module):
     DICE -> overlap optim
     """
 
+    pos_weight: Tensor | None
+
     def __init__(self, bce_weight=0.5, dice_weight=0.5, pos_weight=None):
         """
         :param bce_weight: Weight of the cross entropy term
@@ -54,13 +56,11 @@ class BCEDiceLoss(nn.Module):
         :param targets: ``(B, 1, H, W)`` binary targets
         :return: Scalar loss
         """
-        bce = nn.functional.binary_cross_entropy_with_logits(
-            logits, targets, pos_weight=self.pos_weight
-        )
+        bce = nn.functional.binary_cross_entropy_with_logits(logits, targets, pos_weight=self.pos_weight)
         return self.bce_weight * bce + self.dice_weight * soft_dice_loss(logits, targets)
 
 
-def estimate_pos_weight(dataset, max_samples=128, cap=20.0) -> float:
+def estimate_pos_weight(dataset, max_samples: int = 128, cap: float = 20.0) -> float:
     """
     Estimate the ``negative / positive`` pixel ratio by rasterising annotations.
 

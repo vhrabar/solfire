@@ -43,15 +43,19 @@ def parse_args() -> argparse.Namespace:
     train.add_argument("--weight-decay", type=float, default=1e-2)
     train.add_argument("--size", type=int, default=256, help="edge length observations are resized to")
     train.add_argument("--arch", choices=sorted(ARCHITECTURES), default="unet")
-    train.add_argument("--base-channels", type=int, default=32, help="unet only")
-    train.add_argument("--depth", type=int, default=4, help="unet only")
-    train.add_argument("--bilinear", action=argparse.BooleanOptionalAction, default=True, help="unet only")
+    train.add_argument("--base-channels", type=int, default=32, help="unet/transunet only")
+    train.add_argument("--depth", type=int, default=4, help="unet/transunet only")
+    train.add_argument("--bilinear", action=argparse.BooleanOptionalAction, default=True, help="unet/transunet only")
     train.add_argument("--embed-dims", type=int, nargs="+", default=[32, 64, 160, 256], help="segformer only")
     train.add_argument("--depths", type=int, nargs="+", default=[2, 2, 2, 2], help="segformer only")
     train.add_argument("--num-heads", type=int, nargs="+", default=[1, 2, 5, 8], help="segformer only")
     train.add_argument("--decoder-dim", type=int, default=256, help="segformer only")
-    train.add_argument("--dropout", type=float, default=0.0, help="segformer only")
-    train.add_argument("--drop-path", type=float, default=0.1, help="segformer only")
+    train.add_argument("--blocks", type=int, default=4, help="transunet only: attention blocks at the bottleneck")
+    train.add_argument("--heads", type=int, default=8, help="transunet only: attention heads")
+    train.add_argument("--embed-dim", type=int, default=None, help="transunet only: token width (default: the bottleneck width)")
+    train.add_argument("--mlp-ratio", type=float, default=2.0, help="transunet only")
+    train.add_argument("--dropout", type=float, default=0.0, help="segformer/transunet only")
+    train.add_argument("--drop-path", type=float, default=0.1, help="segformer/transunet only")
     train.add_argument("--val-fraction", type=float, default=0.2)
     train.add_argument("--categories", type=int, nargs="*", default=[1, 2], help="annotation category ids to segment")
     train.add_argument(
@@ -97,14 +101,24 @@ def build_model_config(args) -> dict:
     :param args: Parsed ``train`` arguments
     :return: Keyword arguments for the matching entry of :data:`networks.ARCHITECTURES`
     """
-    if args.arch == "unet":
-        return {
+    if args.arch in {"unet", "transunet"}:
+        config = {
             "in_channels": 1,
             "out_channels": 1,
             "base_channels": args.base_channels,
             "depth": args.depth,
             "bilinear": args.bilinear,
         }
+        if args.arch == "transunet":
+            config |= {
+                "blocks": args.blocks,
+                "num_heads": args.heads,
+                "embed_dim": args.embed_dim,
+                "mlp_ratio": args.mlp_ratio,
+                "dropout": args.dropout,
+                "drop_path": args.drop_path,
+            }
+        return config
 
     stages = len(args.embed_dims)
     return {

@@ -2,6 +2,7 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 
+from ..padding import pad_to_multiple
 from .encoder import EncoderStage
 
 
@@ -128,20 +129,6 @@ class SegFormer(nn.Module):
         logits: Tensor = self.head(self.drop(self.fuse(torch.cat(merged, dim=1))))
         return logits
 
-    def _pad(self, x: Tensor) -> Tensor:
-        """
-        Grow the input to the next multiple of :attr:`divisor` the stages can divide evenly.
-
-        :param x: ``(B, in_channels, H, W)`` batch of observations
-        :return: The batch, padded to a divisible size
-        """
-        height, width = x.shape[-2:]
-        pad_height = -height % self.divisor
-        pad_width = -width % self.divisor
-        if not pad_height and not pad_width:
-            return x
-        return F.pad(x, (0, pad_width, 0, pad_height), mode="replicate")
-
     def forward(self, x) -> Tensor:
         """
         Accepts any input size; sizes the stages cannot divide are padded and cropped back.
@@ -150,7 +137,7 @@ class SegFormer(nn.Module):
         :return: ``(B, out_channels, H, W)`` logits
         """
         height, width = x.shape[-2:]
-        padded = self._pad(x)
+        padded = pad_to_multiple(x, self.divisor)
 
         logits = self._decode(self._encode(padded))
         logits = F.interpolate(logits, size=padded.shape[-2:], mode="bilinear", align_corners=False)

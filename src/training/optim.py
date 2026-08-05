@@ -12,16 +12,17 @@ def build_optimizer(model, lr=3e-4, weight_decay=1e-2) -> torch.optim.Optimizer:
 
     :param model: Model whose parameters are optimised
     :param lr: Peak learning rate
-    :param weight_decay: Decay applied to the convolution weights
+    :param weight_decay: Decay applied to the convolution and projection weights
     :return: Configured optimiser
     """
     decay = []
     no_decay = []
+    norms = nn.modules.batchnorm._BatchNorm | nn.LayerNorm | nn.GroupNorm
     for module in model.modules():
         for name, param in module.named_parameters(recurse=False):
             if not param.requires_grad:
                 continue
-            if name == "bias" or isinstance(module, nn.modules.batchnorm._BatchNorm):
+            if name == "bias" or isinstance(module, norms):
                 no_decay.append(param)
             else:
                 decay.append(param)

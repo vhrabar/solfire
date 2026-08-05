@@ -132,6 +132,7 @@ def save_checkpoint(path, model, model_config, epoch, metrics, image_size) -> No
     torch.save(
         {
             "model_state": model.state_dict(),
+            "arch": type(model).__name__.lower(),
             "model_config": model_config,
             "image_size": image_size,
             "epoch": epoch,

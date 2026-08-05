@@ -9,11 +9,11 @@ import torch.nn.functional as F
 from PIL import Image
 from tqdm import tqdm
 
-from ..networks import UNet
+from ..networks import ARCHITECTURES
 from .postprocess import encode_rle, instances_from_mask
 
 
-def load_model(checkpoint_path, device) -> tuple[UNet, dict]:
+def load_model(checkpoint_path, device) -> tuple[torch.nn.Module, dict]:
     """
     Rebuild a trained model from a checkpoint written by :func:`training.save_checkpoint`.
     :param checkpoint_path: Path to the checkpoint file
@@ -21,7 +21,10 @@ def load_model(checkpoint_path, device) -> tuple[UNet, dict]:
     :return: Tuple of (model in eval mode, checkpoint metadata)
     """
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
-    model = UNet(**(checkpoint.get("model_config") or {}))
+    arch = checkpoint.get("arch", "unet")
+    if arch not in ARCHITECTURES:
+        raise ValueError(f"unknown architecture {arch!r} in {checkpoint_path}, expected one of {sorted(ARCHITECTURES)}")
+    model = ARCHITECTURES[arch](**(checkpoint.get("model_config") or {}))
     model.load_state_dict(checkpoint["model_state"])
     model.to(device).eval()
     return model, checkpoint

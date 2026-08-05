@@ -1,3 +1,9 @@
+from .Transformer import SegFormer
 from .UNet import UNet
 
-__all__ = ["UNet"]
+ARCHITECTURES = {
+    "unet": UNet,
+    "segformer": SegFormer,
+}
+
+__all__ = ["ARCHITECTURES", "SegFormer", "UNet"]

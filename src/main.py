@@ -7,7 +7,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset
 
-from .data import FilamentDataset, TestImageDataset, load_annotations, train_val_split
+from .data import DATA_ROOT, FilamentDataset, TestImageDataset, load_annotations, train_val_split
 from .inference import (
     SUBMISSION_SIZE,
     load_model,
@@ -235,6 +235,7 @@ def main() -> None:
     set_seeds(args.seed)
     device = resolve_device(args.device)
     print(f"device: {device}")
+    print(f"data: {DATA_ROOT}")
 
     if args.command == "train":
         run_training(args, device)

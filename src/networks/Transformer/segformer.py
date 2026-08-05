@@ -77,6 +77,10 @@ class SegFormer(nn.Module):
 
         self.apply(self._init_weights)
 
+        nn.init.normal_(self.head.weight, std=0.01)
+        if self.head.bias is not None:
+            nn.init.zeros_(self.head.bias)
+
     @staticmethod
     def _init_weights(module) -> None:
         """

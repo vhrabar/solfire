@@ -1,7 +1,3 @@
-"""
-Convolutional building blocks shared by the segmentation architectures.
-"""
-
 import torch
 import torch.nn.functional as F
 from torch import nn

@@ -2,14 +2,19 @@
 U-Net for binary segmentation of solar filaments.
 """
 
-from torch import nn
+from torch import Tensor, nn
 
-from .layers import DoubleConv, Down, Up
+from ..padding import pad_to_multiple
+from .decoder import UNetDecoder
+from .encoder import UNetEncoder
 
 
 class UNet(nn.Module):
     """
     U-Net over grayscale observations, returning per-pixel logits.
+
+    Only wires :class:`UNetEncoder` straight into :class:`UNetDecoder`; a hybrid
+    is the same wiring with something inserted at the bottleneck.
 
     The output is *not* passed through a sigmoid, so it pairs directly with
     :class:`torch.nn.BCEWithLogitsLoss`.
@@ -24,33 +29,22 @@ class UNet(nn.Module):
         :param bilinear: Upsample bilinearly instead of with transposed convolutions
         """
         super().__init__()
-        if depth < 1:
-            raise ValueError(f"depth must be at least 1, got {depth}")
+        self.encoder = UNetEncoder(in_channels, base_channels=base_channels, depth=depth)
+        self.decoder = UNetDecoder(self.encoder.channels, bilinear=bilinear)
+        self.head = nn.Conv2d(self.decoder.out_channels, out_channels, kernel_size=1)
 
-        self.depth = depth
-        # Channels held by the encoder at each resolution, e.g. [64, 128, 256, 512, 1024].
-        channels = [base_channels * 2**i for i in range(depth + 1)]
-
-        self.stem = DoubleConv(in_channels, channels[0])
-        self.downs = nn.ModuleList(Down(channels[i], channels[i + 1]) for i in range(depth))
-        self.ups = nn.ModuleList(Up(channels[i + 1], channels[i], channels[i], bilinear) for i in reversed(range(depth)))
-        self.head = nn.Conv2d(channels[0], out_channels, kernel_size=1)
-
-    def forward(self, x):
+    def forward(self, x) -> Tensor:
         """
+        Accepts any input size; sizes the encoder cannot halve are padded and cropped back.
+
         :param x: ``(B, in_channels, H, W)`` batch of observations
         :return: ``(B, out_channels, H, W)`` logits
         """
-        divisor = 2**self.depth
         height, width = x.shape[-2:]
-        if height % divisor or width % divisor:
-            raise ValueError(f"input size ({height}, {width}) must be divisible by {divisor} for depth {self.depth}")
+        padded = pad_to_multiple(x, self.encoder.divisor)
 
-        skips = []
-        x = self.stem(x)
-        for down in self.downs:
-            skips.append(x)
-            x = down(x)
-        for up, skip in zip(self.ups, reversed(skips)):
-            x = up(x, skip)
-        return self.head(x)
+        bottleneck, skips = self.encoder(padded)
+        out = self.decoder(bottleneck, skips)
+
+        logits: Tensor = self.head(out)
+        return logits[..., :height, :width]

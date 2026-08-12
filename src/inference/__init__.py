@@ -1,6 +1,7 @@
 """Prediction and submission writing for the filament segmentation challenge."""
 
 from .postprocess import (
+    MIN_AREA,
     SUBMISSION_SIZE,
     connected_components,
     encode_rle,
@@ -11,6 +12,7 @@ from .postprocess import (
 from .predict import load_model, predict_dataset, predict_probabilities
 
 __all__ = [
+    "MIN_AREA",
     "SUBMISSION_SIZE",
     "connected_components",
     "encode_rle",

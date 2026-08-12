@@ -11,6 +11,9 @@ import numpy as np
 from pycocotools import mask as coco_mask
 
 SUBMISSION_SIZE = 2048
+# The smallest annotated filaments cover a few hundred pixels at that size, so anything
+# below this is noise, and under Panoptic Quality every speck kept is half a point of penalty.
+MIN_AREA = 256
 
 
 def connected_components(mask) -> tuple[np.ndarray, int]:

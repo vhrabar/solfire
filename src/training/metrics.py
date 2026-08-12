@@ -1,42 +1,53 @@
 import numpy as np
 import torch
 
-from ..inference.postprocess import connected_components
+from ..inference.postprocess import MIN_AREA, SUBMISSION_SIZE, connected_components
 
-DEFAULT_THRESHOLDS = (0.2, 0.3, 0.4, 0.5, 0.6, 0.7)
+DEFAULT_THRESHOLDS = (0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9)
 IOU_THRESHOLD = 0.5
 
 
-def instance_layers(mask) -> torch.Tensor:
+def drop_small(labels, n_labels, min_area) -> tuple[np.ndarray, int]:
     """
-    Split a binary mask into one layer per connected filament.
-    :param mask: ``(H, W)`` boolean array
-    :return: ``(n, H, W)`` float tensor with values in ``{0, 1}``
+    Remove the components a submission would discard, and close the gaps in the numbering.
+    :param labels: ``(H, W)`` label array with 0 as background
+    :param n_labels: Number of labels in ``labels``
+    :param min_area: Components of at most this many pixels are dropped
+    :return: Tuple of (relabelled array, number of components left)
     """
-    labels, n_labels = connected_components(mask)
-    layers = labels[None] == np.arange(1, n_labels + 1, dtype=np.int32)[:, None, None]
-    return torch.from_numpy(layers).float()
+    areas = np.bincount(labels.ravel(), minlength=n_labels + 1)
+    keep = areas > min_area
+    keep[0] = False
+
+    remap = np.zeros(n_labels + 1, dtype=np.int32)
+    remap[keep] = np.arange(1, int(keep.sum()) + 1, dtype=np.int32)
+    return remap[labels], int(keep.sum())
 
 
-def overlap_matrices(gt_layers, pred_layers) -> tuple[torch.Tensor, torch.Tensor]:
+def overlap_matrices(gt_labels, n_gt, pred_labels, n_pred) -> tuple[torch.Tensor, torch.Tensor]:
     """
     Pairwise IoU and Dice between the filaments of one observation.
-    :param gt_layers: ``(n_gt, H, W)`` annotated instances
-    :param pred_layers: ``(n_pred, H, W)`` predicted instances
+
+    The pair counts come out of a single histogram over ``gt * (n_pred + 1) + pred``,
+    so the cost follows the image rather than the number of instances; an early
+    epoch that finds a thousand specks is no more expensive than a clean one.
+    :param gt_labels: ``(H, W)`` labelled annotation
+    :param n_gt: Number of annotated filaments
+    :param pred_labels: ``(H, W)`` labelled prediction
+    :param n_pred: Number of predicted filaments
     :return: Tuple of two ``(n_gt, n_pred)`` tensors, IoU and Dice of every pair
     """
-    gt_flat = gt_layers.flatten(1)
-    pred_flat = pred_layers.flatten(1)
+    pairs = gt_labels.astype(np.int64) * (n_pred + 1) + pred_labels
+    counts = np.bincount(pairs.ravel(), minlength=(n_gt + 1) * (n_pred + 1)).reshape(n_gt + 1, n_pred + 1)
 
-    intersection = gt_flat @ pred_flat.t()
-    gt_areas = gt_flat.sum(dim=1).view(-1, 1)
-    pred_areas = pred_flat.sum(dim=1).view(1, -1)
+    intersection = counts[1:, 1:].astype(np.float64)
+    gt_areas = counts[1:].sum(axis=1, keepdims=True)
+    pred_areas = counts[:, 1:].sum(axis=0, keepdims=True)
     union = gt_areas + pred_areas - intersection
 
-    empty = union == 0
-    iou = torch.where(empty, 0.0, intersection / union.clamp(min=1.0))
-    dice = torch.where(empty, 0.0, 2 * intersection / (gt_areas + pred_areas).clamp(min=1.0))
-    return iou, dice
+    iou = np.divide(intersection, union, out=np.zeros_like(intersection), where=union > 0)
+    dice = np.divide(2 * intersection, gt_areas + pred_areas, out=np.zeros_like(intersection), where=union > 0)
+    return torch.from_numpy(iou).float(), torch.from_numpy(dice).float()
 
 
 def panoptic_quality(overlaps) -> float:
@@ -67,7 +78,8 @@ class PanopticQuality:
 
     Filaments are the only foreground class, so the instances are simply the
     connected components of the annotation and of the thresholded probability
-    map.
+    map. Predictions too small to be submitted are dropped here as well, so the
+    threshold picked on validation is the one the submission is written with.
     """
 
     def __init__(self, thresholds=DEFAULT_THRESHOLDS):
@@ -90,10 +102,12 @@ class PanopticQuality:
         truth = targets.detach().cpu().numpy() > 0.5
 
         for probability, target in zip(probabilities[:, 0], truth[:, 0]):
-            gt_layers = instance_layers(target)
+            # the submission is written at 2048, so the area cut has to be scaled down with it
+            min_area = MIN_AREA * probability.size / SUBMISSION_SIZE**2
+            gt_labels, n_gt = connected_components(target)
             for index, threshold in enumerate(self.thresholds):
-                pred_layers = instance_layers(probability >= threshold)
-                self.overlaps[index].append(overlap_matrices(gt_layers, pred_layers))
+                pred_labels, n_pred = drop_small(*connected_components(probability >= threshold), min_area)
+                self.overlaps[index].append(overlap_matrices(gt_labels, n_gt, pred_labels, n_pred))
 
     def reset(self) -> None:
         """

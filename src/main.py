@@ -9,6 +9,7 @@ from torch.utils.data import DataLoader, Dataset
 
 from .data import DATA_ROOT, FilamentDataset, TestImageDataset, load_annotations, train_val_split
 from .inference import (
+    MIN_AREA,
     SUBMISSION_SIZE,
     load_model,
     predict_dataset,
@@ -57,7 +58,7 @@ def parse_args() -> argparse.Namespace:
     train.add_argument("--dropout", type=float, default=0.0, help="segformer/transunet only")
     train.add_argument("--drop-path", type=float, default=0.1, help="segformer/transunet only")
     train.add_argument("--val-fraction", type=float, default=0.2)
-    train.add_argument("--categories", type=int, nargs="*", default=[1, 2], help="annotation category ids to segment")
+    train.add_argument("--categories", type=int, nargs="*", default=[1, 2, 3], help="annotation category ids to segment")
     train.add_argument(
         "--pos-weight", type=float, default=None, help="positive class weight in the BCE term (default: estimated)"
     )
@@ -76,7 +77,7 @@ def parse_args() -> argparse.Namespace:
     predict.add_argument("--batch-size", type=int, default=4)
     predict.add_argument("--workers", type=int, default=4)
     predict.add_argument("--tta", action=argparse.BooleanOptionalAction, default=True)
-    predict.add_argument("--min-area", type=int, default=32, help="drop predicted instances smaller than this many pixels")
+    predict.add_argument("--min-area", type=int, default=MIN_AREA, help="drop predicted instances smaller than this many pixels")
     predict.add_argument("--category-id", type=int, default=1)
     predict.add_argument("--save-masks", action="store_true", help="also write mask PNGs")
     predict.add_argument("--output-dir", default="runs/unet/predictions")

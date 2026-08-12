@@ -5,6 +5,7 @@ requires-python = "==3.14.*"
 dependencies = [
     "numpy",
     "kaggle",
+    "matplotlib",
     "pycocotools",
     "tqdm",
     "pillow",
@@ -17,9 +18,9 @@ dev = [
     "py-spy",
     "types-tqdm",
 ]
-cpu      = ["torch", "torchvision", "torchmetrics"]
-cuda-130 = ["torch", "torchvision", "torchmetrics"]
-cuda-132 = ["torch", "torchvision", "torchmetrics"]
+cpu      = ["torch", "torchvision"]
+cuda-130 = ["torch", "torchvision"]
+cuda-132 = ["torch", "torchvision"]
 
 [tool.uv]
 required-environments = [

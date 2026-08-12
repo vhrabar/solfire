@@ -194,7 +194,7 @@ def run_training(args, device) -> None:
         patience=args.patience,
     )
     print(
-        f"best dice {summary['best_dice']:.4f} at epoch {summary['best_epoch']} "
+        f"best pq {summary['best_pq']:.4f} at epoch {summary['best_epoch']} "
         f"(threshold {summary['best_threshold']:.2f}) -> {output_dir}/best.pt"
     )
 

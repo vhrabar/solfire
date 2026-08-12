@@ -9,7 +9,8 @@ from pathlib import Path
 import torch
 from tqdm import tqdm
 
-from .metrics import DEFAULT_THRESHOLDS, SegmentationMetrics
+from .metrics import DEFAULT_THRESHOLDS, PanopticQuality
+from .plots import plot_evaluation
 
 
 def autocast_context(device, enabled):
@@ -91,10 +92,10 @@ def evaluate(model, loader, criterion, device, thresholds=DEFAULT_THRESHOLDS, am
     :param device: Device to run on
     :param thresholds: Probability thresholds to score at
     :param amp: Whether to run the forward pass in mixed precision
-    :return: Metrics dict from :meth:`SegmentationMetrics.compute` plus ``loss``
+    :return: Metrics dict from :meth:`PanopticQuality.compute` plus ``loss``
     """
     model.eval()
-    metrics = SegmentationMetrics(thresholds)
+    metrics = PanopticQuality(thresholds)
     total_loss = 0.0
     n_batches = 0
 
@@ -161,9 +162,9 @@ def fit(
     thresholds=DEFAULT_THRESHOLDS,
 ) -> dict:
     """
-    Train for a fixed budget, keeping the checkpoint with the best validation Dice.
+    Train for a fixed budget, keeping the checkpoint with the best validation PQ.
 
-    Selection uses dataset-level Dice at the best threshold rather than the
+    Selection uses the Panoptic Quality at the best threshold rather than the
     validation loss, since that is what the segmentation is judged on.
     :param model: Model to train
     :param train_loader: Loader over the training split
@@ -180,14 +181,14 @@ def fit(
     :param grad_clip: Global gradient norm clip, ``0`` to disable
     :param patience: Stop after this many epochs without improvement, ``0`` to disable
     :param thresholds: Probability thresholds to validate at
-    :return: Dict with ``best_dice``, ``best_threshold``, ``best_epoch`` and ``history``
+    :return: Dict with ``best_pq``, ``best_threshold``, ``best_epoch`` and ``history``
     """
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     scaler = torch.amp.GradScaler("cuda") if (amp and device.type == "cuda") else None
 
     history = []
-    best_dice = -1.0
+    best_pq = -1.0
     best_epoch = -1
     best_threshold = 0.5
     epochs_without_improvement = 0
@@ -208,13 +209,13 @@ def fit(
             epochs=epochs,
         )
         metrics = evaluate(model, val_loader, criterion, device, thresholds, amp=amp)
+        overlaps = metrics.pop("overlaps")
 
         entry = {
             "epoch": epoch + 1,
             "train_loss": train_loss,
             "val_loss": metrics["loss"],
-            "val_dice": metrics["best_dice"],
-            "val_iou": metrics["best_iou"],
+            "val_pq": metrics["best_pq"],
             "threshold": metrics["best_threshold"],
             "lr": optimizer.param_groups[0]["lr"],
             "seconds": time.time() - started,
@@ -222,18 +223,18 @@ def fit(
         history.append(entry)
         print(
             f"epoch {epoch + 1}/{epochs}  train {train_loss:.4f}  val {metrics['loss']:.4f}  "
-            f"dice {metrics['best_dice']:.4f} @ t={metrics['best_threshold']:.2f}  "
-            f"iou {metrics['best_iou']:.4f}  ({entry['seconds']:.0f}s)"
+            f"pq {metrics['best_pq']:.4f} @ t={metrics['best_threshold']:.2f}  ({entry['seconds']:.0f}s)"
         )
 
         save_checkpoint(output_dir / "last.pt", model, model_config, epoch + 1, metrics, image_size)
-        if metrics["best_dice"] > best_dice:
-            best_dice = metrics["best_dice"]
+        if metrics["best_pq"] > best_pq:
+            best_pq = metrics["best_pq"]
             best_epoch = epoch + 1
             best_threshold = metrics["best_threshold"]
             epochs_without_improvement = 0
             save_checkpoint(output_dir / "best.pt", model, model_config, epoch + 1, metrics, image_size)
-            print(f"  saved best.pt (dice {best_dice:.4f})")
+            plot_evaluation(overlaps, output_dir / "evaluation.png")
+            print(f"  saved best.pt (pq {best_pq:.4f})")
         else:
             epochs_without_improvement += 1
             if patience and epochs_without_improvement >= patience:
@@ -243,7 +244,7 @@ def fit(
         (output_dir / "history.json").write_text(json.dumps(history, indent=2), encoding="utf-8")
 
     return {
-        "best_dice": best_dice,
+        "best_pq": best_pq,
         "best_threshold": best_threshold,
         "best_epoch": best_epoch,
         "history": history,

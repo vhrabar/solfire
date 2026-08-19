@@ -117,7 +117,7 @@ def evaluate(model, loader, criterion, device, thresholds=DEFAULT_THRESHOLDS, am
     return results
 
 
-def save_checkpoint(path, model, model_config, epoch, metrics, image_size) -> None:
+def save_checkpoint(path, model, model_config, epoch, metrics, image_size, extra=None) -> None:
     """
     Write the weights together with everything inference needs to rebuild them.
     :param path: Destination file
@@ -125,23 +125,24 @@ def save_checkpoint(path, model, model_config, epoch, metrics, image_size) -> No
     :param model_config: Keyword arguments the model was constructed with
     :param epoch: Epoch the weights come from
     :param metrics: Validation metrics of this epoch
-    :param image_size: Edge length the model was trained at
+    :param image_size: Edge length the model was trained at, or ``None`` when it was
+        trained on crops of observations at their native resolution
+    :param extra: Further fields to store, such as the post-processing calibration
     :return: None
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    torch.save(
-        {
-            "model_state": model.state_dict(),
-            "arch": type(model).__name__.lower(),
-            "model_config": model_config,
-            "image_size": image_size,
-            "epoch": epoch,
-            "metrics": metrics,
-            "threshold": metrics.get("best_threshold", 0.5),
-        },
-        path,
-    )
+    state = {
+        "model_state": model.state_dict(),
+        "arch": type(model).__name__.lower(),
+        "model_config": model_config,
+        "image_size": image_size,
+        "epoch": epoch,
+        "metrics": metrics,
+        "threshold": metrics.get("best_threshold", 0.5),
+    }
+    state.update(extra or {})
+    torch.save(state, path)
 
 
 def fit(
@@ -160,6 +161,8 @@ def fit(
     grad_clip=1.0,
     patience=0,
     thresholds=DEFAULT_THRESHOLDS,
+    evaluate_fn=None,
+    extra=None,
 ) -> dict:
     """
     Train for a fixed budget, keeping the checkpoint with the best validation PQ.
@@ -181,6 +184,10 @@ def fit(
     :param grad_clip: Global gradient norm clip, ``0`` to disable
     :param patience: Stop after this many epochs without improvement, ``0`` to disable
     :param thresholds: Probability thresholds to validate at
+    :param evaluate_fn: Callable taking the model and returning the metrics dict, used
+        to validate the way the submission is written; ``None`` scores ``val_loader``
+        at the resolution it yields
+    :param extra: Further fields to store in every checkpoint
     :return: Dict with ``best_pq``, ``best_threshold``, ``best_epoch`` and ``history``
     """
     output_dir = Path(output_dir)
@@ -208,7 +215,10 @@ def fit(
             epoch=epoch,
             epochs=epochs,
         )
-        metrics = evaluate(model, val_loader, criterion, device, thresholds, amp=amp)
+        if evaluate_fn is not None:
+            metrics = evaluate_fn(model)
+        else:
+            metrics = evaluate(model, val_loader, criterion, device, thresholds, amp=amp)
         overlaps = metrics.pop("overlaps")
 
         entry = {
@@ -226,13 +236,13 @@ def fit(
             f"pq {metrics['best_pq']:.4f} @ t={metrics['best_threshold']:.2f}  ({entry['seconds']:.0f}s)"
         )
 
-        save_checkpoint(output_dir / "last.pt", model, model_config, epoch + 1, metrics, image_size)
+        save_checkpoint(output_dir / "last.pt", model, model_config, epoch + 1, metrics, image_size, extra=extra)
         if metrics["best_pq"] > best_pq:
             best_pq = metrics["best_pq"]
             best_epoch = epoch + 1
             best_threshold = metrics["best_threshold"]
             epochs_without_improvement = 0
-            save_checkpoint(output_dir / "best.pt", model, model_config, epoch + 1, metrics, image_size)
+            save_checkpoint(output_dir / "best.pt", model, model_config, epoch + 1, metrics, image_size, extra=extra)
             plot_evaluation(overlaps, output_dir / "evaluation.png")
             print(f"  saved best.pt (pq {best_pq:.4f})")
         else:

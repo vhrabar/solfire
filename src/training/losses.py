@@ -62,28 +62,36 @@ class BCEDiceLoss(nn.Module):
 
 def estimate_pos_weight(dataset, max_samples: int = 128, cap: float = 20.0) -> float:
     """
-    Estimate the ``negative / positive`` pixel ratio by rasterising annotations.
+    Estimate the ``negative / positive`` pixel ratio of the training samples.
 
-    :param dataset: A :class:`data.FilamentDataset` to sample from
-    :param max_samples: Number of images to rasterise
+    :param dataset: A :class:`data.FilamentDataset` or :class:`data.FilamentCropDataset`
+    :param max_samples: Number of samples to measure
     :param cap: Upper bound on the returned weight, keeping early training stable
     :return: Suggested ``pos_weight`` for :class:`torch.nn.BCEWithLogitsLoss`
     """
-    size = dataset.size
-    image_ids = dataset.image_ids[:max_samples]
-    positive = 0
-    total = 0
+    if hasattr(dataset, "crop"):
+        step = max(1, len(dataset) // max_samples)
+        positive = 0
+        total = 0
+        for index in range(0, len(dataset), step):
+            _, mask = dataset[index]
+            positive += int(mask.sum().item())
+            total += mask.numel()
+    else:
+        size = dataset.size
+        positive = 0
+        total = 0
 
-    for image_id in image_ids:
-        record = dataset.records[image_id]
-        scale = size / record["width"]
-        mask = np.zeros((size, size), dtype=bool)
-        for ann in dataset.annotations[image_id]:
-            if dataset.category_ids is not None and ann["category_id"] not in dataset.category_ids:
-                continue
-            mask |= polygon_to_mask(ann["segmentation"][0], size, size, scale)
-        positive += int(mask.sum())
-        total += mask.size
+        for image_id in dataset.image_ids[:max_samples]:
+            record = dataset.records[image_id]
+            scale = size / record["width"]
+            mask = np.zeros((size, size), dtype=bool)
+            for ann in dataset.annotations[image_id]:
+                if dataset.category_ids is not None and ann["category_id"] not in dataset.category_ids:
+                    continue
+                mask |= polygon_to_mask(ann["segmentation"][0], size, size, scale)
+            positive += int(mask.sum())
+            total += mask.size
 
     if positive == 0:
         return 1.0

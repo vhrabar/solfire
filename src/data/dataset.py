@@ -117,19 +117,37 @@ def load_annotations(path=TRAIN_ANNOTATIONS) -> tuple[Any, dict[Any, list[Any]]]
     return raw["images"], by_image
 
 
-def polygon_to_mask(polygon, height, width, scale=1.0) -> np.ndarray:
+def polygon_to_mask(polygon, height, width, scale=1.0, origin=(0, 0)) -> np.ndarray:
     """Fill a flat ``[x0, y0, x1, y1, ...]`` polygon into a boolean mask.
     :param polygon: Input polygon
     :param height: Height of the output mask
     :param width: Width of the output mask
     :param scale: Factor applied to the polygon coordinates before filling
+    :param origin: ``(x, y)`` of the mask inside the scaled observation, so a crop
+        can be rasterised without ever building the full-resolution mask
     :return: ``(height, width)`` boolean mask
     """
     points = np.asarray(polygon, dtype=np.float64).reshape(-1, 2) * scale
+    points = points - np.asarray(origin, dtype=np.float64)
     canvas = Image.new("1", (width, height), 0)
     if len(points) >= 3:
         ImageDraw.Draw(canvas).polygon([(float(x), float(y)) for x, y in points], fill=1)
     return np.asarray(canvas, dtype=bool)
+
+
+def polygon_bounds(polygon, scale=1.0) -> tuple[float, float, float, float]:
+    """
+    The extent of a polygon in the coordinates of a scaled observation.
+
+    Taken from the polygon rather than from the ``bbox`` field of the annotation:
+    a few dozen annotations carry a box that does not cover their own outline, and
+    a filament dropped from a crop would be trained on as background.
+    :param polygon: Flat ``[x0, y0, x1, y1, ...]`` polygon
+    :param scale: Factor applied to the coordinates
+    :return: Tuple of (x0, y0, x1, y1)
+    """
+    points = np.asarray(polygon, dtype=np.float64).reshape(-1, 2) * scale
+    return points[:, 0].min(), points[:, 1].min(), points[:, 0].max(), points[:, 1].max()
 
 
 def train_val_split(images, val_fraction=0.2, seed=0) -> tuple[list[Any], list[Any]]:
@@ -220,6 +238,153 @@ class FilamentDataset(Dataset):
             if self.category_ids is not None and ann["category_id"] not in self.category_ids:
                 continue
             mask |= polygon_to_mask(ann["segmentation"][0], height, width, scale)
+
+        return image, torch.from_numpy(mask).float()
+
+
+def load_image_window(path, size, window, crop) -> torch.Tensor:
+    """
+    Load one square window of an observation without resizing it away.
+
+    The observation is decoded at ``size`` and only ``crop`` by ``crop`` pixels are
+    kept, so training can happen at the resolution the submission is written at
+    while a batch still fits in memory.
+    :param path: Path to the observation
+    :param size: Edge length the observation is decoded at, or ``None`` for its own
+    :param window: ``(x, y)`` top left corner of the window in decoded pixels
+    :param crop: Edge length of the window
+    :return: ``(1, crop, crop)`` float tensor in [0, 1], zero padded past the edges
+    """
+    with Image.open(path) as handle:
+        if size is not None:
+            handle.draft("L", (size, size))  # fast approximate JPEG downscale
+        img = handle.convert("L")
+        if size is not None and img.size != (size, size):
+            img = img.resize((size, size), Image.Resampling.BILINEAR)
+        x, y = window
+        array = np.asarray(img.crop((x, y, x + crop, y + crop)), dtype=np.uint8)
+    return torch.from_numpy(array.copy()).unsqueeze(0).float().div_(255.0)
+
+
+class FilamentCropDataset(Dataset):
+    """
+    Random crops taken at the resolution the observations were annotated at.
+
+    Filaments are roughly eleven pixels thick at 2048, so resizing a whole
+    observation down to what fits in a batch costs more than half of the overlap
+    with the annotation before the model has made a single mistake. Cropping keeps
+    the native scale instead, and because the filaments cover about two parts in a
+    thousand of the disk, most crops are drawn around an annotation rather than
+    uniformly, which would return empty sky most of the time.
+    """
+
+    def __init__(
+        self,
+        image_ids=None,
+        crop=512,
+        native_size=None,
+        repeat=1,
+        foreground_prob=0.7,
+        category_ids=None,
+        images_dir=TRAIN_IMAGES,
+        annotations_path=TRAIN_ANNOTATIONS,
+        seed=None,
+    ):
+        """
+        :param image_ids: Image ids to sample from, or ``None`` for all of them
+        :param crop: Edge length of the returned window
+        :param native_size: Edge length the observation is decoded at, or ``None``
+            to keep the resolution it was annotated at
+        :param repeat: Crops drawn per observation and epoch
+        :param foreground_prob: Probability of centring the crop on an annotation
+        :param category_ids: Category ids to draw into the mask, or ``None`` for all
+        :param images_dir: Directory holding the observation files
+        :param annotations_path: Path to the COCO-style annotations
+        :param seed: Seed for a private RNG; ``None`` uses the global :mod:`random`,
+            which the data loader reseeds per worker
+        """
+        images, by_image = load_annotations(annotations_path)
+        self.images_dir = Path(images_dir)
+        self.crop = crop
+        self.native_size = native_size
+        self.repeat = max(1, repeat)
+        self.foreground_prob = foreground_prob
+        self.category_ids = None if category_ids is None else set(category_ids)
+
+        records = {img["id"]: img for img in images}
+        self.image_ids = list(records) if image_ids is None else list(image_ids)
+        self.records = records
+        self.annotations = by_image
+        self._rng = None if seed is None else random.Random(seed)
+
+    @property
+    def rng(self):
+        """
+        The random source to draw windows from.
+        :return: A :class:`random.Random` or the :mod:`random` module
+        """
+        return random if self._rng is None else self._rng
+
+    def __len__(self):
+        """
+        :return: Number of crops in one epoch
+        """
+        return len(self.image_ids) * self.repeat
+
+    def selected(self, image_id) -> list:
+        """
+        The annotations of one observation that are drawn into the mask.
+        :param image_id: Image id to look up
+        :return: List of annotations
+        """
+        annotations = self.annotations[image_id]
+        if self.category_ids is None:
+            return annotations
+        return [ann for ann in annotations if ann["category_id"] in self.category_ids]
+
+    def sample_window(self, annotations, size, scale) -> tuple[int, int]:
+        """
+        Pick the top left corner of a crop.
+
+        :param annotations: Annotations of the observation
+        :param size: Edge length the observation is decoded at
+        :param scale: Factor the annotation coordinates are scaled by
+        :return: ``(x, y)`` corner, clamped to keep the crop inside the observation
+        """
+        limit = max(0, size - self.crop)
+        if annotations and self.rng.random() < self.foreground_prob:
+            annotation = self.rng.choice(annotations)
+            points = np.asarray(annotation["segmentation"][0], dtype=np.float64).reshape(-1, 2)
+            x, y = points[self.rng.randrange(len(points))] * scale
+            # place the point anywhere inside the crop, so filaments are not always centred
+            x = int(x) - self.rng.randrange(self.crop)
+            y = int(y) - self.rng.randrange(self.crop)
+        else:
+            x = self.rng.randint(0, limit)
+            y = self.rng.randint(0, limit)
+        return min(max(x, 0), limit), min(max(y, 0), limit)
+
+    def __getitem__(self, index):
+        """
+        Draw one crop and rasterise the annotations that reach into it.
+        :param index: Position in the epoch; observations are cycled ``repeat`` times
+        :return: Tuple of (``(1, crop, crop)`` image tensor, ``(crop, crop)`` float mask)
+        """
+        image_id = self.image_ids[index % len(self.image_ids)]
+        record = self.records[image_id]
+        size = self.native_size or record["width"]
+        scale = size / record["width"]
+
+        annotations = self.selected(image_id)
+        x, y = self.sample_window(annotations, size, scale)
+        image = load_image_window(self.images_dir / record["file_name"], self.native_size, (x, y), self.crop)
+
+        mask = np.zeros((self.crop, self.crop), dtype=bool)
+        for ann in annotations:
+            x0, y0, x1, y1 = polygon_bounds(ann["segmentation"][0], scale)
+            if x1 < x or x0 > x + self.crop or y1 < y or y0 > y + self.crop:
+                continue
+            mask |= polygon_to_mask(ann["segmentation"][0], self.crop, self.crop, scale, origin=(x, y))
 
         return image, torch.from_numpy(mask).float()
 

@@ -72,6 +72,125 @@ def connected_components(mask) -> tuple[np.ndarray, int]:
     return labels, len(remap)
 
 
+def dilate(mask: np.ndarray, radius: int) -> np.ndarray:
+    """
+    Grow a mask by ``radius`` steps of four connected neighbours.
+
+    A filament is about eleven pixels thick at the submission resolution, so one
+    pixel of systematic bias on each side already costs a quarter of the overlap
+    with the annotation. That makes the offset worth tuning, and a diamond
+    structuring element is the finest step available.
+    :param mask: ``(H, W)`` boolean array
+    :param radius: Number of dilation steps
+    :return: ``(H, W)`` boolean array
+    """
+    for _ in range(max(0, radius)):
+        grown = mask.copy()
+        grown[1:] |= mask[:-1]
+        grown[:-1] |= mask[1:]
+        grown[:, 1:] |= mask[:, :-1]
+        grown[:, :-1] |= mask[:, 1:]
+        mask = grown
+    return mask
+
+
+def erode(mask: np.ndarray, radius: int) -> np.ndarray:
+    """
+    Shrink a mask by ``radius`` steps of four connected neighbours.
+    :param mask: ``(H, W)`` boolean array
+    :param radius: Number of erosion steps
+    :return: ``(H, W)`` boolean array
+    """
+    return ~dilate(~mask, radius)
+
+
+def apply_offset(mask: np.ndarray, offset: int) -> np.ndarray:
+    """
+    Dilate a positive offset, erode a negative one.
+    :param mask: ``(H, W)`` boolean array
+    :param offset: Signed number of morphological steps
+    :return: ``(H, W)`` boolean array
+    """
+    if offset > 0:
+        return dilate(mask, offset)
+    if offset < 0:
+        return erode(mask, -offset)
+    return mask
+
+
+def drop_small(labels, n_labels, min_area) -> tuple[np.ndarray, int]:
+    """
+    Remove the components a submission would discard, and close the gaps in the numbering.
+    :param labels: ``(H, W)`` label array with 0 as background
+    :param n_labels: Number of labels in ``labels``
+    :param min_area: Components of at most this many pixels are dropped
+    :return: Tuple of (relabelled array, number of components left)
+    """
+    if min_area <= 0:
+        return labels, n_labels
+    areas = np.bincount(labels.ravel(), minlength=n_labels + 1)
+    keep = areas > min_area
+    keep[0] = False
+
+    remap = np.zeros(n_labels + 1, dtype=np.int32)
+    remap[keep] = np.arange(1, int(keep.sum()) + 1, dtype=np.int32)
+    return remap[labels], int(keep.sum())
+
+
+def label_instances(probabilities, threshold, offset=0, min_area=0) -> tuple[np.ndarray, int]:
+    """
+    Turn a probability map into labelled instances the way a submission does.
+
+    :param probabilities: ``(H, W)`` foreground probabilities
+    :param threshold: Probability above which a pixel counts as filament
+    :param offset: Morphological steps applied to the thresholded mask
+    :param min_area: Drop components with at most this many pixels
+    :return: Tuple of (``(H, W)`` int32 label array with 0 as background, number of components)
+    """
+    mask = apply_offset(probabilities >= threshold, offset)
+    return drop_small(*connected_components(mask), min_area)
+
+
+def instances_from_labels(labels, n_labels, probabilities) -> list[dict]:
+    """
+    Describe every labelled component.
+
+    The foreground is sorted by label once instead of being compared against every
+    label in turn, so an early checkpoint that finds a thousand specks costs no
+    more than a clean one.
+    :param labels: ``(H, W)`` int32 label array with 0 as background
+    :param n_labels: Number of labels in ``labels``
+    :param probabilities: ``(H, W)`` float probabilities behind the mask
+    :return: List of dicts with ``mask``, ``score``, ``area`` and ``bbox``
+    """
+    ys, xs = np.nonzero(labels)
+    if ys.size == 0:
+        return []
+    values = labels[ys, xs]
+    order = np.argsort(values, kind="stable")
+    ys, xs, values = ys[order], xs[order], values[order]
+    starts = np.searchsorted(values, np.arange(1, n_labels + 2))
+
+    instances = []
+    for label in range(n_labels):
+        begin, end = starts[label], starts[label + 1]
+        if begin == end:
+            continue
+        rows, columns = ys[begin:end], xs[begin:end]
+        mask = np.zeros(labels.shape, dtype=bool)
+        mask[rows, columns] = True
+        x0, y0 = int(columns.min()), int(rows.min())
+        instances.append(
+            {
+                "mask": mask,
+                "score": float(probabilities[rows, columns].mean()),
+                "area": int(end - begin),
+                "bbox": [x0, y0, int(columns.max()) - x0 + 1, int(rows.max()) - y0 + 1],
+            }
+        )
+    return instances
+
+
 def instances_from_mask(mask, probabilities, min_area=0) -> list[dict]:
     """
     Split a binary mask into scored instances.
@@ -80,25 +199,8 @@ def instances_from_mask(mask, probabilities, min_area=0) -> list[dict]:
     :param min_area: Drop components with at most this many pixels
     :return: List of dicts with ``mask``, ``score``, ``area`` and ``bbox``
     """
-    labels, n_labels = connected_components(mask)
-    instances = []
-
-    for label in range(1, n_labels + 1):
-        component = labels == label
-        area = int(component.sum())
-        if area <= min_area:
-            continue
-        ys, xs = np.nonzero(component)
-        x0, y0 = int(xs.min()), int(ys.min())
-        instances.append(
-            {
-                "mask": component,
-                "score": float(probabilities[component].mean()),
-                "area": area,
-                "bbox": [x0, y0, int(xs.max()) - x0 + 1, int(ys.max()) - y0 + 1],
-            }
-        )
-    return instances
+    labels, n_labels = drop_small(*connected_components(mask), min_area)
+    return instances_from_labels(labels, n_labels, probabilities)
 
 
 def encode_rle(mask) -> dict[str, Any]:

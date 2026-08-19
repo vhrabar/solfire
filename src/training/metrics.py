@@ -1,32 +1,15 @@
 import numpy as np
 import torch
 
-from ..inference.postprocess import MIN_AREA, SUBMISSION_SIZE, connected_components
+from ..inference.postprocess import MIN_AREA, SUBMISSION_SIZE, connected_components, label_instances
 
 DEFAULT_THRESHOLDS = (0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9)
 IOU_THRESHOLD = 0.5
 
 
-def drop_small(labels, n_labels, min_area) -> tuple[np.ndarray, int]:
+def pairwise_counts(gt_labels, n_gt, pred_labels, n_pred) -> np.ndarray:
     """
-    Remove the components a submission would discard, and close the gaps in the numbering.
-    :param labels: ``(H, W)`` label array with 0 as background
-    :param n_labels: Number of labels in ``labels``
-    :param min_area: Components of at most this many pixels are dropped
-    :return: Tuple of (relabelled array, number of components left)
-    """
-    areas = np.bincount(labels.ravel(), minlength=n_labels + 1)
-    keep = areas > min_area
-    keep[0] = False
-
-    remap = np.zeros(n_labels + 1, dtype=np.int32)
-    remap[keep] = np.arange(1, int(keep.sum()) + 1, dtype=np.int32)
-    return remap[labels], int(keep.sum())
-
-
-def overlap_matrices(gt_labels, n_gt, pred_labels, n_pred) -> tuple[torch.Tensor, torch.Tensor]:
-    """
-    Pairwise IoU and Dice between the filaments of one observation.
+    Pixels shared by every pair of annotated and predicted filaments.
 
     The pair counts come out of a single histogram over ``gt * (n_pred + 1) + pred``,
     so the cost follows the image rather than the number of instances; an early
@@ -35,11 +18,18 @@ def overlap_matrices(gt_labels, n_gt, pred_labels, n_pred) -> tuple[torch.Tensor
     :param n_gt: Number of annotated filaments
     :param pred_labels: ``(H, W)`` labelled prediction
     :param n_pred: Number of predicted filaments
-    :return: Tuple of two ``(n_gt, n_pred)`` tensors, IoU and Dice of every pair
+    :return: ``(n_gt + 1, n_pred + 1)`` counts, row and column 0 being the background
     """
     pairs = gt_labels.astype(np.int64) * (n_pred + 1) + pred_labels
-    counts = np.bincount(pairs.ravel(), minlength=(n_gt + 1) * (n_pred + 1)).reshape(n_gt + 1, n_pred + 1)
+    return np.bincount(pairs.ravel(), minlength=(n_gt + 1) * (n_pred + 1)).reshape(n_gt + 1, n_pred + 1)
 
+
+def overlaps_from_counts(counts) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Reduce a pair count histogram to overlaps and predicted areas.
+    :param counts: ``(n_gt + 1, n_pred + 1)`` histogram from :func:`pairwise_counts`
+    :return: Tuple of (``(n_gt, n_pred)`` IoU, ``(n_gt, n_pred)`` Dice, ``(n_pred,)`` predicted areas)
+    """
     intersection = counts[1:, 1:].astype(np.float64)
     gt_areas = counts[1:].sum(axis=1, keepdims=True)
     pred_areas = counts[:, 1:].sum(axis=0, keepdims=True)
@@ -47,6 +37,20 @@ def overlap_matrices(gt_labels, n_gt, pred_labels, n_pred) -> tuple[torch.Tensor
 
     iou = np.divide(intersection, union, out=np.zeros_like(intersection), where=union > 0)
     dice = np.divide(2 * intersection, gt_areas + pred_areas, out=np.zeros_like(intersection), where=union > 0)
+    return iou, dice, pred_areas[0]
+
+
+def overlap_matrices(gt_labels, n_gt, pred_labels, n_pred) -> tuple[torch.Tensor, torch.Tensor]:
+    """
+    Pairwise IoU and Dice between the filaments of one observation.
+
+    :param gt_labels: ``(H, W)`` labelled annotation
+    :param n_gt: Number of annotated filaments
+    :param pred_labels: ``(H, W)`` labelled prediction
+    :param n_pred: Number of predicted filaments
+    :return: Tuple of two ``(n_gt, n_pred)`` tensors, IoU and Dice of every pair
+    """
+    iou, dice, _ = overlaps_from_counts(pairwise_counts(gt_labels, n_gt, pred_labels, n_pred))
     return torch.from_numpy(iou).float(), torch.from_numpy(dice).float()
 
 
@@ -106,7 +110,7 @@ class PanopticQuality:
             min_area = MIN_AREA * probability.size / SUBMISSION_SIZE**2
             gt_labels, n_gt = connected_components(target)
             for index, threshold in enumerate(self.thresholds):
-                pred_labels, n_pred = drop_small(*connected_components(probability >= threshold), min_area)
+                pred_labels, n_pred = label_instances(probability, threshold, min_area=min_area)
                 self.overlaps[index].append(overlap_matrices(gt_labels, n_gt, pred_labels, n_pred))
 
     def reset(self) -> None:

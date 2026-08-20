@@ -1,10 +1,49 @@
+import math
+
 import numpy as np
 import torch
 
 from ..inference.postprocess import MIN_AREA, SUBMISSION_SIZE, connected_components, label_instances
 
-DEFAULT_THRESHOLDS = (0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9)
+DEFAULT_THRESHOLDS = (0.3, 0.5, 0.7, 0.8, 0.88, 0.93, 0.96, 0.98, 0.99)
 IOU_THRESHOLD = 0.5
+
+
+def threshold_grid(pos_weight=1.0, points=9, span=4.0) -> tuple[float, ...]:
+    """
+    Thresholds spaced evenly in logit space around the decision point the loss implies.
+
+    Minimising ``-[w y log p + (1 - y) log(1 - p)]`` over one pixel puts the boundary
+    at ``w / (w + 1)``, not at a half: a ``pos_weight`` of 20 asks to be thresholded at
+    0.95. A grid that stops short of that never finds it, and the masks come out
+    systematically too fat, which is the most expensive mistake available on structures
+    eleven pixels thick.
+    :param pos_weight: Weight positive pixels carry in the cross entropy term
+    :param points: Number of thresholds in the grid
+    :param span: Half width of the grid in logits, so the search still covers a model
+        whose probabilities are not calibrated where the loss says they should be
+    :return: Ascending tuple of thresholds
+    """
+    centre = math.log(max(float(pos_weight), 1e-6))
+    return tuple(round(1.0 / (1.0 + math.exp(-(centre + offset))), 4) for offset in np.linspace(-span, span, points))
+
+
+def grid_edges(best, searched) -> list[str]:
+    """
+    Name the settings whose winner sits at the boundary of what was searched.
+
+    A winner on the edge of the grid is not a winner, it is the search running out of
+    room, and whatever score lies outside stays invisible.
+    :param best: Mapping of setting name to the winning value
+    :param searched: Mapping of setting name to the values that were tried
+    :return: Names of the settings that landed on a boundary
+    """
+    edges = []
+    for name, value in best.items():
+        values = sorted(searched.get(name, ()))
+        if len(values) > 1 and value in (values[0], values[-1]):
+            edges.append(name)
+    return edges
 
 
 def pairwise_counts(gt_labels, n_gt, pred_labels, n_pred) -> np.ndarray:

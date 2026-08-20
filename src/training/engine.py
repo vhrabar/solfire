@@ -9,7 +9,7 @@ from pathlib import Path
 import torch
 from tqdm import tqdm
 
-from .metrics import DEFAULT_THRESHOLDS, PanopticQuality
+from .metrics import DEFAULT_THRESHOLDS, PanopticQuality, grid_edges
 from .plots import plot_evaluation
 
 
@@ -163,6 +163,7 @@ def fit(
     thresholds=DEFAULT_THRESHOLDS,
     evaluate_fn=None,
     extra=None,
+    swa_epochs=0,
 ) -> dict:
     """
     Train for a fixed budget, keeping the checkpoint with the best validation PQ.
@@ -188,11 +189,18 @@ def fit(
         to validate the way the submission is written; ``None`` scores ``val_loader``
         at the resolution it yields
     :param extra: Further fields to store in every checkpoint
-    :return: Dict with ``best_pq``, ``best_threshold``, ``best_epoch`` and ``history``
+    :param swa_epochs: Average the weights over this many final epochs into ``swa.pt``;
+        ``0`` disables it. Worth using once the validation score has flattened, where the
+        run is moving around a minimum rather than still descending into one
+    :return: Dict with ``best_pq``, ``best_threshold``, ``best_epoch``, ``history`` and,
+        when the weights were averaged, ``swa_pq``
     """
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     scaler = torch.amp.GradScaler("cuda") if (amp and device.type == "cuda") else None
+
+    averaged = torch.optim.swa_utils.AveragedModel(model) if swa_epochs else None
+    swa_start = epochs - swa_epochs
 
     history = []
     best_pq = -1.0
@@ -236,6 +244,9 @@ def fit(
             f"pq {metrics['best_pq']:.4f} @ t={metrics['best_threshold']:.2f}  ({entry['seconds']:.0f}s)"
         )
 
+        if averaged is not None and epoch >= swa_start:
+            averaged.update_parameters(model)
+
         save_checkpoint(output_dir / "last.pt", model, model_config, epoch + 1, metrics, image_size, extra=extra)
         if metrics["best_pq"] > best_pq:
             best_pq = metrics["best_pq"]
@@ -253,9 +264,79 @@ def fit(
 
         (output_dir / "history.json").write_text(json.dumps(history, indent=2), encoding="utf-8")
 
-    return {
+    summary = {
         "best_pq": best_pq,
         "best_threshold": best_threshold,
         "best_epoch": best_epoch,
         "history": history,
     }
+    if grid_edges({"threshold": best_threshold}, {"threshold": thresholds}):
+        print(
+            f"warning: the best threshold {best_threshold:.2f} sits at the edge of the grid "
+            f"{min(thresholds):.2f}..{max(thresholds):.2f}, so the optimum is outside it"
+        )
+
+    if averaged is not None and int(averaged.n_averaged) > 0:
+        summary |= average_weights(
+            averaged,
+            train_loader,
+            val_loader,
+            criterion,
+            device,
+            model_config,
+            image_size,
+            output_dir,
+            thresholds,
+            amp,
+            evaluate_fn,
+            extra,
+        )
+    return summary
+
+
+def average_weights(
+    averaged,
+    train_loader,
+    val_loader,
+    criterion,
+    device,
+    model_config,
+    image_size,
+    output_dir,
+    thresholds,
+    amp,
+    evaluate_fn,
+    extra,
+) -> dict:
+    """
+    Score and store the averaged weights of the final epochs.
+
+    The batch normalisation statistics belong to no single set of weights, so they are
+    recomputed over the training split before the average is worth scoring.
+    :param averaged: The :class:`torch.optim.swa_utils.AveragedModel` collected while training
+    :param train_loader: Loader the batch normalisation statistics are recomputed over
+    :param val_loader: Loader over the validation split
+    :param criterion: Loss taking ``(logits, targets)``
+    :param device: Device to run on
+    :param model_config: Keyword arguments the model was constructed with
+    :param image_size: Edge length the model was trained at
+    :param output_dir: Directory to write ``swa.pt`` to
+    :param thresholds: Probability thresholds to validate at
+    :param amp: Whether to run forward passes in mixed precision
+    :param evaluate_fn: Callable taking the model and returning the metrics dict, or ``None``
+    :param extra: Further fields to store in the checkpoint
+    :return: Dict with ``swa_pq``, ``swa_threshold`` and ``swa_epochs``
+    """
+    epochs = int(averaged.n_averaged)
+    print(f"averaging the weights of the last {epochs} epochs, recomputing batch statistics")
+    torch.optim.swa_utils.update_bn(train_loader, averaged, device=device)
+
+    model = averaged.module
+    metrics = (
+        evaluate_fn(model) if evaluate_fn is not None else evaluate(model, val_loader, criterion, device, thresholds, amp=amp)
+    )
+    metrics.pop("overlaps", None)
+    save_checkpoint(Path(output_dir) / "swa.pt", model, model_config, epochs, metrics, image_size, extra=extra)
+    print(f"swa pq {metrics['best_pq']:.4f} @ t={metrics['best_threshold']:.2f} -> {output_dir}/swa.pt")
+
+    return {"swa_pq": metrics["best_pq"], "swa_threshold": metrics["best_threshold"], "swa_epochs": epochs}

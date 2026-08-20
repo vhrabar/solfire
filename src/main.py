@@ -30,6 +30,7 @@ from .training import (
     estimate_pos_weight,
     evaluate_tiled,
     fit,
+    threshold_grid,
     write_calibration,
 )
 
@@ -79,6 +80,12 @@ def parse_args() -> argparse.Namespace:
     train.add_argument("--val-limit", type=int, default=48, help="observations validated per epoch; 0 uses the whole split")
     train.add_argument("--val-min-area", type=int, default=MIN_AREA, help="instances dropped while validating")
     train.add_argument("--val-tta", action="store_true", help="average the validation windows over flips")
+    train.add_argument(
+        "--thresholds", type=float, nargs="+", default=None, help="default: a grid around the decision point --pos-weight implies"
+    )
+    train.add_argument(
+        "--swa-epochs", type=int, default=0, help="average the weights of this many final epochs into swa.pt; 0 disables it"
+    )
     train.add_argument("--tile-batch", type=int, default=8, help="inference windows evaluated per forward pass")
     train.add_argument("--categories", type=int, nargs="*", default=[1, 2, 3], help="annotation category ids to segment")
     train.add_argument(
@@ -112,7 +119,13 @@ def parse_args() -> argparse.Namespace:
         "calibrate", help="tune the decision threshold, the morphological offset and the minimum area on validation"
     )
     calibration.add_argument("--checkpoint", default="runs/unet/best.pt")
-    calibration.add_argument("--thresholds", type=float, nargs="+", default=list(DEFAULT_THRESHOLDS))
+    calibration.add_argument(
+        "--thresholds",
+        type=float,
+        nargs="+",
+        default=None,
+        help="default: a grid around the decision point the checkpoint implies",
+    )
     calibration.add_argument("--offsets", type=int, nargs="+", default=list(DEFAULT_OFFSETS))
     calibration.add_argument("--min-areas", type=int, nargs="+", default=list(DEFAULT_MIN_AREAS))
     calibration.add_argument("--tile", type=int, default=0, help="inference window; 0 follows the checkpoint")
@@ -230,6 +243,12 @@ def run_training(args, device) -> None:
         pos_weight = estimate_pos_weight(train_dataset)
         print(f"estimated pos_weight: {pos_weight:.1f}")
 
+    thresholds = tuple(args.thresholds) if args.thresholds else threshold_grid(pos_weight)
+    print(
+        f"validating at {' '.join(f'{t:.3f}' for t in thresholds)} "
+        f"(pos_weight {pos_weight:.1f} puts the decision point at {pos_weight / (pos_weight + 1):.3f})"
+    )
+
     train_data = train_dataset
     if not args.no_augment:
         train_data = AugmentedDataset(train_dataset)
@@ -259,6 +278,7 @@ def run_training(args, device) -> None:
         "overlap": args.val_overlap,
         "offset": 0,
         "min_area": args.val_min_area,
+        "pos_weight": pos_weight,
         "val_fraction": args.val_fraction,
         "seed": args.seed,
         "categories": list(categories) if categories else None,
@@ -274,7 +294,7 @@ def run_training(args, device) -> None:
             network,
             val_loader,
             device,
-            thresholds=DEFAULT_THRESHOLDS,
+            thresholds=thresholds,
             min_area=args.val_min_area,
             tile=tile,
             overlap=args.val_overlap,
@@ -298,15 +318,21 @@ def run_training(args, device) -> None:
         amp=args.amp,
         grad_clip=args.grad_clip,
         patience=args.patience,
+        thresholds=thresholds,
         evaluate_fn=validate_tiled if args.crop else None,
         extra=extra,
+        swa_epochs=args.swa_epochs,
     )
     print(
         f"best pq {summary['best_pq']:.4f} at epoch {summary['best_epoch']} "
         f"(threshold {summary['best_threshold']:.2f}) -> {output_dir}/best.pt"
     )
+    name = "best.pt"
+    if "swa_pq" in summary:
+        name = "swa.pt" if summary["swa_pq"] > summary["best_pq"] else "best.pt"
+        print(f"averaged {summary['swa_epochs']} epochs: pq {summary['swa_pq']:.4f}")
     if args.crop:
-        print(f"now tune the post-processing: python -m src.main calibrate --checkpoint {output_dir}/best.pt")
+        print(f"now tune the post-processing: python -m src.main calibrate --checkpoint {output_dir}/{name}")
 
 
 def checkpoint_setting(checkpoint, name, override, default=None):
@@ -397,6 +423,9 @@ def run_calibration(args, device) -> None:
     model_size = None if crop else checkpoint.get("image_size")
     val_fraction = args.val_fraction if args.val_fraction is not None else checkpoint.get("val_fraction", 0.2)
     categories = checkpoint.get("categories")
+    pos_weight = checkpoint.get("pos_weight")
+    searched = threshold_grid(pos_weight) if pos_weight else DEFAULT_THRESHOLDS
+    thresholds = tuple(args.thresholds) if args.thresholds else searched
 
     images, _ = load_annotations()
     _, val_ids = train_val_split(images, val_fraction=val_fraction, seed=checkpoint.get("seed", args.seed))
@@ -413,7 +442,7 @@ def run_calibration(args, device) -> None:
         model,
         loader,
         device,
-        thresholds=tuple(args.thresholds),
+        thresholds=thresholds,
         offsets=tuple(args.offsets),
         min_areas=tuple(args.min_areas),
         tile=tile,
@@ -427,11 +456,16 @@ def run_calibration(args, device) -> None:
 
     print(f"{'threshold':>10} {'offset':>7} {'min_area':>9} {'pq':>7}")
     for row in calibration["table"][: args.top]:
-        print(f"{row['threshold']:>10.2f} {row['offset']:>+7d} {row['min_area']:>9d} {row['pq']:>7.4f}")
+        print(f"{row['threshold']:>10.3f} {row['offset']:>+7d} {row['min_area']:>9d} {row['pq']:>7.4f}")
     print(
-        f"best pq {calibration['pq']:.4f} at threshold {calibration['threshold']:.2f}, "
+        f"best pq {calibration['pq']:.4f} at threshold {calibration['threshold']:.3f}, "
         f"offset {calibration['offset']:+d}, min_area {calibration['min_area']}"
     )
+    if calibration["at_edge"]:
+        print(
+            f"warning: {', '.join(calibration['at_edge'])} landed on the edge of the grid; "
+            f"widen it and run again, the optimum is outside what was searched"
+        )
 
     checkpoint_path = Path(args.checkpoint)
     checkpoint |= {

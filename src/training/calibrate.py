@@ -17,10 +17,10 @@ from tqdm import tqdm
 
 from ..inference.postprocess import SUBMISSION_SIZE, apply_offset, connected_components
 from ..inference.tiling import DEFAULT_OVERLAP, DEFAULT_TILE, predict_probabilities, predict_tiled
-from .metrics import DEFAULT_THRESHOLDS, overlaps_from_counts, pairwise_counts, panoptic_quality
+from .metrics import DEFAULT_THRESHOLDS, grid_edges, overlaps_from_counts, pairwise_counts, panoptic_quality
 
-DEFAULT_OFFSETS = (-1, 0, 1, 2)
-DEFAULT_MIN_AREAS = (0, 128, 256, 512)
+DEFAULT_OFFSETS = (-2, -1, 0, 1, 2)
+DEFAULT_MIN_AREAS = (0, 128, 256, 512, 1024)
 
 
 def resize(tensor: Tensor, size) -> Tensor:
@@ -156,7 +156,8 @@ def calibrate(
     :param original_size: Edge length everything is scored at, which is the size the
         submission masks are written at
     :return: Dict with the winning ``threshold``, ``offset``, ``min_area``, its ``pq``,
-        the number of scored ``observations`` and the full ``table`` of settings
+        the ``at_edge`` settings whose winner ran out of grid, the number of scored
+        ``observations`` and the full ``table`` of settings
     """
     accumulated: dict[tuple, list] = {}
     observations = 0
@@ -183,12 +184,17 @@ def calibrate(
     ]
     table.sort(key=lambda row: -row["pq"])
     best = table[0] if table else {"threshold": 0.5, "offset": 0, "min_area": 0, "pq": 0.0}
+    edges = grid_edges(
+        {"threshold": best["threshold"], "offset": best["offset"], "min_area": best["min_area"]},
+        {"threshold": thresholds, "offset": offsets, "min_area": min_areas},
+    )
 
     return {
         "threshold": best["threshold"],
         "offset": best["offset"],
         "min_area": best["min_area"],
         "pq": best["pq"],
+        "at_edge": edges,
         "tile": tile,
         "overlap": overlap,
         "tta": tta,

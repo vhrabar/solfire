@@ -27,6 +27,29 @@ def autocast_context(device, enabled):
     return torch.autocast(device_type=device.type, dtype=dtype), dtype
 
 
+def batchnorm_running_stats(model) -> dict[str, torch.Tensor]:
+    """
+    Snapshot every BatchNorm running mean/variance, so a bad step can be rolled back.
+
+    :param model: Model to snapshot
+    :return: Mapping of buffer name to a detached clone
+    """
+    return {name: buf.detach().clone() for name, buf in model.named_buffers() if name.endswith(("running_mean", "running_var"))}
+
+
+def restore_batchnorm_running_stats(model, snapshot: dict[str, torch.Tensor]) -> None:
+    """
+    Undo a bad step's damage to the running statistics.
+
+    :param model: Model to restore
+    :param snapshot: Mapping produced by :func:`batchnorm_running_stats`
+    :return: None
+    """
+    buffers = dict(model.named_buffers())
+    for name, value in snapshot.items():
+        buffers[name].copy_(value)
+
+
 def train_one_epoch(
     model, loader, criterion, optimizer, device, scheduler=None, scaler=None, grad_clip=1.0, amp=False, epoch=0, epochs=0
 ) -> float:
@@ -48,16 +71,24 @@ def train_one_epoch(
     model.train()
     total_loss = 0.0
     n_batches = 0
+    n_skipped = 0
     progress = tqdm(loader, desc=f"epoch {epoch + 1}/{epochs} train", leave=False)
 
     for images, masks in progress:
         images = images.to(device, non_blocking=True)
         targets = masks.to(device, non_blocking=True).unsqueeze(1)
 
+        bn_stats = batchnorm_running_stats(model)
+
         optimizer.zero_grad(set_to_none=True)
         context, _ = autocast_context(device, amp)
         with context:
             loss = criterion(model(images), targets)
+
+        if not torch.isfinite(loss):
+            restore_batchnorm_running_stats(model, bn_stats)
+            n_skipped += 1
+            continue
 
         if scaler is not None:
             scaler.scale(loss).backward()
@@ -78,6 +109,9 @@ def train_one_epoch(
         total_loss += loss.item()
         n_batches += 1
         progress.set_postfix(loss=f"{total_loss / n_batches:.4f}")
+
+    if n_skipped:
+        print(f"  epoch {epoch + 1}: skipped {n_skipped} batch(es) with non-finite loss, rolled back batch-norm stats")
 
     return total_loss / max(1, n_batches)
 

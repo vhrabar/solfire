@@ -62,5 +62,14 @@ artifacts/
 # Datasets
 # -------------------------
 
-/data/
+data/
+
+
+# -------------------------
+# Datasets
+# -------------------------
+
+predictions/
+output/
+
 

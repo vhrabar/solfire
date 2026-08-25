@@ -248,8 +248,37 @@ def evaluate_tiled(
 
         gt_labels, n_gt = connected_components(target)
         for threshold in thresholds:
-            pred_labels, n_pred = connected_components(apply_offset(probabilities >= threshold, offset))
-            iou, dice, areas = overlaps_from_counts(pairwise_counts(gt_labels, n_gt, pred_labels, n_pred))
+            pred_mask = apply_offset(probabilities >= threshold, offset)
+            pred_labels, n_pred = connected_components(pred_mask)
+            try:
+                iou, dice, areas = overlaps_from_counts(pairwise_counts(gt_labels, n_gt, pred_labels, n_pred))
+            except ValueError as exc:
+                import time as _time
+
+                dump_path = f"/tmp/pairwise_counts_failure_{int(_time.time())}.npz"
+                np.savez(
+                    dump_path,
+                    probabilities=probabilities,
+                    target=target,
+                    gt_labels=gt_labels,
+                    pred_labels=pred_labels,
+                    pred_mask=pred_mask,
+                    n_gt=n_gt,
+                    n_pred=n_pred,
+                    threshold=threshold,
+                    offset=offset,
+                )
+                print(
+                    f"pairwise_counts failed at threshold={threshold} offset={offset} "
+                    f"n_gt={n_gt} n_pred={n_pred} gt_labels[min,max]=({gt_labels.min()},{gt_labels.max()}) "
+                    f"pred_labels[min,max]=({pred_labels.min()},{pred_labels.max()}) "
+                    f"probabilities[min,max]=({np.nanmin(probabilities)},{np.nanmax(probabilities)}) "
+                    f"nan_in_probabilities={bool(np.isnan(probabilities).any())} error={exc} "
+                    f"dumped to {dump_path}"
+                )
+                iou = np.zeros((n_gt, 0), dtype=np.float64)
+                dice = np.zeros((n_gt, 0), dtype=np.float64)
+                areas = np.zeros((0,), dtype=np.float64)
             keep = areas > min_area
             accumulated[threshold].append((torch.from_numpy(iou[:, keep]).float(), torch.from_numpy(dice[:, keep]).float()))
         observations += 1

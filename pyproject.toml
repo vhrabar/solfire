@@ -9,6 +9,7 @@ dependencies = [
     "pycocotools",
     "tqdm",
     "pillow",
+    "serron"
 ]
 
 [dependency-groups]

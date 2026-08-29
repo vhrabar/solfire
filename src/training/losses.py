@@ -1,12 +1,42 @@
 """
 Objectives for the strongly imbalanced filament segmentation task.
 """
+from functools import cache
+from typing import cast
 
 import numpy as np
 import torch
+from serron import functional as sf
+from serron import structuring_element as sse
 from torch import Tensor, nn
 
 from ..data import polygon_to_mask
+
+KERNEL_SHAPES = ("disk", "cross", "diamond", "square")
+
+
+@cache
+def _structuring_element(shape: str, size: int, device: torch.device) -> Tensor:
+    """
+    Build serron's flat additive structuring element (``0`` active, ``-inf`` inactive).
+
+    :param shape: One of :data:`KERNEL_SHAPES`
+    :param size: Odd edge length in pixels; ``disk`` and ``diamond`` take ``size // 2``as their radius
+    :param device: Device the element is created on
+    :return: ``float32`` ``(size, size)`` kernel serron's operators accept
+    :raises ValueError: ``size`` is not a positive odd integer or ``shape`` is unknown
+    """
+    if size < 1 or size % 2 == 0:
+        raise ValueError(f"structuring element size must be a positive odd integer, got {size}")
+    if shape not in KERNEL_SHAPES:
+        raise ValueError(f"unknown structuring element shape {shape!r}, expected one of {KERNEL_SHAPES}")
+    if shape == "square":
+        return sse.square(size, device=device)
+    if shape == "cross":
+        return sse.cross(size, device=device)
+    if shape == "disk":
+        return sse.disk(size // 2, device=device)
+    return sse.diamond(size // 2, device=device)
 
 
 def soft_dice_loss(logits: Tensor, targets: Tensor, eps: float = 1.0) -> Tensor:
@@ -58,6 +88,194 @@ class BCEDiceLoss(nn.Module):
         """
         bce = nn.functional.binary_cross_entropy_with_logits(logits, targets, pos_weight=self.pos_weight)
         return self.bce_weight * bce + self.dice_weight * soft_dice_loss(logits, targets)
+
+
+def _mean_over_batch(values: Tensor) -> Tensor:
+    """
+    Average a ``(B, ...)`` tensor per sample, then over the batch.
+    :param values: Any tensor whose first dimension is the batch
+    :return: Scalar
+    """
+    return values.flatten(1).mean(dim=1).mean()
+
+
+def opening_residual(probabilities: Tensor, kernel: Tensor) -> Tensor:
+    """
+    Mean probability mass an opening of the prediction removes.
+
+    :param probabilities: ``(B, 1, H, W)`` map in ``[0, 1]``
+    :param kernel: serron flat structuring element from :func:`_structuring_element`
+    :return: Scalar penalty in ``[0, 1]``
+    """
+    return _mean_over_batch(torch.relu(probabilities - sf.opening(probabilities, kernel)))
+
+
+def closing_residual(probabilities: Tensor, kernel: Tensor) -> Tensor:
+    """
+    Mean probability a closing of the prediction adds.
+
+    :param probabilities: ``(B, 1, H, W)`` map in ``[0, 1]``
+    :param kernel: serron flat structuring element from :func:`_structuring_element`
+    :return: Scalar penalty in ``[0, 1]``
+    """
+    return _mean_over_batch(torch.relu(sf.closing(probabilities, kernel) - probabilities))
+
+
+def soft_skeleton(probabilities: Tensor, kernel: Tensor, iterations: int) -> Tensor:
+    """
+    Iterative morphological skeleton, differentiable in ``probabilities``.
+
+    :param probabilities: ``(B, 1, H, W)`` map in ``[0, 1]``
+    :param kernel: serron flat structuring element from :func:`_structuring_element`
+    :param iterations: Erosion steps; about the half-width of the widest structure
+        the skeleton should thin, measured in structuring elements
+    :return: Soft skeleton in ``[0, 1]``, the shape of the input
+    """
+    eroded = probabilities
+    skeleton = torch.relu(eroded - sf.opening(eroded, kernel))
+    for _ in range(iterations):
+        eroded = sf.erosion(eroded, kernel)
+        delta = torch.relu(eroded - sf.opening(eroded, kernel))
+        skeleton = skeleton + delta - skeleton * delta
+    return skeleton.clamp(0.0, 1.0)
+
+
+def soft_cldice_loss(
+    probabilities: Tensor, targets: Tensor, kernel: Tensor, iterations: int = 5, eps: float = 1.0
+) -> Tensor:
+    """
+    Soft centre-line Dice: how well the predicted and annotated skeletons cover each other.
+
+    :param probabilities: ``(B, 1, H, W)`` prediction in ``[0, 1]``
+    :param targets: ``(B, 1, H, W)`` binary target
+    :param kernel: serron flat structuring element the skeletons are built with
+    :param iterations: Erosion steps passed to :func:`soft_skeleton`
+    :param eps: Smoothing on the ratios, also the score of an empty skeleton
+    :return: Scalar loss in ``[0, 1]``
+    """
+    predicted_skeleton = soft_skeleton(probabilities, kernel, iterations)
+    target_skeleton = soft_skeleton(targets, kernel, iterations)
+
+    p = probabilities.flatten(1)
+    t = targets.flatten(1)
+    pred_skel = predicted_skeleton.flatten(1)
+    true_skel = target_skeleton.flatten(1)
+
+    precision = (pred_skel * t).sum(dim=1).add(eps) / pred_skel.sum(dim=1).add(eps)
+    sensitivity = (true_skel * p).sum(dim=1).add(eps) / true_skel.sum(dim=1).add(eps)
+    cldice = 1.0 - 2.0 * precision * sensitivity / (precision + sensitivity)
+    return cldice.mean()
+
+
+class MorphologyLoss(nn.Module):
+    """
+    A base objective with optional morphology-aware terms, all off by default.
+
+    - ``open_weight`` penalises what an opening of the prediction removes: thin
+      spurs and speckle, the source of false-positive instances.
+    - ``close_weight`` penalises what a closing adds: the one- and two-pixel gaps
+      that split one filament into two.
+    - ``cldice_weight`` adds soft centre-line Dice, so a filament only scores well
+      when it is recovered end to end.
+    """
+
+    def __init__(
+        self,
+        base: nn.Module,
+        *,
+        open_weight: float = 0.0,
+        close_weight: float = 0.0,
+        cldice_weight: float = 0.0,
+        kernel_shape: str = "disk",
+        kernel_size: int = 3,
+        skeleton_iters: int = 5,
+        warmup_epochs: int = 0,
+    ) -> None:
+        """
+        :param base: The pixel objective the terms are added to
+        :param open_weight: Weight of the opening residual term
+        :param close_weight: Weight of the closing residual term
+        :param cldice_weight: Weight of the soft centre-line Dice term
+        :param kernel_shape: Structuring element shape for every term
+        :param kernel_size: Odd structuring element edge length in pixels
+        :param skeleton_iters: Erosion steps in the clDice skeleton
+        :param warmup_epochs: Ramp the terms in linearly over this many epochs; ``0``
+            applies them at full weight from the first step
+        """
+        super().__init__()
+        self.base = base
+        self.open_weight = float(open_weight)
+        self.close_weight = float(close_weight)
+        self.cldice_weight = float(cldice_weight)
+        self.kernel_shape = kernel_shape
+        self.kernel_size = int(kernel_size)
+        self.skeleton_iters = int(skeleton_iters)
+        self.warmup_epochs = int(warmup_epochs)
+        self._scale = 1.0
+
+        self.terms_active = max(self.open_weight, self.close_weight, self.cldice_weight) > 0.0
+        if self.terms_active:
+            _structuring_element(self.kernel_shape, self.kernel_size, torch.device("cpu"))  # validate shape/size early
+
+    def set_epoch(self, epoch: int) -> None:
+        """
+        Set the warm-up factor for the coming epoch.
+        :param epoch: Zero-based epoch index
+        :return: None
+        """
+        if self.warmup_epochs > 0:
+            self._scale = min(1.0, (epoch + 1) / (self.warmup_epochs + 1))
+
+    def forward(self, logits: Tensor, targets: Tensor) -> Tensor:
+        """
+        :param logits: ``(B, 1, H, W)`` raw predictions
+        :param targets: ``(B, 1, H, W)`` binary targets
+        :return: Scalar loss
+        """
+        loss = cast(Tensor, self.base(logits, targets))
+        if not self.terms_active:
+            return loss
+
+        if logits.device.type != "cuda":
+            raise RuntimeError(
+                "MorphologyLoss needs a CUDA device: serron's morphology operators only "
+                f"implement their backward pass on CUDA, got a {logits.device.type!r} tensor"
+            )
+        kernel = _structuring_element(self.kernel_shape, self.kernel_size, logits.device)
+        with torch.autocast(device_type=logits.device.type, enabled=False):
+            probabilities = torch.sigmoid(logits.float())
+            target = targets.float()
+            extra = torch.zeros((), device=logits.device, dtype=torch.float32)
+            if self.open_weight:
+                extra = extra + self.open_weight * opening_residual(probabilities, kernel)
+            if self.close_weight:
+                extra = extra + self.close_weight * closing_residual(probabilities, kernel)
+            if self.cldice_weight:
+                extra = extra + self.cldice_weight * soft_cldice_loss(probabilities, target, kernel, self.skeleton_iters)
+
+        return loss + self._scale * extra.to(loss.dtype)
+
+
+def build_criterion(base: nn.Module, args) -> nn.Module:
+    """
+    Wrap ``base`` in :class:`MorphologyLoss` when any morphology weight is set.
+    :param base: The pixel objective, normally :class:`BCEDiceLoss`
+    :param args: Parsed ``train`` arguments carrying the ``morph_*`` fields
+    :return: ``base`` unchanged, or a :class:`MorphologyLoss` around it
+    """
+    weights = (args.morph_open_weight, args.morph_close_weight, args.morph_cldice_weight)
+    if max(weights) <= 0.0:
+        return base
+    return MorphologyLoss(
+        base,
+        open_weight=args.morph_open_weight,
+        close_weight=args.morph_close_weight,
+        cldice_weight=args.morph_cldice_weight,
+        kernel_shape=args.morph_kernel,
+        kernel_size=args.morph_kernel_size,
+        skeleton_iters=args.morph_skeleton_iters,
+        warmup_epochs=args.morph_warmup_epochs,
+    )
 
 
 def estimate_pos_weight(dataset, max_samples: int = 128, cap: float = 20.0) -> float:

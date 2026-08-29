@@ -3,7 +3,18 @@
 from .augment import AugmentedDataset
 from .calibrate import DEFAULT_MIN_AREAS, DEFAULT_OFFSETS, calibrate, evaluate_tiled, write_calibration
 from .engine import evaluate, fit, save_checkpoint, train_one_epoch
-from .losses import BCEDiceLoss, estimate_pos_weight, soft_dice_loss
+from .losses import (
+    KERNEL_SHAPES,
+    BCEDiceLoss,
+    MorphologyLoss,
+    build_criterion,
+    closing_residual,
+    estimate_pos_weight,
+    opening_residual,
+    soft_cldice_loss,
+    soft_dice_loss,
+    soft_skeleton,
+)
 from .metrics import DEFAULT_THRESHOLDS, PanopticQuality, grid_edges, panoptic_quality, threshold_grid
 from .optim import build_optimizer, build_scheduler
 from .plots import plot_distribution, plot_evaluation, plot_matching_cases
@@ -12,23 +23,30 @@ __all__ = [
     "DEFAULT_MIN_AREAS",
     "DEFAULT_OFFSETS",
     "DEFAULT_THRESHOLDS",
+    "KERNEL_SHAPES",
     "AugmentedDataset",
     "BCEDiceLoss",
+    "MorphologyLoss",
     "PanopticQuality",
+    "build_criterion",
     "build_optimizer",
     "build_scheduler",
     "calibrate",
+    "closing_residual",
     "estimate_pos_weight",
     "evaluate",
     "evaluate_tiled",
     "fit",
     "grid_edges",
+    "opening_residual",
     "panoptic_quality",
     "plot_distribution",
     "plot_evaluation",
     "plot_matching_cases",
     "save_checkpoint",
+    "soft_cldice_loss",
     "soft_dice_loss",
+    "soft_skeleton",
     "threshold_grid",
     "train_one_epoch",
     "write_calibration",

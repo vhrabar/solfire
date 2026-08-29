@@ -69,6 +69,8 @@ def train_one_epoch(
     :return: Mean training loss over the epoch
     """
     model.train()
+    if hasattr(criterion, "set_epoch"):
+        criterion.set_epoch(epoch)
     total_loss = 0.0
     n_batches = 0
     n_skipped = 0

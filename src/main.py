@@ -22,8 +22,11 @@ from .training import (
     DEFAULT_MIN_AREAS,
     DEFAULT_OFFSETS,
     DEFAULT_THRESHOLDS,
+                                  KERNEL_SHAPES,
     AugmentedDataset,
     BCEDiceLoss,
+    MorphologyLoss,
+    build_criterion,
     build_optimizer,
     build_scheduler,
     calibrate,
@@ -92,6 +95,33 @@ def parse_args() -> argparse.Namespace:
         "--pos-weight", type=float, default=None, help="positive class weight in the BCE term (default: estimated)"
     )
     train.add_argument("--dice-weight", type=float, default=0.5)
+    train.add_argument(
+        "--morph-open-weight",
+        type=float,
+        default=0.0,
+        help="weight of the opening residual term: penalises thin spurs and speckle the model predicts",
+    )
+    train.add_argument(
+        "--morph-close-weight",
+        type=float,
+        default=0.0,
+        help="weight of the closing residual term: penalises the small gaps that split one filament in two",
+    )
+    train.add_argument(
+        "--morph-cldice-weight",
+        type=float,
+        default=0.0,
+        help="weight of the soft centre-line Dice term: rewards keeping a filament connected end to end",
+    )
+    train.add_argument("--morph-kernel", choices=sorted(KERNEL_SHAPES), default="disk", help="structuring element shape")
+    train.add_argument("--morph-kernel-size", type=int, default=3, help="structuring element edge length in pixels, odd")
+    train.add_argument("--morph-skeleton-iters", type=int, default=5, help="erosion steps in the clDice skeleton")
+    train.add_argument(
+        "--morph-warmup-epochs",
+        type=int,
+        default=0,
+        help="ramp the morphology terms in linearly over this many epochs; 0 applies them from the first step",
+    )
     train.add_argument("--warmup-epochs", type=int, default=1)
     train.add_argument("--grad-clip", type=float, default=1.0)
     train.add_argument("--patience", type=int, default=0, help="0 disables early stopping")
@@ -266,7 +296,23 @@ def run_training(args, device) -> None:
     n_params = sum(p.numel() for p in model.parameters())
     print(f"{type(model).__name__}: {n_params / 1e6:.2f}M parameters")
 
-    criterion = BCEDiceLoss(bce_weight=1.0 - args.dice_weight, dice_weight=args.dice_weight, pos_weight=pos_weight).to(device)
+    base_criterion = BCEDiceLoss(bce_weight=1.0 - args.dice_weight, dice_weight=args.dice_weight, pos_weight=pos_weight)
+    criterion = build_criterion(base_criterion, args).to(device)
+    if isinstance(criterion, MorphologyLoss):
+        terms = [
+            f"{name} {weight:g}"
+            for name, weight in (
+                ("open", criterion.open_weight),
+                ("close", criterion.close_weight),
+                ("cldice", criterion.cldice_weight),
+            )
+            if weight > 0
+        ]
+        warmup = f", warmup {args.morph_warmup_epochs} epochs" if args.morph_warmup_epochs else ""
+        print(
+            f"morphology loss (serron, {args.morph_kernel} {args.morph_kernel_size}px): "
+            f"{', '.join(terms)}{warmup}"
+        )
     optimizer = build_optimizer(model, lr=args.lr, weight_decay=args.weight_decay)
     scheduler = build_scheduler(optimizer, args.epochs, max(1, len(train_loader)), warmup_epochs=args.warmup_epochs)
 
@@ -282,6 +328,17 @@ def run_training(args, device) -> None:
         "val_fraction": args.val_fraction,
         "seed": args.seed,
         "categories": list(categories) if categories else None,
+        "morph": {
+            "open_weight": args.morph_open_weight,
+            "close_weight": args.morph_close_weight,
+            "cldice_weight": args.morph_cldice_weight,
+            "kernel": args.morph_kernel,
+            "kernel_size": args.morph_kernel_size,
+            "skeleton_iters": args.morph_skeleton_iters,
+            "warmup_epochs": args.morph_warmup_epochs,
+        }
+        if isinstance(criterion, MorphologyLoss)
+        else None,
     }
 
     def validate_tiled(network):

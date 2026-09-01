@@ -70,7 +70,7 @@ def observation_probabilities(
     model.eval()
     seen = 0
     total = len(loader) if limit is None else min(limit, len(loader))
-    for images, masks in tqdm(loader, desc="inference", total=total, leave=False):
+    for images, masks in tqdm(loader, desc="inference", total=total, leave=False, mininterval=2.0):
         for image, mask in zip(images, masks):
             if model_size is not None:
                 image = resize(image, model_size)

@@ -3,9 +3,11 @@ Training and validation loops.
 """
 
 import json
+import random
 import time
 from pathlib import Path
 
+import numpy as np
 import torch
 from tqdm import tqdm
 
@@ -74,7 +76,7 @@ def train_one_epoch(
     total_loss = 0.0
     n_batches = 0
     n_skipped = 0
-    progress = tqdm(loader, desc=f"epoch {epoch + 1}/{epochs} train", leave=False)
+    progress = tqdm(loader, desc=f"epoch {epoch + 1}/{epochs} train", leave=False, mininterval=2.0)
 
     for images, masks in progress:
         images = images.to(device, non_blocking=True)
@@ -135,7 +137,7 @@ def evaluate(model, loader, criterion, device, thresholds=DEFAULT_THRESHOLDS, am
     total_loss = 0.0
     n_batches = 0
 
-    for images, masks in tqdm(loader, desc="validate", leave=False):
+    for images, masks in tqdm(loader, desc="validate", leave=False, mininterval=2.0):
         images = images.to(device, non_blocking=True)
         targets = masks.to(device, non_blocking=True).unsqueeze(1)
 
@@ -181,6 +183,109 @@ def save_checkpoint(path, model, model_config, epoch, metrics, image_size, extra
     torch.save(state, path)
 
 
+def _rng_state() -> dict:
+    """Snapshot every RNG source :func:`fit` draws from, for a byte-for-byte resume."""
+    return {
+        "torch": torch.get_rng_state(),
+        "cuda": torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None,
+        "python": random.getstate(),
+        "numpy": np.random.get_state(),  # noqa: NPY002 - matches the legacy global RNG main.py seeds
+    }
+
+
+def _restore_rng_state(state: dict) -> None:
+    """Best-effort restore of :func:`_rng_state`; a mismatch is logged, not fatal."""
+    try:
+        torch.set_rng_state(state["torch"])
+        if state.get("cuda") is not None and torch.cuda.is_available():
+            torch.cuda.set_rng_state_all(state["cuda"])
+        random.setstate(state["python"])
+        np.random.set_state(state["numpy"])  # noqa: NPY002
+    except Exception as error:
+        print(f"  could not restore RNG state ({error}); continuing with fresh randomness")
+
+
+def _resume_fields(
+    optimizer, scheduler, scaler, averaged, total_epochs, best_pq, best_epoch, best_threshold,
+    epochs_without_improvement, history,
+) -> dict:
+    """
+    Extra fields ``last.pt`` carries on top of the model weights so :func:`fit` can pick a
+    killed or interrupted run back up where it left off.
+
+    :return: Merged into ``last.pt``'s ``extra``; ``None`` entries are skipped by ``save_checkpoint``
+    """
+    return {
+        "optimizer_state": optimizer.state_dict(),
+        "scheduler_state": scheduler.state_dict() if scheduler is not None else None,
+        "scaler_state": scaler.state_dict() if scaler is not None else None,
+        "averaged_state": averaged.state_dict() if averaged is not None else None,
+        "rng_state": _rng_state(),
+        "total_epochs": total_epochs,
+        "best_pq": best_pq,
+        "best_epoch": best_epoch,
+        "best_threshold": best_threshold,
+        "epochs_without_improvement": epochs_without_improvement,
+        "history": history,
+    }
+
+
+def _load_resume_state(last_path, model, optimizer, scheduler, scaler, averaged, epochs, device) -> dict:
+    """
+    Restore model/optimizer/scheduler/scaler/SWA-average/RNG from ``last_path`` in place.
+
+    :param last_path: ``last.pt`` written by a previous, incomplete call to :func:`fit`
+    :param model: Model to load the saved weights into
+    :param optimizer: Optimiser to restore state into
+    :param scheduler: Per-step scheduler to restore state into, or ``None``
+    :param scaler: AMP gradient scaler to restore state into, or ``None``
+    :param averaged: SWA :class:`~torch.optim.swa_utils.AveragedModel` to restore, or ``None``
+    :param epochs: Total epochs requested for this call, to size the remaining range
+    :param device: Device the checkpoint is loaded onto
+    :return: ``{"start_epoch", "best_pq", "best_epoch", "best_threshold",
+        "epochs_without_improvement", "history"}``
+    """
+    checkpoint = torch.load(last_path, map_location=device, weights_only=False)
+    model.load_state_dict(checkpoint["model_state"])
+    if checkpoint.get("optimizer_state") is not None:
+        optimizer.load_state_dict(checkpoint["optimizer_state"])
+    else:
+        print("  last.pt has no optimizer state (checkpoint predates --resume); resuming with a fresh optimizer")
+    if scheduler is not None and checkpoint.get("scheduler_state") is not None:
+        scheduler.load_state_dict(checkpoint["scheduler_state"])
+    if scaler is not None and checkpoint.get("scaler_state") is not None:
+        scaler.load_state_dict(checkpoint["scaler_state"])
+    if averaged is not None and checkpoint.get("averaged_state") is not None:
+        averaged.load_state_dict(checkpoint["averaged_state"])
+    if checkpoint.get("rng_state") is not None:
+        _restore_rng_state(checkpoint["rng_state"])
+
+    total_epochs = checkpoint.get("total_epochs")
+    if total_epochs not in (None, epochs):
+        print(
+            f"  warning: last.pt was saved with --epochs {total_epochs}, resuming under --epochs {epochs}; "
+            "the LR schedule and SWA window were built for the old total"
+        )
+
+    start_epoch = min(int(checkpoint.get("epoch", 0)), epochs)
+    state = {
+        "start_epoch": start_epoch,
+        "best_pq": float(checkpoint.get("best_pq", -1.0)),
+        "best_epoch": int(checkpoint.get("best_epoch", -1)),
+        "best_threshold": float(checkpoint.get("best_threshold", 0.5)),
+        "epochs_without_improvement": int(checkpoint.get("epochs_without_improvement", 0)),
+        "history": list(checkpoint.get("history", [])),
+    }
+    if start_epoch >= epochs:
+        print(f"  last.pt already reached epoch {start_epoch}/{epochs}; nothing left to train")
+    else:
+        print(
+            f"  resuming from epoch {start_epoch}/{epochs} "
+            f"(best pq so far {state['best_pq']:.4f} @ epoch {state['best_epoch']})"
+        )
+    return state
+
+
 def fit(
     model,
     train_loader,
@@ -200,6 +305,7 @@ def fit(
     evaluate_fn=None,
     extra=None,
     swa_epochs=0,
+    resume=False,
 ) -> dict:
     """
     Train for a fixed budget, keeping the checkpoint with the best validation PQ.
@@ -228,6 +334,9 @@ def fit(
     :param swa_epochs: Average the weights over this many final epochs into ``swa.pt``;
         ``0`` disables it. Worth using once the validation score has flattened, where the
         run is moving around a minimum rather than still descending into one
+    :param resume: Continue from ``output_dir/last.pt`` when it exists, restoring the
+        optimiser, scheduler, AMP scaler, SWA average and RNG state where the last
+        completed epoch left them; ``False`` (or no ``last.pt`` yet) starts from scratch
     :return: Dict with ``best_pq``, ``best_threshold``, ``best_epoch``, ``history`` and,
         when the weights were averaged, ``swa_pq``
     """
@@ -238,13 +347,21 @@ def fit(
     averaged = torch.optim.swa_utils.AveragedModel(model) if swa_epochs else None
     swa_start = epochs - swa_epochs
 
-    history = []
-    best_pq = -1.0
-    best_epoch = -1
-    best_threshold = 0.5
-    epochs_without_improvement = 0
+    last_path = output_dir / "last.pt"
+    if resume and last_path.is_file():
+        state = _load_resume_state(last_path, model, optimizer, scheduler, scaler, averaged, epochs, device)
+    else:
+        if resume:
+            print(f"  --resume set but {last_path} does not exist; starting from scratch")
+        state = {"start_epoch": 0, "best_pq": -1.0, "best_epoch": -1, "best_threshold": 0.5, "epochs_without_improvement": 0, "history": []}
 
-    for epoch in range(epochs):
+    history = state["history"]
+    best_pq = state["best_pq"]
+    best_epoch = state["best_epoch"]
+    best_threshold = state["best_threshold"]
+    epochs_without_improvement = state["epochs_without_improvement"]
+
+    for epoch in range(state["start_epoch"], epochs):
         started = time.time()
         train_loss = train_one_epoch(
             model,
@@ -283,8 +400,8 @@ def fit(
         if averaged is not None and epoch >= swa_start:
             averaged.update_parameters(model)
 
-        save_checkpoint(output_dir / "last.pt", model, model_config, epoch + 1, metrics, image_size, extra=extra)
-        if metrics["best_pq"] > best_pq:
+        improved = metrics["best_pq"] > best_pq
+        if improved:
             best_pq = metrics["best_pq"]
             best_epoch = epoch + 1
             best_threshold = metrics["best_threshold"]
@@ -294,11 +411,18 @@ def fit(
             print(f"  saved best.pt (pq {best_pq:.4f})")
         else:
             epochs_without_improvement += 1
-            if patience and epochs_without_improvement >= patience:
-                print(f"early stopping after {patience} epochs without improvement")
-                break
 
+        # last.pt carries everything a resumed run needs, on top of what best.pt/swa.pt store
+        resume_extra = {**(extra or {}), **_resume_fields(
+            optimizer, scheduler, scaler, averaged, epochs, best_pq, best_epoch, best_threshold,
+            epochs_without_improvement, history,
+        )}
+        save_checkpoint(output_dir / "last.pt", model, model_config, epoch + 1, metrics, image_size, extra=resume_extra)
         (output_dir / "history.json").write_text(json.dumps(history, indent=2), encoding="utf-8")
+
+        if not improved and patience and epochs_without_improvement >= patience:
+            print(f"early stopping after {patience} epochs without improvement")
+            break
 
     summary = {
         "best_pq": best_pq,

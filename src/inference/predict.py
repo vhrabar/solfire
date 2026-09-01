@@ -92,7 +92,7 @@ def predict_dataset(
         save_masks_dir.mkdir(parents=True, exist_ok=True)
 
     detections = []
-    for images, file_names in tqdm(loader, desc="predict"):
+    for images, file_names in tqdm(loader, desc="predict", mininterval=2.0):
         probabilities = observation_probabilities(
             model, images, device, tta=tta, tile=tile, overlap=overlap, tile_batch=tile_batch
         )

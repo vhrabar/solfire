@@ -129,6 +129,12 @@ def parse_args() -> argparse.Namespace:
     train.add_argument("--amp", action="store_true", help="bfloat16 on cpu, float16 on cuda")
     train.add_argument("--no-augment", action="store_true")
     train.add_argument("--output-dir", default=None, help="default: runs/<arch>")
+    train.add_argument(
+        "--resume",
+        action="store_true",
+        help="continue from output-dir/last.pt where it left off instead of starting over; "
+        "a no-op if it already reached --epochs",
+    )
 
     predict = subparsers.add_parser("predict", help="write predictions for the test observations")
     predict.add_argument("--checkpoint", default="runs/unet/best.pt")
@@ -379,6 +385,7 @@ def run_training(args, device) -> None:
         evaluate_fn=validate_tiled if args.crop else None,
         extra=extra,
         swa_epochs=args.swa_epochs,
+        resume=args.resume,
     )
     print(
         f"best pq {summary['best_pq']:.4f} at epoch {summary['best_epoch']} "

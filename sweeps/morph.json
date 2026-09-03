@@ -1,0 +1,39 @@
+{
+  "name": "morph",
+  "seeds": [1, 2],
+  "base": {
+    "arch": "transunet",
+    "crop": 512,
+    "crops_per_image": 4,
+    "foreground_prob": 0.7,
+    "pos_weight": 5,
+    "batch_size": 8,
+    "epochs": 40,
+    "lr": 4e-4,
+    "dropout": 0.1,
+    "drop_path": 0.1,
+    "warmup_epochs": 3,
+    "amp": true,
+    "workers": 16,
+    "swa_epochs": 12,
+    "val_limit": 64,
+    "val_tile": 512,
+    "val_overlap": 0.0,
+    "tile_batch": 8
+  },
+  "grid": {
+    "morph_cldice_weight": [0.0, 0.2, 0.4],
+    "morph_open_weight": [0.0, 0.1],
+    "morph_kernel": ["disk", "cross"]
+  },
+  "configs": [
+    { "name": "baseline-no-morph", "morph_cldice_weight": 0.0, "morph_open_weight": 0.0, "morph_close_weight": 0.0 },
+    { "name": "all-terms-diamond", "morph_cldice_weight": 0.4, "morph_open_weight": 0.1, "morph_close_weight": 0.1, "morph_kernel": "diamond", "morph_kernel_size": 5 }
+  ],
+  "calibrate": {
+    "tile": 512,
+    "overlap": 0.25,
+    "tile_batch": 8,
+    "workers": 8
+  }
+}

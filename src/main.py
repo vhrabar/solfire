@@ -17,7 +17,7 @@ from .inference import (
     write_detections,
     write_submission,
 )
-from .networks import ARCHITECTURES
+from .networks import ARCHITECTURES, DECODERS
 from .training import (
     DEFAULT_MIN_AREAS,
     DEFAULT_OFFSETS,
@@ -75,6 +75,14 @@ def parse_args() -> argparse.Namespace:
     train.add_argument("--heads", type=int, default=8, help="transunet only: attention heads")
     train.add_argument("--embed-dim", type=int, default=None, help="transunet only: token width (default: the bottleneck width)")
     train.add_argument("--mlp-ratio", type=float, default=2.0, help="transunet only")
+    train.add_argument("--decoder", choices=sorted(DECODERS), default="unet", help="pretrained only")
+    train.add_argument("--encoder", default="resnet34", help="pretrained only: smp encoder name, tu- prefixed for timm")
+    train.add_argument(
+        "--encoder-weights", default="imagenet", help="pretrained only: weights to start the encoder from; 'none' for random"
+    )
+    train.add_argument(
+        "--encoder-lr-scale", type=float, default=1.0, help="pretrained only: encoder learning rate as a fraction of --lr"
+    )
     train.add_argument("--dropout", type=float, default=0.0, help="segformer/transunet only")
     train.add_argument("--drop-path", type=float, default=0.1, help="segformer/transunet only")
     train.add_argument("--val-fraction", type=float, default=0.2)
@@ -214,6 +222,16 @@ def build_model_config(args) -> dict:
             }
         return config
 
+    if args.arch == "pretrained":
+        weights = None if args.encoder_weights.lower() == "none" else args.encoder_weights
+        return {
+            "in_channels": 1,
+            "out_channels": 1,
+            "decoder": args.decoder,
+            "encoder": args.encoder,
+            "encoder_weights": weights,
+        }
+
     stages = len(args.embed_dims)
     return {
         "in_channels": 1,
@@ -301,6 +319,12 @@ def run_training(args, device) -> None:
     model = ARCHITECTURES[args.arch](**model_config).to(device)
     n_params = sum(p.numel() for p in model.parameters())
     print(f"{type(model).__name__}: {n_params / 1e6:.2f}M parameters")
+    encoder_lr_scale = 1.0
+    if args.arch == "pretrained":
+        print(f"{args.decoder} on {args.encoder}, encoder weights {model_config['encoder_weights']}")
+        encoder_lr_scale = args.encoder_lr_scale
+        # the state dict carries the trained weights, so rebuilding must not fetch the pretrained ones again
+        model_config = model_config | {"encoder_weights": None}
 
     base_criterion = BCEDiceLoss(bce_weight=1.0 - args.dice_weight, dice_weight=args.dice_weight, pos_weight=pos_weight)
     criterion = build_criterion(base_criterion, args).to(device)
@@ -319,7 +343,7 @@ def run_training(args, device) -> None:
             f"morphology loss (serron, {args.morph_kernel} {args.morph_kernel_size}px): "
             f"{', '.join(terms)}{warmup}"
         )
-    optimizer = build_optimizer(model, lr=args.lr, weight_decay=args.weight_decay)
+    optimizer = build_optimizer(model, lr=args.lr, weight_decay=args.weight_decay, encoder_lr_scale=encoder_lr_scale)
     scheduler = build_scheduler(optimizer, args.epochs, max(1, len(train_loader)), warmup_epochs=args.warmup_epochs)
 
     tile = args.val_tile or args.crop or None

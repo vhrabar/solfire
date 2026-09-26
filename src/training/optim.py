@@ -6,31 +6,38 @@ import torch
 from torch import nn
 
 
-def build_optimizer(model, lr=3e-4, weight_decay=1e-2) -> torch.optim.Optimizer:
+def build_optimizer(model, lr=3e-4, weight_decay=1e-2, encoder_lr_scale=1.0) -> torch.optim.Optimizer:
     """
     Build AdamW with decay applied only to weight matrices.
 
     :param model: Model whose parameters are optimised
     :param lr: Peak learning rate
     :param weight_decay: Decay applied to the convolution and projection weights
+    :param encoder_lr_scale: Learning rate of ``model.encoder`` as a fraction of ``lr``;
+        ignored at ``1``
     :return: Configured optimiser
     """
-    decay = []
-    no_decay = []
+    encoder_ids = set()
+    if encoder_lr_scale != 1.0:
+        encoder_ids = {id(param) for param in model.encoder.parameters()}
+
+    groups: dict[tuple[bool, bool], list[nn.Parameter]] = {}
     norms = nn.modules.batchnorm._BatchNorm | nn.LayerNorm | nn.GroupNorm
     for module in model.modules():
         for name, param in module.named_parameters(recurse=False):
             if not param.requires_grad:
                 continue
-            if name == "bias" or isinstance(module, norms):
-                no_decay.append(param)
-            else:
-                decay.append(param)
+            decays = not (name == "bias" or isinstance(module, norms))
+            groups.setdefault((decays, id(param) in encoder_ids), []).append(param)
 
     return torch.optim.AdamW(
         [
-            {"params": decay, "weight_decay": weight_decay},
-            {"params": no_decay, "weight_decay": 0.0},
+            {
+                "params": params,
+                "weight_decay": weight_decay if decays else 0.0,
+                "lr": lr * encoder_lr_scale if in_encoder else lr,
+            }
+            for (decays, in_encoder), params in groups.items()
         ],
         lr=lr,
         betas=(0.9, 0.999),

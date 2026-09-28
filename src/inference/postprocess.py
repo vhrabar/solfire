@@ -9,67 +9,23 @@ from typing import Any
 
 import numpy as np
 from pycocotools import mask as coco_mask
+from scipy import ndimage
 
 SUBMISSION_SIZE = 2048
 # The smallest annotated filaments cover a few hundred pixels at that size, so anything
 # below this is noise, and under Panoptic Quality every speck kept is half a point of penalty.
 MIN_AREA = 256
+EIGHT_CONNECTED = np.ones((3, 3), dtype=bool)
 
 
 def connected_components(mask) -> tuple[np.ndarray, int]:
     """
     Label 8-connected foreground regions.
-
-    Rows are reduced to runs of consecutive foreground pixels before the
-    union-find, so cost scales with the number of runs rather than the number
-    of pixels, which matters at the full 2048 by 2048 resolution.
     :param mask: ``(H, W)`` boolean array
     :return: Tuple of (``(H, W)`` int32 label array with 0 as background, number of labels)
     """
-    height, width = mask.shape
-    padded = np.zeros(width + 2, dtype=np.int8)
-    runs: list[tuple[int, int, int]] = []
-    row_slices: list[tuple[int, int]] = []
-
-    for y in range(height):
-        padded[1:-1] = mask[y]
-        edges = np.flatnonzero(padded[1:] != padded[:-1])
-        start = len(runs)
-        runs.extend((y, int(a), int(b)) for a, b in zip(edges[::2], edges[1::2]))
-        row_slices.append((start, len(runs)))
-
-    parent = list(range(len(runs)))
-
-    def find(i):
-        while parent[i] != i:
-            parent[i] = parent[parent[i]]
-            i = parent[i]
-        return i
-
-    def union(i, j):
-        i, j = find(i), find(j)
-        if i != j:
-            parent[max(i, j)] = min(i, j)
-
-    for y in range(1, height):
-        above_start, above_end = row_slices[y - 1]
-        here_start, here_end = row_slices[y]
-        i = above_start
-        for j in range(here_start, here_end):
-            _, start, end = runs[j]
-            while i < above_end and runs[i][2] < start:
-                i += 1
-            k = i
-            while k < above_end and runs[k][1] <= end:
-                union(j, k)
-                k += 1
-
-    labels = np.zeros((height, width), dtype=np.int32)
-    remap: dict[int, int] = {}
-    for index, (y, start, end) in enumerate(runs):
-        label = remap.setdefault(find(index), len(remap) + 1)
-        labels[y, start:end] = label
-    return labels, len(remap)
+    labels, n_labels = ndimage.label(mask, structure=EIGHT_CONNECTED)
+    return labels.astype(np.int32, copy=False), int(n_labels)
 
 
 def dilate(mask: np.ndarray, radius: int) -> np.ndarray:
@@ -118,6 +74,33 @@ def apply_offset(mask: np.ndarray, offset: int) -> np.ndarray:
     return mask
 
 
+def instance_scores(labels, n_labels, probabilities) -> np.ndarray:
+    """
+    Mean foreground probability of every labelled component.
+    :param labels: ``(H, W)`` label array with 0 as background
+    :param n_labels: Number of labels in ``labels``
+    :param probabilities: ``(H, W)`` foreground probabilities
+    :return: ``(n_labels,)`` scores, component ``k`` at index ``k - 1``
+    """
+    flat = labels.ravel()
+    sums = np.bincount(flat, weights=probabilities.ravel(), minlength=n_labels + 1)[1:]
+    areas = np.bincount(flat, minlength=n_labels + 1)[1:]
+    return sums / np.maximum(areas, 1)
+
+
+def keep_labels(labels, n_labels, keep) -> tuple[np.ndarray, int]:
+    """
+    Remove the components not kept, and close the gaps in the numbering.
+    :param labels: ``(H, W)`` label array with 0 as background
+    :param n_labels: Number of labels in ``labels``
+    :param keep: ``(n_labels,)`` boolean, component ``k`` at index ``k - 1``
+    :return: Tuple of (relabelled array, number of components left)
+    """
+    remap = np.zeros(n_labels + 1, dtype=np.int32)
+    remap[1:][keep] = np.arange(1, int(np.count_nonzero(keep)) + 1, dtype=np.int32)
+    return remap[labels], int(np.count_nonzero(keep))
+
+
 def drop_small(labels, n_labels, min_area) -> tuple[np.ndarray, int]:
     """
     Remove the components a submission would discard, and close the gaps in the numbering.
@@ -128,27 +111,29 @@ def drop_small(labels, n_labels, min_area) -> tuple[np.ndarray, int]:
     """
     if min_area <= 0:
         return labels, n_labels
-    areas = np.bincount(labels.ravel(), minlength=n_labels + 1)
-    keep = areas > min_area
-    keep[0] = False
-
-    remap = np.zeros(n_labels + 1, dtype=np.int32)
-    remap[keep] = np.arange(1, int(keep.sum()) + 1, dtype=np.int32)
-    return remap[labels], int(keep.sum())
+    areas = np.bincount(labels.ravel(), minlength=n_labels + 1)[1:]
+    return keep_labels(labels, n_labels, areas > min_area)
 
 
-def label_instances(probabilities, threshold, offset=0, min_area=0) -> tuple[np.ndarray, int]:
+def label_instances(probabilities, threshold, offset=0, min_area=0, min_score=0.0) -> tuple[np.ndarray, int]:
     """
     Turn a probability map into labelled instances the way a submission does.
 
+    The threshold is best set low, so a filament comes out whole rather than in
+    pieces, and ``min_score`` then drops the components the model is unsure of as a
+    whole: under Panoptic Quality every false positive costs as much as a miss.
     :param probabilities: ``(H, W)`` foreground probabilities
     :param threshold: Probability above which a pixel counts as filament
     :param offset: Morphological steps applied to the thresholded mask
     :param min_area: Drop components with at most this many pixels
+    :param min_score: Drop components whose mean probability is below this
     :return: Tuple of (``(H, W)`` int32 label array with 0 as background, number of components)
     """
     mask = apply_offset(probabilities >= threshold, offset)
-    return drop_small(*connected_components(mask), min_area)
+    labels, n_labels = drop_small(*connected_components(mask), min_area)
+    if min_score > 0 and n_labels:
+        labels, n_labels = keep_labels(labels, n_labels, instance_scores(labels, n_labels, probabilities) >= min_score)
+    return labels, n_labels
 
 
 def instances_from_labels(labels, n_labels, probabilities) -> list[dict]:

@@ -53,15 +53,16 @@ def model_name(checkpoint: Path) -> str:
     return f"{prefix} {checkpoint.stem}"
 
 
-def predict(checkpoint: Path, output_dir: Path, calibration: dict) -> None:
+def predict(checkpoints: list[Path], output_dir: Path, calibration: dict, calibration_path: Path | None = None) -> None:
     """
     Write ``submission.csv`` for the test observations with the calibrated post-processing.
 
     The window and overlap are the ones the calibration was scored with; ``predict``
     would otherwise fall back to its own default overlap.
-    :param checkpoint: Checkpoint to run
+    :param checkpoints: Checkpoints to run; several are averaged
     :param output_dir: Where ``submission.csv`` goes
-    :param calibration: The checkpoint's calibration
+    :param calibration: The calibration to predict with
+    :param calibration_path: File holding ``calibration`` when it is not stored in the checkpoint
     :return: None
     :raises SystemExit: When prediction fails
     """
@@ -71,7 +72,7 @@ def predict(checkpoint: Path, output_dir: Path, calibration: dict) -> None:
         "src.main",
         "predict",
         "--checkpoint",
-        str(checkpoint),
+        *(str(checkpoint) for checkpoint in checkpoints),
         "--output-dir",
         str(output_dir),
         "--tile",
@@ -85,11 +86,13 @@ def predict(checkpoint: Path, output_dir: Path, calibration: dict) -> None:
         "--tile-batch",
         "8",
     ]
+    if calibration_path is not None:
+        command += ["--calibration", str(calibration_path)]
     if not calibration.get("tta", True):
         command.append("--no-tta")
     print("  " + " ".join(command[len(PYTHON) :]))
     if subprocess.run(command, cwd=REPO).returncode:
-        sys.exit(f"prediction failed for {checkpoint}")
+        sys.exit(f"prediction failed for {' '.join(str(checkpoint) for checkpoint in checkpoints)}")
 
 
 def check_submission(path: Path) -> tuple[int, int]:
@@ -119,54 +122,95 @@ def submitted_names(api: KaggleApi) -> list[str]:
     return descriptions
 
 
+def submit_one(
+    api: KaggleApi | None,
+    existing: list[str],
+    name: str,
+    checkpoints: list[Path],
+    calibration: dict,
+    output_dir: Path,
+    args: argparse.Namespace,
+    calibration_path: Path | None = None,
+) -> None:
+    """
+    Predict with one model or ensemble, check the result and submit it.
+    :param api: Authenticated ``KaggleApi``, or ``None`` when only predicting
+    :param existing: Descriptions of the submissions already made
+    :param name: Name the submission is described by
+    :param checkpoints: Checkpoints to run; several are averaged
+    :param calibration: The calibration to predict with
+    :param output_dir: Where ``submission.csv`` goes
+    :param args: Parsed command line
+    :param calibration_path: File holding ``calibration`` when it is not stored in the checkpoint
+    :return: None
+    """
+    description = f"{name} | val pq {calibration['pq']:.4f}"
+    submission = output_dir / "submission.csv"
+    print(f"\n{name}  (val pq {calibration['pq']:.4f})")
+
+    newest_input = max(path.stat().st_mtime for path in [*checkpoints, *([calibration_path] if calibration_path else [])])
+    fresh = submission.is_file() and submission.stat().st_mtime > newest_input
+    if fresh and not args.force_predict:
+        print(f"  reusing {submission.relative_to(REPO)}")
+    else:
+        predict(checkpoints, output_dir, calibration, calibration_path)
+
+    rows, observations = check_submission(submission)
+    print(f"  {rows} filaments over {observations}/{TEST_OBSERVATIONS} test observations")
+    if observations < TEST_OBSERVATIONS * 0.9:
+        print("  warning: many test observations have no filament at all")
+
+    if api is None:
+        return
+    if not args.resubmit and any(d.startswith(name + " ") or d == name for d in existing):
+        print(f"  already submitted as '{name}', skipping (pass --resubmit to submit again)")
+        return
+    api.competition_submit(str(submission), description, COMPETITION)
+    print(f"  submitted as '{description}'")
+
+
 def main() -> int:
     """
-    Predict and submit every selected model.
+    Predict and submit every selected model, or all of them as one ensemble.
     :return: Process exit code
     """
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("models", nargs="+", type=Path, help="checkpoint files or run directories")
+    parser.add_argument(
+        "--calibration",
+        type=Path,
+        default=None,
+        help="calibration JSON from `calibrate --output`; the models are then submitted together as one ensemble",
+    )
     parser.add_argument("--force-predict", action="store_true", help="predict again even if submission.csv exists")
     parser.add_argument("--resubmit", action="store_true", help="submit even if a submission with this name exists")
     parser.add_argument("--no-submit", action="store_true", help="predict only")
     args = parser.parse_args()
 
-    checkpoints = list(dict.fromkeys(resolve(model) for model in args.models))
-
-    api = KaggleApi()
-    api.authenticate()
-    existing = [] if args.no_submit else submitted_names(api)
-
-    for checkpoint in checkpoints:
-        name = model_name(checkpoint)
-        calibration = calibration_of(checkpoint)
-        if calibration is None:
-            sys.exit(f"{checkpoint} was never calibrated; run `python -m src.main calibrate` first")
-        description = f"{name} | val pq {calibration['pq']:.4f}"
-        output_dir = checkpoint.parent / f"predictions_{checkpoint.stem}"
-        submission = output_dir / "submission.csv"
-        print(f"\n{name}  (val pq {calibration['pq']:.4f})")
-
-        fresh = submission.is_file() and submission.stat().st_mtime > checkpoint.stat().st_mtime
-        if fresh and not args.force_predict:
-            print(f"  reusing {submission.relative_to(REPO)}")
-        else:
-            predict(checkpoint, output_dir, calibration)
-
-        rows, observations = check_submission(submission)
-        print(f"  {rows} filaments over {observations}/{TEST_OBSERVATIONS} test observations")
-        if observations < TEST_OBSERVATIONS * 0.9:
-            print("  warning: many test observations have no filament at all")
-
-        if args.no_submit:
-            continue
-        if not args.resubmit and any(d.startswith(name + " ") or d == name for d in existing):
-            print(f"  already submitted as '{name}', skipping (pass --resubmit to submit again)")
-            continue
-        api.competition_submit(str(submission), description, COMPETITION)
-        print(f"  submitted as '{description}'")
-
+    api = None
+    existing: list[str] = []
     if not args.no_submit:
+        api = KaggleApi()
+        api.authenticate()
+        existing = submitted_names(api)
+
+    if args.calibration is not None:
+        checkpoints = [model.resolve() if model.is_file() else resolve(model) for model in args.models]
+        args.calibration = args.calibration.resolve()
+        calibration = json.loads(args.calibration.read_text())
+        stem = args.calibration.name.removesuffix(".calibration.json").removesuffix(".json")
+        name = f"{args.calibration.parent.name}/{stem} ({len(checkpoints)} models)"
+        output_dir = args.calibration.parent / f"predictions_{stem}"
+        submit_one(api, existing, name, checkpoints, calibration, output_dir, args, calibration_path=args.calibration)
+    else:
+        for checkpoint in dict.fromkeys(resolve(model) for model in args.models):
+            calibration = calibration_of(checkpoint)
+            if calibration is None:
+                sys.exit(f"{checkpoint} was never calibrated; run `python -m src.main calibrate` first")
+            output_dir = checkpoint.parent / f"predictions_{checkpoint.stem}"
+            submit_one(api, existing, model_name(checkpoint), [checkpoint], calibration, output_dir, args)
+
+    if api is not None:
         print(f"\nscores appear at https://www.kaggle.com/competitions/{COMPETITION}/submissions")
     return 0
 

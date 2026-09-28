@@ -1,4 +1,5 @@
 import argparse
+import json
 import os
 import random
 from pathlib import Path
@@ -7,7 +8,16 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset
 
-from .data import DATA_ROOT, FilamentCropDataset, FilamentDataset, TestImageDataset, load_annotations, train_val_split
+from .data import (
+    DATA_ROOT,
+    RASTERS,
+    TARGETS,
+    FilamentCropDataset,
+    FilamentDataset,
+    TestImageDataset,
+    load_annotations,
+    validation_split,
+)
 from .inference import (
     DEFAULT_OVERLAP,
     MIN_AREA,
@@ -19,16 +29,19 @@ from .inference import (
 )
 from .networks import ARCHITECTURES, DECODERS
 from .training import (
+    CALIBRATION_THRESHOLDS,
     DEFAULT_MIN_AREAS,
+    DEFAULT_MIN_SCORES,
     DEFAULT_OFFSETS,
-    DEFAULT_THRESHOLDS,
-                                  KERNEL_SHAPES,
+    KERNEL_SHAPES,
     AugmentedDataset,
     BCEDiceLoss,
     MorphologyLoss,
     build_criterion,
     build_optimizer,
     build_scheduler,
+    cache_directory,
+    cache_probabilities,
     calibrate,
     estimate_pos_weight,
     evaluate_tiled,
@@ -86,6 +99,19 @@ def parse_args() -> argparse.Namespace:
     train.add_argument("--dropout", type=float, default=0.0, help="segformer/transunet only")
     train.add_argument("--drop-path", type=float, default=0.1, help="segformer/transunet only")
     train.add_argument("--val-fraction", type=float, default=0.2)
+    train.add_argument(
+        "--folds", type=int, default=0, help="hold out one fold of a grouped k-fold instead of --val-fraction; 0 disables it"
+    )
+    train.add_argument("--fold", type=int, default=0, help="the fold held out when --folds is set")
+    train.add_argument(
+        "--raster", choices=RASTERS, default="coco", help="how annotation polygons are filled; coco matches the scored masks"
+    )
+    train.add_argument(
+        "--targets",
+        choices=TARGETS,
+        default="each",
+        help="each: one sample per annotator record; mean: one soft target per observation, averaged over its annotators",
+    )
     train.add_argument("--val-tile", type=int, default=0, help="inference window used to validate; 0 follows --crop")
     train.add_argument("--val-overlap", type=float, default=0.0, help="overlap between the validation windows")
     train.add_argument("--val-limit", type=int, default=48, help="observations validated per epoch; 0 uses the whole split")
@@ -145,7 +171,12 @@ def parse_args() -> argparse.Namespace:
     )
 
     predict = subparsers.add_parser("predict", help="write predictions for the test observations")
-    predict.add_argument("--checkpoint", default="runs/unet/best.pt")
+    predict.add_argument(
+        "--checkpoint", nargs="+", default=["runs/unet/best.pt"], help="several checkpoints average their probabilities"
+    )
+    predict.add_argument(
+        "--calibration", default=None, help="calibration JSON to take the post-processing from; default: the first checkpoint"
+    )
     predict.add_argument("--threshold", type=float, default=None, help="default: the value tuned on validation")
     predict.add_argument("--batch-size", type=int, default=4)
     predict.add_argument("--workers", type=int, default=4)
@@ -155,6 +186,7 @@ def parse_args() -> argparse.Namespace:
     predict.add_argument("--tile-batch", type=int, default=8, help="inference windows evaluated per forward pass")
     predict.add_argument("--offset", type=int, default=None, help="default: the value tuned on validation")
     predict.add_argument("--min-area", type=int, default=None, help="drop predicted instances smaller than this many pixels")
+    predict.add_argument("--min-score", type=float, default=None, help="drop predicted instances with a lower mean probability")
     predict.add_argument("--category-id", type=int, default=1)
     predict.add_argument("--save-masks", action="store_true", help="also write mask PNGs")
     predict.add_argument("--output-dir", default="runs/unet/predictions")
@@ -162,25 +194,22 @@ def parse_args() -> argparse.Namespace:
     calibration = subparsers.add_parser(
         "calibrate", help="tune the decision threshold, the morphological offset and the minimum area on validation"
     )
-    calibration.add_argument("--checkpoint", default="runs/unet/best.pt")
     calibration.add_argument(
-        "--thresholds",
-        type=float,
+        "--checkpoint",
         nargs="+",
-        default=None,
-        help="default: a grid around the decision point the checkpoint implies",
+        default=["runs/unet/best.pt"],
+        help="several checkpoints are averaged on the observations they all held out, and pooled across different splits",
     )
+    calibration.add_argument("--thresholds", type=float, nargs="+", default=list(CALIBRATION_THRESHOLDS))
     calibration.add_argument("--offsets", type=int, nargs="+", default=list(DEFAULT_OFFSETS))
     calibration.add_argument("--min-areas", type=int, nargs="+", default=list(DEFAULT_MIN_AREAS))
+    calibration.add_argument("--min-scores", type=float, nargs="+", default=list(DEFAULT_MIN_SCORES))
     calibration.add_argument("--tile", type=int, default=0, help="inference window; 0 follows the checkpoint")
     calibration.add_argument("--overlap", type=float, default=DEFAULT_OVERLAP)
     calibration.add_argument("--tile-batch", type=int, default=8)
     calibration.add_argument("--tta", action=argparse.BooleanOptionalAction, default=True)
-    calibration.add_argument("--limit", type=int, default=0, help="observations to score; 0 uses the whole split")
-    calibration.add_argument("--workers", type=int, default=2)
-    calibration.add_argument(
-        "--val-fraction", type=float, default=None, help="default: the value the checkpoint was trained with"
-    )
+    calibration.add_argument("--workers", type=int, default=8, help="processes scoring observations")
+    calibration.add_argument("--output", default=None, help="calibration JSON to write; required with several checkpoints")
     calibration.add_argument("--top", type=int, default=10, help="settings to print")
 
     return parser.parse_args()
@@ -258,13 +287,13 @@ def build_datasets(args):
     :return: Tuple of (train dataset, validation dataset, validation batch size)
     """
     images, _ = load_annotations()
-    train_ids, val_ids = train_val_split(images, val_fraction=args.val_fraction, seed=args.seed)
+    train_ids, val_ids = validation_split(images, args.folds, args.fold, args.val_fraction, args.seed)
     categories = tuple(args.categories) if args.categories else None
     native_size = args.native_size or None
 
     if not args.crop:
-        train_dataset: Dataset = FilamentDataset(train_ids, size=args.size, category_ids=categories)
-        valid_dataset = FilamentDataset(val_ids, size=args.size, category_ids=categories)
+        train_dataset: Dataset = FilamentDataset(train_ids, size=args.size, category_ids=categories, raster=args.raster)
+        valid_dataset = FilamentDataset(val_ids, size=args.size, category_ids=categories, raster=args.raster)
         return train_dataset, valid_dataset, args.batch_size
 
     train_dataset = FilamentCropDataset(
@@ -274,8 +303,10 @@ def build_datasets(args):
         repeat=args.crops_per_image,
         foreground_prob=args.foreground_prob,
         category_ids=categories,
+        raster=args.raster,
+        targets=args.targets,
     )
-    valid_dataset = FilamentDataset(val_ids, size=native_size, category_ids=categories)
+    valid_dataset = FilamentDataset(val_ids, size=native_size, category_ids=categories, raster=args.raster)
     return train_dataset, valid_dataset, 1
 
 
@@ -339,10 +370,7 @@ def run_training(args, device) -> None:
             if weight > 0
         ]
         warmup = f", warmup {args.morph_warmup_epochs} epochs" if args.morph_warmup_epochs else ""
-        print(
-            f"morphology loss (serron, {args.morph_kernel} {args.morph_kernel_size}px): "
-            f"{', '.join(terms)}{warmup}"
-        )
+        print(f"morphology loss (serron, {args.morph_kernel} {args.morph_kernel_size}px): {', '.join(terms)}{warmup}")
     optimizer = build_optimizer(model, lr=args.lr, weight_decay=args.weight_decay, encoder_lr_scale=encoder_lr_scale)
     scheduler = build_scheduler(optimizer, args.epochs, max(1, len(train_loader)), warmup_epochs=args.warmup_epochs)
 
@@ -356,6 +384,10 @@ def run_training(args, device) -> None:
         "min_area": args.val_min_area,
         "pos_weight": pos_weight,
         "val_fraction": args.val_fraction,
+        "folds": args.folds,
+        "fold": args.fold,
+        "raster": args.raster,
+        "targets": args.targets,
         "seed": args.seed,
         "categories": list(categories) if categories else None,
         "morph": {
@@ -445,20 +477,25 @@ def run_prediction(args, device) -> None:
     :param device: Device to run on
     :return: None
     """
-    model, checkpoint = load_model(args.checkpoint, device)
+    loaded = [load_model(path, device) for path in args.checkpoint]
+    models = [model for model, _ in loaded]
+    checkpoint = loaded[0][1]
     crop = checkpoint.get("crop")
-    tile = args.tile or (checkpoint.get("tile") if crop else None)
+    settings = json.loads(Path(args.calibration).read_text()) if args.calibration else checkpoint
+    tile = args.tile or settings.get("tile") or (checkpoint.get("tile") if crop else None)
     size = checkpoint.get("native_size") if crop else (checkpoint.get("image_size") or 256)
 
-    threshold = checkpoint_setting(checkpoint, "threshold", args.threshold, 0.5)
-    offset = checkpoint_setting(checkpoint, "offset", args.offset, 0)
-    min_area = checkpoint_setting(checkpoint, "min_area", args.min_area, MIN_AREA)
+    threshold = checkpoint_setting(settings, "threshold", args.threshold, 0.5)
+    offset = checkpoint_setting(settings, "offset", args.offset, 0)
+    min_area = checkpoint_setting(settings, "min_area", args.min_area, MIN_AREA)
+    min_score = checkpoint_setting(settings, "min_score", args.min_score, 0.0)
     print(
-        f"checkpoint epoch {checkpoint.get('epoch')}, size {size or 'native'}, tile {tile or 'whole observation'}, "
-        f"threshold {threshold:.2f}, offset {offset:+d}, min_area {min_area}"
+        f"{len(models)} model(s), checkpoint epoch {checkpoint.get('epoch')}, size {size or 'native'}, "
+        f"tile {tile or 'whole observation'}, threshold {threshold:.2f}, offset {offset:+d}, "
+        f"min_area {min_area}, min_score {min_score:.2f}"
     )
-    if checkpoint.get("calibration") is None:
-        print("warning: this checkpoint was never calibrated; run `calibrate` before submitting")
+    if args.calibration is None and (len(models) > 1 or checkpoint.get("calibration") is None):
+        print("warning: no calibration for this set of models; run `calibrate` before submitting")
 
     dataset = TestImageDataset(size=size)
     loader = DataLoader(
@@ -468,13 +505,14 @@ def run_prediction(args, device) -> None:
 
     output_dir = Path(args.output_dir)
     detections = predict_dataset(
-        model,
+        models,
         loader,
         device,
         threshold=threshold,
         tta=args.tta,
         original_size=SUBMISSION_SIZE,
         min_area=min_area,
+        min_score=min_score,
         offset=offset,
         category_id=args.category_id,
         save_masks_dir=output_dir / "masks" if args.save_masks else None,
@@ -495,59 +533,86 @@ def run_prediction(args, device) -> None:
 
 def run_calibration(args, device) -> None:
     """
-    Tune the post-processing on validation, through the path a submission takes.
+    Tune the post-processing on held-out observations, through the path a submission takes.
 
-    The threshold picked while training is picked on whatever the validation loader
-    happens to yield. What the submission is judged on is a mask at 2048, so the
-    threshold, the morphological offset and the minimum area are chosen there.
+    Each checkpoint is run over the observations its own split held out, and the
+    probabilities are cached next to it. Checkpoints that held out the same
+    observation are averaged there, so one call calibrates a seed ensemble on its
+    shared split as well as a set of fold models on their pooled out-of-fold maps.
     :param args: Parsed ``calibrate`` arguments
     :param device: Device to run on
     :return: None
     """
-    model, checkpoint = load_model(args.checkpoint, device)
-    crop = checkpoint.get("crop")
-    tile = args.tile or checkpoint.get("tile") or crop
-    # a checkpoint trained on resized observations only ever saw them that small
-    model_size = None if crop else checkpoint.get("image_size")
-    val_fraction = args.val_fraction if args.val_fraction is not None else checkpoint.get("val_fraction", 0.2)
-    categories = checkpoint.get("categories")
-    pos_weight = checkpoint.get("pos_weight")
-    searched = threshold_grid(pos_weight) if pos_weight else DEFAULT_THRESHOLDS
-    thresholds = tuple(args.thresholds) if args.thresholds else searched
+    if len(args.checkpoint) > 1 and not args.output:
+        raise SystemExit("--output is required when calibrating several checkpoints")
+    images, by_image = load_annotations()
+    file_names = {image["id"]: image["file_name"] for image in images}
 
-    images, _ = load_annotations()
-    _, val_ids = train_val_split(images, val_fraction=val_fraction, seed=checkpoint.get("seed", args.seed))
-    dataset = FilamentDataset(val_ids, size=checkpoint.get("native_size"), category_ids=tuple(categories) if categories else None)
-    loader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=args.workers, pin_memory=device.type == "cuda")
+    sources: dict[str, list[Path]] = {}
+    records: dict[str, dict] = {}
+    tiles = set()
+    for path in args.checkpoint:
+        model, checkpoint = load_model(path, device)
+        if not checkpoint.get("crop"):
+            raise SystemExit(f"{path}: calibration needs a model trained on native resolution crops")
+        tile = args.tile or checkpoint.get("tile") or checkpoint.get("crop")
+        tiles.add(tile)
+        _, val_ids = validation_split(
+            images,
+            checkpoint.get("folds") or 0,
+            checkpoint.get("fold") or 0,
+            checkpoint.get("val_fraction") or 0.2,
+            checkpoint.get("seed", args.seed),
+        )
+        files = sorted({file_names[image_id] for image_id in val_ids})
+        cache = cache_directory(path)
+        print(f"{path}: {len(val_ids)} held-out records over {len(files)} observations, tile {tile}")
+        cache_probabilities(
+            model,
+            files,
+            cache,
+            device,
+            tile=tile,
+            overlap=args.overlap,
+            tta=args.tta,
+            batch_size=args.tile_batch,
+            identity={"epoch": checkpoint.get("epoch")},
+        )
+        del model
+        if device.type == "cuda":
+            torch.cuda.empty_cache()
+        for name in files:
+            sources.setdefault(name, []).append(cache)
+        for image_id in val_ids:
+            records.setdefault(file_names[image_id], {})[image_id] = by_image[image_id]
 
-    limit = args.limit or None
-    print(
-        f"calibrating on {min(limit or len(dataset), len(dataset))}/{len(dataset)} validation observations "
-        f"at {SUBMISSION_SIZE}, model input {model_size or 'native'}, tile {tile or 'whole observation'}"
-    )
-
+    per_file = {name: list(found.values()) for name, found in records.items()}
     calibration = calibrate(
-        model,
-        loader,
-        device,
-        thresholds=thresholds,
+        sources,
+        per_file,
+        thresholds=tuple(args.thresholds),
         offsets=tuple(args.offsets),
         min_areas=tuple(args.min_areas),
-        tile=tile,
-        overlap=args.overlap,
-        tta=args.tta,
-        batch_size=args.tile_batch,
-        limit=limit,
-        model_size=model_size,
-        original_size=SUBMISSION_SIZE,
+        min_scores=tuple(args.min_scores),
+        workers=args.workers,
     )
+    calibration |= {
+        "tile": tiles.pop() if len(tiles) == 1 else None,
+        "overlap": args.overlap,
+        "tta": args.tta,
+        "checkpoints": [str(path) for path in args.checkpoint],
+    }
 
-    print(f"{'threshold':>10} {'offset':>7} {'min_area':>9} {'pq':>7}")
+    print(f"{'threshold':>10} {'offset':>7} {'min_area':>9} {'min_score':>10} {'pq':>7} {'tp':>6} {'fp':>6} {'fn':>6}")
     for row in calibration["table"][: args.top]:
-        print(f"{row['threshold']:>10.3f} {row['offset']:>+7d} {row['min_area']:>9d} {row['pq']:>7.4f}")
+        print(
+            f"{row['threshold']:>10.3f} {row['offset']:>+7d} {row['min_area']:>9d} {row['min_score']:>10.2f} "
+            f"{row['pq']:>7.4f} {row['tp']:>6d} {row['fp']:>6d} {row['fn']:>6d}"
+        )
     print(
-        f"best pq {calibration['pq']:.4f} at threshold {calibration['threshold']:.3f}, "
-        f"offset {calibration['offset']:+d}, min_area {calibration['min_area']}"
+        f"best pq {calibration['pq']:.4f} over {calibration['records']} records / {calibration['files']} observations "
+        f"at threshold {calibration['threshold']:.3f}, offset {calibration['offset']:+d}, "
+        f"min_area {calibration['min_area']}, min_score {calibration['min_score']:.2f}"
     )
     if calibration["at_edge"]:
         print(
@@ -555,12 +620,18 @@ def run_calibration(args, device) -> None:
             f"widen it and run again, the optimum is outside what was searched"
         )
 
-    checkpoint_path = Path(args.checkpoint)
+    if args.output:
+        write_calibration(args.output, calibration)
+        print(f"stored in {args.output}")
+        return
+    checkpoint_path = Path(args.checkpoint[0])
+    checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
     checkpoint |= {
         "threshold": calibration["threshold"],
         "offset": calibration["offset"],
         "min_area": calibration["min_area"],
-        "tile": tile,
+        "min_score": calibration["min_score"],
+        "tile": calibration["tile"],
         "overlap": args.overlap,
         "calibration": {key: value for key, value in calibration.items() if key != "table"},
     }

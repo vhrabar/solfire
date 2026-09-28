@@ -1,7 +1,17 @@
 """Training loop, objectives and metrics for the filament segmentation challenge."""
 
 from .augment import AugmentedDataset
-from .calibrate import DEFAULT_MIN_AREAS, DEFAULT_OFFSETS, calibrate, evaluate_tiled, write_calibration
+from .calibrate import (
+    CALIBRATION_THRESHOLDS,
+    DEFAULT_MIN_AREAS,
+    DEFAULT_MIN_SCORES,
+    DEFAULT_OFFSETS,
+    cache_directory,
+    cache_probabilities,
+    calibrate,
+    evaluate_tiled,
+    write_calibration,
+)
 from .engine import evaluate, fit, save_checkpoint, train_one_epoch
 from .losses import (
     KERNEL_SHAPES,
@@ -20,7 +30,9 @@ from .optim import build_optimizer, build_scheduler
 from .plots import plot_distribution, plot_evaluation, plot_matching_cases
 
 __all__ = [
+    "CALIBRATION_THRESHOLDS",
     "DEFAULT_MIN_AREAS",
+    "DEFAULT_MIN_SCORES",
     "DEFAULT_OFFSETS",
     "DEFAULT_THRESHOLDS",
     "KERNEL_SHAPES",
@@ -31,6 +43,8 @@ __all__ = [
     "build_criterion",
     "build_optimizer",
     "build_scheduler",
+    "cache_directory",
+    "cache_probabilities",
     "calibrate",
     "closing_residual",
     "estimate_pos_weight",

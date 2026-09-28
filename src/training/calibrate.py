@@ -2,11 +2,14 @@
 Scoring and post-processing calibration on the path the submission is written with.
 
 The model is applied to whole observations at native resolution, exactly as at
-prediction time, and the decision threshold, the morphological offset and the
-minimum area are chosen on that output rather than on a downsampled proxy.
+prediction time, and the post-processing is chosen on that output, scored the way
+the organizers score it: every annotated filament is its own instance, filled the
+way pycocotools fills it, and every annotator record of an observation counts.
 """
 
 import json
+import multiprocessing
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 import numpy as np
@@ -15,12 +18,26 @@ import torch.nn.functional as F
 from torch import Tensor
 from tqdm import tqdm
 
-from ..inference.postprocess import SUBMISSION_SIZE, apply_offset, connected_components
+from ..data import TRAIN_IMAGES, load_image
+from ..inference.postprocess import apply_offset, connected_components, instance_scores
 from ..inference.tiling import DEFAULT_OVERLAP, DEFAULT_TILE, predict_probabilities, predict_tiled
-from .metrics import DEFAULT_THRESHOLDS, grid_edges, overlaps_from_counts, pairwise_counts, panoptic_quality
+from .metrics import (
+    DEFAULT_THRESHOLDS,
+    annotation_pixels,
+    grid_edges,
+    instance_iou,
+    overlaps_from_counts,
+    pairwise_counts,
+    panoptic_quality,
+    pq_counts,
+    pq_from_counts,
+)
 
-DEFAULT_OFFSETS = (-2, -1, 0, 1, 2)
-DEFAULT_MIN_AREAS = (0, 128, 256, 512, 1024)
+CALIBRATION_THRESHOLDS = (0.25, 0.3, 0.4, 0.5, 0.65)
+DEFAULT_OFFSETS = (-2, -1, 0, 1)
+DEFAULT_MIN_AREAS = (0, 128, 256, 512)
+DEFAULT_MIN_SCORES = (0.0, 0.7, 0.8, 0.85, 0.88, 0.91, 0.94)
+CACHE_SCALE = 255
 
 
 def resize(tensor: Tensor, size) -> Tensor:
@@ -88,120 +105,193 @@ def observation_probabilities(
                 return
 
 
-def score_grid(
-    probabilities,
-    target,
-    thresholds=DEFAULT_THRESHOLDS,
-    offsets=DEFAULT_OFFSETS,
-    min_areas=DEFAULT_MIN_AREAS,
-) -> dict:
+def cache_directory(checkpoint) -> Path:
     """
-    Overlap matrices of one observation for every post-processing setting.
-
-    Connected components are labelled once per (threshold, offset) pair; dropping
-    the components below a minimum area only removes columns from the overlap
-    matrix, so the areas are swept for free.
-    :param probabilities: ``(H, W)`` foreground probabilities
-    :param target: ``(H, W)`` boolean annotation
-    :param thresholds: Probability thresholds to score at
-    :param offsets: Morphological steps applied to the thresholded mask
-    :param min_areas: Minimum instance areas to score at
-    :return: Dict keyed by ``(threshold, offset, min_area)`` holding ``(n_gt, n_pred)`` IoU matrices
+    Where the validation probabilities of a checkpoint are kept.
+    :param checkpoint: Path to the checkpoint
+    :return: Directory next to the checkpoint
     """
-    gt_labels, n_gt = connected_components(target)
-    scores = {}
-
-    for threshold in thresholds:
-        mask = probabilities >= threshold
-        for offset in offsets:
-            pred_labels, n_pred = connected_components(apply_offset(mask, offset))
-            iou, _, areas = overlaps_from_counts(pairwise_counts(gt_labels, n_gt, pred_labels, n_pred))
-            for min_area in min_areas:
-                keep = areas > min_area
-                scores[(threshold, offset, min_area)] = torch.from_numpy(iou[:, keep]).float()
-    return scores
+    path = Path(checkpoint)
+    return path.with_name(f"{path.stem}.val")
 
 
-def calibrate(
+@torch.no_grad()
+def cache_probabilities(
     model,
-    loader,
+    file_names,
+    cache_dir,
     device,
-    thresholds=DEFAULT_THRESHOLDS,
-    offsets=DEFAULT_OFFSETS,
-    min_areas=DEFAULT_MIN_AREAS,
+    images_dir=TRAIN_IMAGES,
     tile=DEFAULT_TILE,
     overlap=DEFAULT_OVERLAP,
     tta=True,
     batch_size=8,
-    limit=None,
-    model_size=None,
-    original_size=SUBMISSION_SIZE,
-) -> dict:
+    identity=None,
+) -> None:
     """
-    Choose the post-processing that maximises Panoptic Quality on a validation split.
+    Run a model over whole validation observations once and keep what it said.
 
+    Every annotator record of an observation is scored against the same prediction,
+    so the model runs once per file rather than once per record, and ensembles and
+    pooled out-of-fold calibrations are built from the cache without a GPU. The
+    probabilities are stored as 8 bit, a resolution well below anything the
+    threshold search can tell apart.
     :param model: Model in eval mode
-    :param loader: Loader yielding ``(image, mask)`` batches at native resolution
+    :param file_names: Observations to cover; the ones already cached are skipped
+    :param cache_dir: Directory the ``.npy`` files are written to
     :param device: Device to run on
-    :param thresholds: Probability thresholds to search
-    :param offsets: Morphological steps to search
-    :param min_areas: Minimum instance areas to search
+    :param images_dir: Directory holding the observations
     :param tile: Edge length of the inference windows
     :param overlap: Fraction of a window shared with its neighbour
     :param tta: Average predictions over flips
     :param batch_size: Windows evaluated per forward pass
-    :param limit: Score only this many observations, or ``None`` for all of them
-    :param model_size: Edge length the observation is resized to before the model,
-        or ``None`` to feed it at the resolution the loader yields
-    :param original_size: Edge length everything is scored at, which is the size the
-        submission masks are written at
-    :return: Dict with the winning ``threshold``, ``offset``, ``min_area``, its ``pq``,
-        the ``at_edge`` settings whose winner ran out of grid, the number of scored
-        ``observations`` and the full ``table`` of settings
+    :param identity: What the cached maps depend on beyond the inference settings,
+        such as the epoch of the checkpoint; a cache made under anything else is dropped
+    :return: None
     """
-    accumulated: dict[tuple, list] = {}
-    observations = 0
+    cache_dir = Path(cache_dir)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    settings = {"tile": tile, "overlap": overlap, "tta": tta, **(identity or {})}
+    stamp = cache_dir / "settings.json"
+    if not stamp.is_file() or json.loads(stamp.read_text()) != settings:
+        for stale in cache_dir.glob("*.npy"):
+            stale.unlink()
+        stamp.write_text(json.dumps(settings))
+    missing = [name for name in file_names if not (cache_dir / f"{Path(name).stem}.npy").is_file()]
+    model.eval()
+    for name in tqdm(missing, desc="inference", leave=False, mininterval=2.0):
+        image = load_image(Path(images_dir) / name)
+        probabilities = predict_tiled(model, image, device, tile=tile, overlap=overlap, tta=tta, batch_size=batch_size)
+        np.save(cache_dir / f"{Path(name).stem}.npy", (probabilities.numpy() * CACHE_SCALE).round().astype(np.uint8))
 
-    for probabilities, target in observation_probabilities(
-        model,
-        loader,
-        device,
-        tile=tile,
-        overlap=overlap,
-        tta=tta,
-        batch_size=batch_size,
-        limit=limit,
-        model_size=model_size,
-        original_size=original_size,
-    ):
-        for key, iou in score_grid(probabilities, target, thresholds, offsets, min_areas).items():
-            accumulated.setdefault(key, []).append(iou)
-        observations += 1
+
+def load_probabilities(cache_dirs, file_name) -> np.ndarray:
+    """
+    The mean of the cached probabilities several models gave one observation.
+    :param cache_dirs: Directories written by :func:`cache_probabilities`
+    :param file_name: Observation to load
+    :return: ``(H, W)`` float32 probabilities
+    """
+    total = None
+    for cache_dir in cache_dirs:
+        values = np.load(Path(cache_dir) / f"{Path(file_name).stem}.npy").astype(np.float32)
+        total = values if total is None else total + values
+    assert total is not None
+    return np.asarray(total / (CACHE_SCALE * len(cache_dirs)), dtype=np.float32)
+
+
+def score_observation(
+    probabilities,
+    records,
+    thresholds=CALIBRATION_THRESHOLDS,
+    offsets=DEFAULT_OFFSETS,
+    min_areas=DEFAULT_MIN_AREAS,
+    min_scores=DEFAULT_MIN_SCORES,
+) -> dict:
+    """
+    Panoptic Quality terms of one observation for every post-processing setting.
+
+    Components are labelled once per (threshold, offset) pair; the minimum area and
+    the minimum score only remove columns from the IoU matrices, so they are swept
+    for free. Every annotator record of the observation is scored against the same
+    prediction, the way the organizers score a test image annotated more than once.
+    :param probabilities: ``(H, W)`` foreground probabilities
+    :param records: Per annotator record, the pixels of its filaments from
+        :func:`metrics.annotation_pixels`
+    :param thresholds: Probability thresholds to score at
+    :param offsets: Morphological steps applied to the thresholded mask
+    :param min_areas: Minimum instance areas to score at
+    :param min_scores: Minimum instance mean probabilities to score at
+    :return: Dict keyed by ``(threshold, offset, min_area, min_score)`` holding
+        ``[matched iou, tp, fp, fn]`` summed over the records
+    """
+    terms = {}
+    for threshold in thresholds:
+        mask = probabilities >= threshold
+        for offset in offsets:
+            labels, n_labels = connected_components(apply_offset(mask, offset))
+            areas = np.bincount(labels.ravel(), minlength=n_labels + 1)[1:]
+            scores = instance_scores(labels, n_labels, probabilities)
+            overlaps = [instance_iou(pixels, labels, n_labels) for pixels in records]
+            for min_area in min_areas:
+                for min_score in min_scores:
+                    keep = (areas > min_area) & (scores >= min_score)
+                    total = np.zeros(4)
+                    for iou in overlaps:
+                        total += pq_counts(iou[:, keep])
+                    terms[(threshold, offset, min_area, min_score)] = total
+    return terms
+
+
+def calibrate(
+    sources,
+    records,
+    thresholds=CALIBRATION_THRESHOLDS,
+    offsets=DEFAULT_OFFSETS,
+    min_areas=DEFAULT_MIN_AREAS,
+    min_scores=DEFAULT_MIN_SCORES,
+    workers=8,
+) -> dict:
+    """
+    Choose the post-processing that maximises Panoptic Quality on held-out observations.
+
+    :param sources: Per observation file, the cache directories of the models that
+        did not train on it; their probabilities are averaged
+    :param records: Per observation file, the annotations of each of its records
+    :param thresholds: Probability thresholds to search
+    :param offsets: Morphological steps to search
+    :param min_areas: Minimum instance areas to search
+    :param min_scores: Minimum instance mean probabilities to search
+    :param workers: Processes scoring observations in parallel
+    :return: Dict with the winning ``threshold``, ``offset``, ``min_area`` and
+        ``min_score``, its ``pq`` and ``tp``/``fp``/``fn``, the ``at_edge`` settings
+        whose winner ran out of grid, the number of scored ``files`` and ``records``,
+        and the ``table`` of settings
+    """
+    grid = (tuple(thresholds), tuple(offsets), tuple(min_areas), tuple(min_scores))
+    jobs = [(name, sources[name], records[name], grid) for name in sorted(sources)]
+    accumulated: dict[tuple, np.ndarray] = {}
+    with ProcessPoolExecutor(max(1, workers), mp_context=multiprocessing.get_context("fork")) as pool:
+        for terms in tqdm(pool.map(_score_job, jobs), total=len(jobs), desc="scoring", leave=False, mininterval=2.0):
+            for key, value in terms.items():
+                accumulated[key] = accumulated.get(key, 0) + value
 
     table = [
-        {"threshold": float(threshold), "offset": int(offset), "min_area": int(min_area), "pq": panoptic_quality(overlaps)}
-        for (threshold, offset, min_area), overlaps in accumulated.items()
+        {
+            "threshold": float(threshold),
+            "offset": int(offset),
+            "min_area": int(min_area),
+            "min_score": float(min_score),
+            "pq": pq_from_counts(*total),
+            "tp": int(total[1]),
+            "fp": int(total[2]),
+            "fn": int(total[3]),
+        }
+        for (threshold, offset, min_area, min_score), total in accumulated.items()
     ]
     table.sort(key=lambda row: -row["pq"])
-    best = table[0] if table else {"threshold": 0.5, "offset": 0, "min_area": 0, "pq": 0.0}
-    edges = grid_edges(
-        {"threshold": best["threshold"], "offset": best["offset"], "min_area": best["min_area"]},
-        {"threshold": thresholds, "offset": offsets, "min_area": min_areas},
-    )
-
+    best = table[0]
+    names = ("threshold", "offset", "min_area", "min_score")
+    edges = grid_edges({name: best[name] for name in names}, dict(zip(names, grid)))
     return {
-        "threshold": best["threshold"],
-        "offset": best["offset"],
-        "min_area": best["min_area"],
-        "pq": best["pq"],
+        **best,
         "at_edge": edges,
-        "tile": tile,
-        "overlap": overlap,
-        "tta": tta,
-        "scored_at": original_size,
-        "observations": observations,
+        "files": len(jobs),
+        "records": sum(len(value) for value in records.values()),
         "table": table,
     }
+
+
+def _score_job(job) -> dict:
+    """
+    Score one observation in a worker process.
+    :param job: Tuple of (file name, cache directories, annotations per record, grid)
+    :return: Result of :func:`score_observation`
+    """
+    file_name, cache_dirs, annotations, (thresholds, offsets, min_areas, min_scores) = job
+    probabilities = load_probabilities(cache_dirs, file_name)
+    records = [annotation_pixels(record) for record in annotations]
+    return score_observation(probabilities, records, thresholds, offsets, min_areas, min_scores)
 
 
 def evaluate_tiled(

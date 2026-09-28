@@ -2,6 +2,7 @@ import math
 
 import numpy as np
 import torch
+from pycocotools import mask as coco_mask
 
 from ..inference.postprocess import MIN_AREA, SUBMISSION_SIZE, connected_components, label_instances
 
@@ -91,6 +92,68 @@ def overlap_matrices(gt_labels, n_gt, pred_labels, n_pred) -> tuple[torch.Tensor
     """
     iou, dice, _ = overlaps_from_counts(pairwise_counts(gt_labels, n_gt, pred_labels, n_pred))
     return torch.from_numpy(iou).float(), torch.from_numpy(dice).float()
+
+
+def annotation_pixels(annotations, height=SUBMISSION_SIZE, width=SUBMISSION_SIZE) -> list[np.ndarray]:
+    """
+    The pixels of every annotated filament, filled the way the scored masks are.
+
+    :param annotations: COCO annotations of one annotator record
+    :param height: Height of the observation
+    :param width: Width of the observation
+    :return: One array of flat pixel indices per annotation
+    """
+    pixels = []
+    for annotation in annotations:
+        rle = coco_mask.merge(coco_mask.frPyObjects(annotation["segmentation"], height, width))
+        pixels.append(np.flatnonzero(coco_mask.decode(rle)))
+    return pixels
+
+
+def instance_iou(gt_pixels, labels, n_labels) -> np.ndarray:
+    """
+    IoU of every annotated filament with every predicted one.
+
+    :param gt_pixels: Flat pixel indices of each annotation, from :func:`annotation_pixels`
+    :param labels: ``(H, W)`` predicted labels with 0 as background
+    :param n_labels: Number of labels in ``labels``
+    :return: ``(n_gt, n_labels)`` IoU matrix
+    """
+    flat = labels.ravel()
+    pred_areas = np.bincount(flat, minlength=n_labels + 1)[1:]
+    iou = np.zeros((len(gt_pixels), n_labels))
+    for row, pixels in enumerate(gt_pixels):
+        intersection = np.bincount(flat[pixels], minlength=n_labels + 1)[1:]
+        iou[row] = intersection / np.maximum(len(pixels) + pred_areas - intersection, 1)
+    return iou
+
+
+def pq_counts(iou) -> tuple[float, int, int, int]:
+    """
+    The terms one observation adds to Panoptic Quality.
+    :param iou: ``(n_gt, n_pred)`` IoU matrix
+    :return: Tuple of (sum of matched IoU, true positives, false positives, false negatives)
+    """
+    hits = iou > IOU_THRESHOLD
+    return (
+        float(iou[hits].sum()),
+        int(hits.sum()),
+        int((~hits.any(axis=0)).sum()),
+        int((~hits.any(axis=1)).sum()),
+    )
+
+
+def pq_from_counts(matched_iou, tp, fp, fn) -> float:
+    """
+    Panoptic Quality from summed :func:`pq_counts` terms.
+    :param matched_iou: Sum of the IoU of the matched pairs
+    :param tp: True positives
+    :param fp: False positives
+    :param fn: False negatives
+    :return: Panoptic Quality in ``[0, 1]``, ``0`` when there is nothing to score
+    """
+    denominator = tp + 0.5 * fp + 0.5 * fn
+    return matched_iou / denominator if denominator else 0.0
 
 
 def panoptic_quality(overlaps) -> float:

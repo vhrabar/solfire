@@ -11,6 +11,7 @@ from typing import Any
 import numpy as np
 import torch
 from PIL import Image, ImageDraw
+from pycocotools import mask as coco_mask
 from torch.utils.data import Dataset
 
 ANNOTATIONS_NAME = "MAGFiLO_1.0_Annotations_kaggle2026_train.json"
@@ -18,6 +19,9 @@ REPO_DATA = Path(__file__).resolve().parents[2] / "data"
 KAGGLE_INPUT = Path("/kaggle/input")
 
 CATEGORY_NAMES = {1: "Left", 2: "Right", 3: "Unidentifiable", 4: "Ambiguous"}
+
+RASTERS = ("coco", "pil")
+TARGETS = ("each", "mean")
 
 
 def candidate_roots() -> list[Path]:
@@ -85,7 +89,12 @@ def resolve_dataset_paths() -> tuple[Path, Path, Path, Path]:
     """
     annotations = find_annotations()
     if annotations is None:
-        return REPO_DATA, REPO_DATA / "train" / "train_images", REPO_DATA / "test" / "test_images", REPO_DATA / "train" / ANNOTATIONS_NAME
+        return (
+            REPO_DATA,
+            REPO_DATA / "train" / "train_images",
+            REPO_DATA / "test" / "test_images",
+            REPO_DATA / "train" / ANNOTATIONS_NAME,
+        )
 
     root = annotations.parent.parent if annotations.parent.name == "train" else annotations.parent
     train_images = _find_directory(root, "train_images", annotations.parent / "train_images", annotations.parent)
@@ -117,7 +126,7 @@ def load_annotations(path=TRAIN_ANNOTATIONS) -> tuple[Any, dict[Any, list[Any]]]
     return raw["images"], by_image
 
 
-def polygon_to_mask(polygon, height, width, scale=1.0, origin=(0, 0)) -> np.ndarray:
+def polygon_to_mask(polygon, height, width, scale=1.0, origin=(0, 0), raster="pil") -> np.ndarray:
     """Fill a flat ``[x0, y0, x1, y1, ...]`` polygon into a boolean mask.
     :param polygon: Input polygon
     :param height: Height of the output mask
@@ -125,14 +134,45 @@ def polygon_to_mask(polygon, height, width, scale=1.0, origin=(0, 0)) -> np.ndar
     :param scale: Factor applied to the polygon coordinates before filling
     :param origin: ``(x, y)`` of the mask inside the scaled observation, so a crop
         can be rasterised without ever building the full-resolution mask
+    :param raster: One of :data:`RASTERS`
     :return: ``(height, width)`` boolean mask
     """
     points = np.asarray(polygon, dtype=np.float64).reshape(-1, 2) * scale
     points = points - np.asarray(origin, dtype=np.float64)
+    if raster == "coco":
+        return _coco_polygon_mask(points, height, width)
+    if raster != "pil":
+        raise ValueError(f"unknown raster {raster!r}, expected one of {RASTERS}")
     canvas = Image.new("1", (width, height), 0)
     if len(points) >= 3:
         ImageDraw.Draw(canvas).polygon([(float(x), float(y)) for x, y in points], fill=1)
     return np.asarray(canvas, dtype=bool)
+
+
+def _coco_polygon_mask(points, height, width) -> np.ndarray:
+    """
+    Fill a polygon with pycocotools, on a canvas just large enough to hold it.
+
+    pycocotools clips a polygon that leaves its canvas differently from cropping the
+    full mask, so the polygon is filled on its own bounding box, shifted by whole
+    pixels, and pasted into the window.
+    :param points: ``(N, 2)`` polygon vertices in window coordinates
+    :param height: Height of the window
+    :param width: Width of the window
+    :return: ``(height, width)`` boolean mask
+    """
+    mask = np.zeros((height, width), dtype=bool)
+    if len(points) < 3:
+        return mask
+    x0, y0 = np.floor(points.min(axis=0)).astype(int) - 1
+    x1, y1 = np.ceil(points.max(axis=0)).astype(int) + 2
+    if x1 <= 0 or y1 <= 0 or x0 >= width or y0 >= height:
+        return mask
+    local = (points - [x0, y0]).ravel().tolist()
+    filled = coco_mask.decode(coco_mask.frPyObjects([local], int(y1 - y0), int(x1 - x0)))[:, :, 0].astype(bool)
+    cx0, cy0, cx1, cy1 = max(x0, 0), max(y0, 0), min(x1, width), min(y1, height)
+    mask[cy0:cy1, cx0:cx1] = filled[cy0 - y0 : cy1 - y0, cx0 - x0 : cx1 - x0]
+    return mask
 
 
 def polygon_bounds(polygon, scale=1.0) -> tuple[float, float, float, float]:
@@ -171,6 +211,47 @@ def train_val_split(images, val_fraction=0.2, seed=0) -> tuple[list[Any], list[A
     return train_ids, val_ids
 
 
+def kfold_split(images, fold, folds=5, seed=0) -> tuple[list[Any], list[Any]]:
+    """
+    Split image ids into ``(train_ids, val_ids)`` for one fold of a grouped k-fold.
+
+    Every record of an observation lands in the same fold, whoever annotated it, and
+    the assignment depends only on ``seed``, so models trained with different seeds
+    still share their folds and their out-of-fold predictions can be pooled.
+    :param images: Images to split
+    :param fold: Index of the fold held out, in ``[0, folds)``
+    :param folds: Number of folds
+    :param seed: Seed of the fold assignment
+    :return: Tuple of (train_ids, val_ids)
+    """
+    if not 0 <= fold < folds:
+        raise ValueError(f"fold must be in [0, {folds}), got {fold}")
+    groups: dict[str, list[Any]] = {}
+    for img in images:
+        groups.setdefault(img["file_name"], []).append(img["id"])
+
+    file_names = sorted(groups)
+    random.Random(seed).shuffle(file_names)
+    val_ids = [i for index, f in enumerate(file_names) if index % folds == fold for i in groups[f]]
+    train_ids = [i for index, f in enumerate(file_names) if index % folds != fold for i in groups[f]]
+    return train_ids, val_ids
+
+
+def validation_split(images, folds=0, fold=0, val_fraction=0.2, seed=0) -> tuple[list[Any], list[Any]]:
+    """
+    Hold out the validation records a run is selected and calibrated on.
+    :param images: Image records
+    :param folds: Number of grouped folds, or ``0`` for a random ``val_fraction`` split
+    :param fold: Fold held out when ``folds`` is set
+    :param val_fraction: Fraction held out otherwise
+    :param seed: Seed of the random split; the folds are fixed across seeds
+    :return: Tuple of (train_ids, val_ids)
+    """
+    if folds:
+        return kfold_split(images, fold, folds)
+    return train_val_split(images, val_fraction=val_fraction, seed=seed)
+
+
 def load_image(path, size=None) -> torch.Tensor:
     """
     Load a grayscale observation as a ``(1, H, W)`` float tensor in [0, 1].
@@ -196,7 +277,15 @@ class FilamentDataset(Dataset):
     annotated filament polygon of the selected categories.
     """
 
-    def __init__(self, image_ids=None, size=512, category_ids=None, images_dir=TRAIN_IMAGES, annotations_path=TRAIN_ANNOTATIONS):
+    def __init__(
+        self,
+        image_ids=None,
+        size=512,
+        category_ids=None,
+        images_dir=TRAIN_IMAGES,
+        annotations_path=TRAIN_ANNOTATIONS,
+        raster="pil",
+    ):
         """
         Build the dataset from a COCO-style annotation file.
         :param image_ids: Image ids to include, or ``None`` for all of them
@@ -204,10 +293,12 @@ class FilamentDataset(Dataset):
         :param category_ids: Category ids to draw into the mask, or ``None`` for all
         :param images_dir: Directory holding the observation files
         :param annotations_path: Path to the COCO-style annotations
+        :param raster: How polygons are filled, one of :data:`RASTERS`
         """
         images, by_image = load_annotations(annotations_path)
         self.images_dir = Path(images_dir)
         self.size = size
+        self.raster = raster
         self.category_ids = None if category_ids is None else set(category_ids)
 
         records = {img["id"]: img for img in images}
@@ -237,7 +328,7 @@ class FilamentDataset(Dataset):
         for ann in self.annotations[image_id]:
             if self.category_ids is not None and ann["category_id"] not in self.category_ids:
                 continue
-            mask |= polygon_to_mask(ann["segmentation"][0], height, width, scale)
+            mask |= polygon_to_mask(ann["segmentation"][0], height, width, scale, raster=self.raster)
 
         return image, torch.from_numpy(mask).float()
 
@@ -289,6 +380,8 @@ class FilamentCropDataset(Dataset):
         images_dir=TRAIN_IMAGES,
         annotations_path=TRAIN_ANNOTATIONS,
         seed=None,
+        raster="pil",
+        targets="each",
     ):
         """
         :param image_ids: Image ids to sample from, or ``None`` for all of them
@@ -302,10 +395,15 @@ class FilamentCropDataset(Dataset):
         :param annotations_path: Path to the COCO-style annotations
         :param seed: Seed for a private RNG; ``None`` uses the global :mod:`random`,
             which the data loader reseeds per worker
+        :param raster: How polygons are filled, one of :data:`RASTERS`
+        :param targets: How the records of one observation become samples, one of :data:`TARGETS`
         """
+        if targets not in TARGETS:
+            raise ValueError(f"unknown targets {targets!r}, expected one of {TARGETS}")
         images, by_image = load_annotations(annotations_path)
         self.images_dir = Path(images_dir)
         self.crop = crop
+        self.raster = raster
         self.native_size = native_size
         self.repeat = max(1, repeat)
         self.foreground_prob = foreground_prob
@@ -316,6 +414,15 @@ class FilamentCropDataset(Dataset):
         self.records = records
         self.annotations = by_image
         self._rng = None if seed is None else random.Random(seed)
+
+        # each sample is the list of records whose masks are averaged into its target
+        if targets == "mean":
+            groups: dict[str, list[Any]] = {}
+            for image_id in self.image_ids:
+                groups.setdefault(records[image_id]["file_name"], []).append(image_id)
+            self.samples = [groups[name] for name in sorted(groups)]
+        else:
+            self.samples = [[image_id] for image_id in self.image_ids]
 
     @property
     def rng(self):
@@ -329,7 +436,7 @@ class FilamentCropDataset(Dataset):
         """
         :return: Number of crops in one epoch
         """
-        return len(self.image_ids) * self.repeat
+        return len(self.samples) * self.repeat
 
     def selected(self, image_id) -> list:
         """
@@ -367,26 +474,31 @@ class FilamentCropDataset(Dataset):
     def __getitem__(self, index):
         """
         Draw one crop and rasterise the annotations that reach into it.
-        :param index: Position in the epoch; observations are cycled ``repeat`` times
-        :return: Tuple of (``(1, crop, crop)`` image tensor, ``(crop, crop)`` float mask)
+        :param index: Position in the epoch; samples are cycled ``repeat`` times
+        :return: Tuple of (``(1, crop, crop)`` image tensor, ``(crop, crop)`` float mask,
+            the fraction of the sample's records that mark each pixel)
         """
-        image_id = self.image_ids[index % len(self.image_ids)]
-        record = self.records[image_id]
+        group = self.samples[index % len(self.samples)]
+        record = self.records[group[0]]
         size = self.native_size or record["width"]
         scale = size / record["width"]
 
-        annotations = self.selected(image_id)
-        x, y = self.sample_window(annotations, size, scale)
+        per_record = [self.selected(image_id) for image_id in group]
+        x, y = self.sample_window([ann for annotations in per_record for ann in annotations], size, scale)
         image = load_image_window(self.images_dir / record["file_name"], self.native_size, (x, y), self.crop)
 
-        mask = np.zeros((self.crop, self.crop), dtype=bool)
-        for ann in annotations:
-            x0, y0, x1, y1 = polygon_bounds(ann["segmentation"][0], scale)
-            if x1 < x or x0 > x + self.crop or y1 < y or y0 > y + self.crop:
-                continue
-            mask |= polygon_to_mask(ann["segmentation"][0], self.crop, self.crop, scale, origin=(x, y))
+        target = np.zeros((self.crop, self.crop), dtype=np.float32)
+        for annotations in per_record:
+            mask = np.zeros((self.crop, self.crop), dtype=bool)
+            for ann in annotations:
+                x0, y0, x1, y1 = polygon_bounds(ann["segmentation"][0], scale)
+                if x1 < x or x0 > x + self.crop or y1 < y or y0 > y + self.crop:
+                    continue
+                mask |= polygon_to_mask(ann["segmentation"][0], self.crop, self.crop, scale, origin=(x, y), raster=self.raster)
+            target += mask
+        target /= len(per_record)
 
-        return image, torch.from_numpy(mask).float()
+        return image, torch.from_numpy(target)
 
 
 class TestImageDataset(Dataset):

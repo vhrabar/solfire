@@ -122,5 +122,5 @@ pretty               = true
 
 
 [[tool.mypy.overrides]]
-module = ["pycocotools.*", "segmentation_models_pytorch.*"]
+module = ["pycocotools.*", "segmentation_models_pytorch.*", "scipy.*"]
 ignore_missing_imports = true

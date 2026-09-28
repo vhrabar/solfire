@@ -1,0 +1,60 @@
+{
+  "name": "cv5_clahe",
+  "seeds": [
+    1
+  ],
+  "base": {
+    "arch": "pretrained",
+    "decoder": "unetplusplus",
+    "encoder": "resnet34",
+    "encoder_weights": "imagenet",
+    "encoder_lr_scale": 0.25,
+    "crop": 512,
+    "crops_per_image": 7,
+    "foreground_prob": 0.7,
+    "pos_weight": 5,
+    "batch_size": 8,
+    "epochs": 40,
+    "lr": 0.0004,
+    "warmup_epochs": 3,
+    "amp": true,
+    "workers": 12,
+    "swa_epochs": 12,
+    "val_limit": 64,
+    "val_tile": 512,
+    "val_overlap": 0.0,
+    "tile_batch": 8,
+    "raster": "coco",
+    "folds": 5,
+    "targets": "mean",
+    "preprocess": "clahe"
+  },
+  "configs": [
+    {
+      "name": "unetpp-r34-mean-clahe-fold0",
+      "fold": 0
+    },
+    {
+      "name": "unetpp-r34-mean-clahe-fold1",
+      "fold": 1
+    },
+    {
+      "name": "unetpp-r34-mean-clahe-fold2",
+      "fold": 2
+    },
+    {
+      "name": "unetpp-r34-mean-clahe-fold3",
+      "fold": 3
+    },
+    {
+      "name": "unetpp-r34-mean-clahe-fold4",
+      "fold": 4
+    }
+  ],
+  "calibrate": {
+    "tile": 512,
+    "overlap": 0.25,
+    "tile_batch": 8,
+    "workers": 8
+  }
+}

@@ -1,5 +1,6 @@
 """Data loading for the MAGFiLO solar filament segmentation challenge."""
 
+from .preprocess import PREPROCESSING, build_cache, preprocessed_dir
 from .dataset import (
     CATEGORY_NAMES,
     DATA_ROOT,
@@ -22,6 +23,9 @@ from .dataset import (
 )
 
 __all__ = [
+    "PREPROCESSING",
+    "build_cache",
+    "preprocessed_dir",
     "CATEGORY_NAMES",
     "DATA_ROOT",
     "RASTERS",

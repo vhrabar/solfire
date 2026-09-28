@@ -10,12 +10,16 @@ from torch.utils.data import DataLoader, Dataset
 
 from .data import (
     DATA_ROOT,
+    PREPROCESSING,
     RASTERS,
     TARGETS,
+    TEST_IMAGES,
+    TRAIN_IMAGES,
     FilamentCropDataset,
     FilamentDataset,
     TestImageDataset,
     load_annotations,
+    preprocessed_dir,
     validation_split,
 )
 from .inference import (
@@ -105,6 +109,12 @@ def parse_args() -> argparse.Namespace:
     train.add_argument("--fold", type=int, default=0, help="the fold held out when --folds is set")
     train.add_argument(
         "--raster", choices=RASTERS, default="coco", help="how annotation polygons are filled; coco matches the scored masks"
+    )
+    train.add_argument(
+        "--preprocess",
+        choices=PREPROCESSING,
+        default="none",
+        help="read observations from a preprocessed cache; build it first with scripts/preprocess.py",
     )
     train.add_argument(
         "--targets",
@@ -290,10 +300,12 @@ def build_datasets(args):
     train_ids, val_ids = validation_split(images, args.folds, args.fold, args.val_fraction, args.seed)
     categories = tuple(args.categories) if args.categories else None
     native_size = args.native_size or None
+    images_dir = require_images(preprocessed_dir(TRAIN_IMAGES, args.preprocess))
+    common = {"category_ids": categories, "raster": args.raster, "images_dir": images_dir}
 
     if not args.crop:
-        train_dataset: Dataset = FilamentDataset(train_ids, size=args.size, category_ids=categories, raster=args.raster)
-        valid_dataset = FilamentDataset(val_ids, size=args.size, category_ids=categories, raster=args.raster)
+        train_dataset: Dataset = FilamentDataset(train_ids, size=args.size, **common)
+        valid_dataset = FilamentDataset(val_ids, size=args.size, **common)
         return train_dataset, valid_dataset, args.batch_size
 
     train_dataset = FilamentCropDataset(
@@ -302,12 +314,22 @@ def build_datasets(args):
         native_size=native_size,
         repeat=args.crops_per_image,
         foreground_prob=args.foreground_prob,
-        category_ids=categories,
-        raster=args.raster,
         targets=args.targets,
+        **common,
     )
-    valid_dataset = FilamentDataset(val_ids, size=native_size, category_ids=categories, raster=args.raster)
+    valid_dataset = FilamentDataset(val_ids, size=native_size, **common)
     return train_dataset, valid_dataset, 1
+
+
+def require_images(images_dir) -> Path:
+    """
+    Fail early when a preprocessed cache has not been built.
+    :param images_dir: Directory the observations are read from
+    :return: ``images_dir``
+    """
+    if not Path(images_dir).is_dir():
+        raise SystemExit(f"{images_dir} does not exist; build it with `python scripts/preprocess.py`")
+    return Path(images_dir)
 
 
 def run_training(args, device) -> None:
@@ -388,6 +410,7 @@ def run_training(args, device) -> None:
         "fold": args.fold,
         "raster": args.raster,
         "targets": args.targets,
+        "preprocess": args.preprocess,
         "seed": args.seed,
         "categories": list(categories) if categories else None,
         "morph": {
@@ -497,7 +520,10 @@ def run_prediction(args, device) -> None:
     if args.calibration is None and (len(models) > 1 or checkpoint.get("calibration") is None):
         print("warning: no calibration for this set of models; run `calibrate` before submitting")
 
-    dataset = TestImageDataset(size=size)
+    methods = {found.get("preprocess") or "none" for _, found in loaded}
+    if len(methods) > 1:
+        raise SystemExit(f"the checkpoints were trained on different preprocessing ({', '.join(sorted(methods))})")
+    dataset = TestImageDataset(size=size, images_dir=require_images(preprocessed_dir(TEST_IMAGES, methods.pop())))
     loader = DataLoader(
         dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.workers, pin_memory=device.type == "cuda"
     )
@@ -577,6 +603,7 @@ def run_calibration(args, device) -> None:
             tta=args.tta,
             batch_size=args.tile_batch,
             identity={"epoch": checkpoint.get("epoch")},
+            images_dir=require_images(preprocessed_dir(TRAIN_IMAGES, checkpoint.get("preprocess"))),
         )
         del model
         if device.type == "cuda":

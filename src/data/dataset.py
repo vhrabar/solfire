@@ -14,6 +14,8 @@ from PIL import Image, ImageDraw
 from pycocotools import mask as coco_mask
 from torch.utils.data import Dataset
 
+from .preprocess import IMAGE_SUFFIXES, observation_path
+
 ANNOTATIONS_NAME = "MAGFiLO_1.0_Annotations_kaggle2026_train.json"
 REPO_DATA = Path(__file__).resolve().parents[2] / "data"
 KAGGLE_INPUT = Path("/kaggle/input")
@@ -320,7 +322,7 @@ class FilamentDataset(Dataset):
         """
         image_id = self.image_ids[index]
         record = self.records[image_id]
-        image = load_image(self.images_dir / record["file_name"], self.size)
+        image = load_image(observation_path(self.images_dir, record["file_name"]), self.size)
 
         height, width = image.shape[-2:]
         scale = width / record["width"]
@@ -485,7 +487,7 @@ class FilamentCropDataset(Dataset):
 
         per_record = [self.selected(image_id) for image_id in group]
         x, y = self.sample_window([ann for annotations in per_record for ann in annotations], size, scale)
-        image = load_image_window(self.images_dir / record["file_name"], self.native_size, (x, y), self.crop)
+        image = load_image_window(observation_path(self.images_dir, record["file_name"]), self.native_size, (x, y), self.crop)
 
         target = np.zeros((self.crop, self.crop), dtype=np.float32)
         for annotations in per_record:
@@ -514,8 +516,8 @@ class TestImageDataset(Dataset):
         """
         self.images_dir = Path(images_dir)
         self.size = size
-        # Kaggle repackaging sometimes renames the extension, so accept both spellings.
-        self.file_names = sorted(p.name for p in self.images_dir.iterdir() if p.suffix.lower() in {".jpeg", ".jpg"})
+        # Kaggle repackaging sometimes renames the extension, and preprocessed copies are PNGs.
+        self.file_names = sorted(p.name for p in self.images_dir.iterdir() if p.suffix.lower() in IMAGE_SUFFIXES)
 
     def __len__(self):
         """

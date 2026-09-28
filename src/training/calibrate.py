@@ -19,6 +19,7 @@ from torch import Tensor
 from tqdm import tqdm
 
 from ..data import TRAIN_IMAGES, load_image
+from ..data.preprocess import observation_path
 from ..inference.postprocess import apply_offset, connected_components, instance_scores
 from ..inference.tiling import DEFAULT_OVERLAP, DEFAULT_TILE, predict_probabilities, predict_tiled
 from .metrics import (
@@ -160,7 +161,7 @@ def cache_probabilities(
     missing = [name for name in file_names if not (cache_dir / f"{Path(name).stem}.npy").is_file()]
     model.eval()
     for name in tqdm(missing, desc="inference", leave=False, mininterval=2.0):
-        image = load_image(Path(images_dir) / name)
+        image = load_image(observation_path(images_dir, name))
         probabilities = predict_tiled(model, image, device, tile=tile, overlap=overlap, tta=tta, batch_size=batch_size)
         np.save(cache_dir / f"{Path(name).stem}.npy", (probabilities.numpy() * CACHE_SCALE).round().astype(np.uint8))
 

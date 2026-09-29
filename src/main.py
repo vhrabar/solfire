@@ -31,6 +31,7 @@ from .inference import (
     write_detections,
     write_submission,
 )
+from .inference.instance_filter import InstanceFilter
 from .networks import ARCHITECTURES, DECODERS
 from .training import (
     CALIBRATION_THRESHOLDS,
@@ -50,9 +51,12 @@ from .training import (
     estimate_pos_weight,
     evaluate_tiled,
     fit,
+    plot_evaluation,
     threshold_grid,
     write_calibration,
 )
+from .training.evaluate import evaluate
+from .training.filter_fit import collect_instances, filter_path, fit_instance_filter
 
 
 def parse_args() -> argparse.Namespace:
@@ -221,6 +225,32 @@ def parse_args() -> argparse.Namespace:
     calibration.add_argument("--workers", type=int, default=8, help="processes scoring observations")
     calibration.add_argument("--output", default=None, help="calibration JSON to write; required with several checkpoints")
     calibration.add_argument("--top", type=int, default=10, help="settings to print")
+
+    evaluation = subparsers.add_parser(
+        "evaluate", help="measure everything the final judging grades, on the held-out maps of the checkpoints"
+    )
+    evaluation.add_argument("--checkpoint", nargs="+", required=True, help="as for calibrate")
+    evaluation.add_argument("--calibration", nargs="+", required=True, help="calibration JSONs whose post-processing is compared")
+    evaluation.add_argument("--tile", type=int, default=0, help="inference window; 0 follows the checkpoint")
+    evaluation.add_argument("--overlap", type=float, default=DEFAULT_OVERLAP)
+    evaluation.add_argument("--tile-batch", type=int, default=8)
+    evaluation.add_argument("--tta", action=argparse.BooleanOptionalAction, default=True)
+    evaluation.add_argument("--workers", type=int, default=8)
+    evaluation.add_argument("--output", default=None, help="JSON to write the summaries to")
+    evaluation.add_argument("--plots", default=None, help="directory to write the distribution plots to")
+
+    fitting = subparsers.add_parser(
+        "fit-filter", help="learn which predicted instances to submit, on the held-out maps of the checkpoints"
+    )
+    fitting.add_argument("--checkpoint", nargs="+", required=True, help="as for calibrate")
+    fitting.add_argument("--threshold", type=float, default=0.5, help="probability threshold the instances are cut at")
+    fitting.add_argument("--offset", type=int, default=0)
+    fitting.add_argument("--tile", type=int, default=0, help="inference window; 0 follows the checkpoint")
+    fitting.add_argument("--overlap", type=float, default=DEFAULT_OVERLAP)
+    fitting.add_argument("--tile-batch", type=int, default=8)
+    fitting.add_argument("--tta", action=argparse.BooleanOptionalAction, default=True)
+    fitting.add_argument("--workers", type=int, default=8)
+    fitting.add_argument("--output", required=True, help="calibration JSON to write; the filter is pickled next to it")
 
     return parser.parse_args()
 
@@ -512,10 +542,12 @@ def run_prediction(args, device) -> None:
     offset = checkpoint_setting(settings, "offset", args.offset, 0)
     min_area = checkpoint_setting(settings, "min_area", args.min_area, MIN_AREA)
     min_score = checkpoint_setting(settings, "min_score", args.min_score, 0.0)
+    instance_filter = InstanceFilter.load(settings["filter"]) if settings.get("filter") else None
     print(
         f"{len(models)} model(s), checkpoint epoch {checkpoint.get('epoch')}, size {size or 'native'}, "
         f"tile {tile or 'whole observation'}, threshold {threshold:.2f}, offset {offset:+d}, "
         f"min_area {min_area}, min_score {min_score:.2f}"
+        + (f", learned filter cut {instance_filter.cut:.2f}" if instance_filter else "")
     )
     if args.calibration is None and (len(models) > 1 or checkpoint.get("calibration") is None):
         print("warning: no calibration for this set of models; run `calibrate` before submitting")
@@ -539,6 +571,7 @@ def run_prediction(args, device) -> None:
         original_size=SUBMISSION_SIZE,
         min_area=min_area,
         min_score=min_score,
+        instance_filter=instance_filter,
         offset=offset,
         category_id=args.category_id,
         save_masks_dir=output_dir / "masks" if args.save_masks else None,
@@ -557,32 +590,32 @@ def run_prediction(args, device) -> None:
         print("warning: no filaments predicted; lower --threshold or train for longer")
 
 
-def run_calibration(args, device) -> None:
+def held_out_maps(args, device) -> tuple[dict, dict, set, str]:
     """
-    Tune the post-processing on held-out observations, through the path a submission takes.
+    Cache every checkpoint's probabilities on the observations its split held out.
 
-    Each checkpoint is run over the observations its own split held out, and the
-    probabilities are cached next to it. Checkpoints that held out the same
-    observation are averaged there, so one call calibrates a seed ensemble on its
-    shared split as well as a set of fold models on their pooled out-of-fold maps.
-    :param args: Parsed ``calibrate`` arguments
+    Checkpoints that held out the same observation are averaged there, so a seed
+    ensemble on a shared split and a set of fold models on their pooled
+    out-of-fold maps are handled alike.
+    :param args: Parsed ``calibrate`` or ``fit-filter`` arguments
     :param device: Device to run on
-    :return: None
+    :return: Tuple of (per file the cache directories, per file the annotations of each
+        record, the inference windows used, the preprocessing the models share)
     """
-    if len(args.checkpoint) > 1 and not args.output:
-        raise SystemExit("--output is required when calibrating several checkpoints")
     images, by_image = load_annotations()
     file_names = {image["id"]: image["file_name"] for image in images}
 
     sources: dict[str, list[Path]] = {}
     records: dict[str, dict] = {}
     tiles = set()
+    methods = set()
     for path in args.checkpoint:
         model, checkpoint = load_model(path, device)
         if not checkpoint.get("crop"):
             raise SystemExit(f"{path}: calibration needs a model trained on native resolution crops")
         tile = args.tile or checkpoint.get("tile") or checkpoint.get("crop")
         tiles.add(tile)
+        methods.add(checkpoint.get("preprocess") or "none")
         _, val_ids = validation_split(
             images,
             checkpoint.get("folds") or 0,
@@ -614,6 +647,22 @@ def run_calibration(args, device) -> None:
             records.setdefault(file_names[image_id], {})[image_id] = by_image[image_id]
 
     per_file = {name: list(found.values()) for name, found in records.items()}
+    return sources, per_file, tiles, methods.pop() if len(methods) == 1 else "mixed"
+
+
+def run_calibration(args, device) -> None:
+    """
+    Tune the post-processing on held-out observations, through the path a submission takes.
+
+    Each checkpoint is run over the observations its own split held out, and the
+    probabilities are cached next to it; see :func:`held_out_maps`.
+    :param args: Parsed ``calibrate`` arguments
+    :param device: Device to run on
+    :return: None
+    """
+    if len(args.checkpoint) > 1 and not args.output:
+        raise SystemExit("--output is required when calibrating several checkpoints")
+    sources, per_file, tiles, _ = held_out_maps(args, device)
     calibration = calibrate(
         sources,
         per_file,
@@ -667,6 +716,112 @@ def run_calibration(args, device) -> None:
     print(f"stored in {checkpoint_path} and {checkpoint_path.with_suffix('.calibration.json')}")
 
 
+def run_filter_fitting(args, device) -> None:
+    """
+    Fit the learned instance filter on held-out maps and write a calibration that uses it.
+    :param args: Parsed ``fit-filter`` arguments
+    :param device: Device to run on
+    :return: None
+    """
+    sources, per_file, tiles, method = held_out_maps(args, device)
+    if method == "mixed":
+        raise SystemExit("the checkpoints were trained on different preprocessing; the filter reads one kind of image")
+    data = collect_instances(
+        sources,
+        per_file,
+        args.threshold,
+        args.offset,
+        images_dir=require_images(preprocessed_dir(TRAIN_IMAGES, method)),
+        workers=args.workers,
+    )
+    instance_filter, report = fit_instance_filter(data, args.threshold, args.offset)
+    path = filter_path(args.output)
+    instance_filter.save(path)
+    print(
+        f"out-of-fold pq {report['pq']:.4f} at cut {report['cut']:.2f}, keeping {report['kept']} of "
+        f"{report['instances']} instances over {report['files']} observations -> {path}"
+    )
+    calibration = {
+        "threshold": args.threshold,
+        "offset": args.offset,
+        "min_area": 0,
+        "min_score": 0.0,
+        "filter": str(path),
+        "pq": report["pq"],
+        "filter_report": report,
+        "tile": tiles.pop() if len(tiles) == 1 else None,
+        "overlap": args.overlap,
+        "tta": args.tta,
+        "checkpoints": [str(checkpoint) for checkpoint in args.checkpoint],
+    }
+    write_calibration(args.output, calibration)
+    print(f"stored in {args.output}")
+
+
+def run_evaluation(args, device) -> None:
+    """
+    Compare calibrations on every quantity the final judging grades.
+    :param args: Parsed ``evaluate`` arguments
+    :param device: Device to run on
+    :return: None
+    """
+    sources, per_file, _, method = held_out_maps(args, device)
+    images_dir = None if method == "mixed" else require_images(preprocessed_dir(TRAIN_IMAGES, method))
+    instances: dict[tuple[float, int], dict] = {}
+    summaries = {}
+    for path in args.calibration:
+        calibration = json.loads(Path(path).read_text())
+        instance_data = None
+        if calibration.get("filter"):
+            if images_dir is None:
+                raise SystemExit("the checkpoints were trained on different preprocessing; the filter reads one kind of image")
+            cut_at = (float(calibration["threshold"]), int(calibration.get("offset", 0)))
+            if cut_at not in instances:
+                instances[cut_at] = collect_instances(
+                    sources, per_file, cut_at[0], cut_at[1], images_dir=images_dir, workers=args.workers
+                )
+            instance_data = instances[cut_at]
+        summary, overlaps = evaluate(
+            sources,
+            per_file,
+            calibration,
+            images_dir=images_dir or TRAIN_IMAGES,
+            instance_data=instance_data,
+            workers=args.workers,
+        )
+        summaries[str(path)] = summary
+        if args.plots:
+            target = Path(args.plots) / f"{Path(path).name.removesuffix('.json')}.png"
+            target.parent.mkdir(parents=True, exist_ok=True)
+            plot_evaluation([(torch.from_numpy(iou), torch.from_numpy(dice)) for iou, dice in overlaps], target)
+
+    rows = (
+        ("pq", "PQ"),
+        ("sq", "SQ (matched IoU)"),
+        ("rq", "RQ"),
+        ("mean_dice", "mean Dice per record"),
+        ("matched_dice", "Dice of matched pairs"),
+        ("pair_iou", "IoU of overlapping pairs"),
+        ("pair_dice", "Dice of overlapping pairs"),
+        ("missed_share", "GT with no overlap"),
+        ("fragmented_share", "GT meeting 2+ predictions"),
+        ("spurious_share", "predictions with no overlap"),
+        ("merged_share", "predictions meeting 2+ GT"),
+        ("predictions_per_record", "predictions per record"),
+    )
+    names = [Path(path).name.removesuffix(".calibration.json").removesuffix(".json") for path in summaries]
+    width = max(len(label) for _, label in rows)
+    print(f"{'':<{width}}  " + "  ".join(f"{name:>16}" for name in names))
+    for key, label in rows:
+        print(f"{label:<{width}}  " + "  ".join(f"{summary[key]:>16.4f}" for summary in summaries.values()))
+    for relation in ("gt_degree", "pred_degree"):
+        print(f"{relation:<{width}}  " + "  ".join(f"{json.dumps(summary[relation]):>16}" for summary in summaries.values()))
+    if args.output:
+        Path(args.output).parent.mkdir(parents=True, exist_ok=True)
+        Path(args.output).write_text(json.dumps(summaries, indent=2), encoding="utf-8")
+        print(f"stored in {args.output}")
+
+
 def main() -> None:
     """
     Dispatch to the requested subcommand.
@@ -682,6 +837,10 @@ def main() -> None:
         run_training(args, device)
     elif args.command == "calibrate":
         run_calibration(args, device)
+    elif args.command == "evaluate":
+        run_evaluation(args, device)
+    elif args.command == "fit-filter":
+        run_filter_fitting(args, device)
     else:
         run_prediction(args, device)
 

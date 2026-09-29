@@ -10,7 +10,7 @@ from PIL import Image
 from tqdm import tqdm
 
 from ..networks import ARCHITECTURES
-from .postprocess import encode_rle, instances_from_labels, label_instances
+from .postprocess import encode_rle, instances_from_labels, keep_labels, label_instances
 from .tiling import DEFAULT_OVERLAP, predict_probabilities, predict_tiled
 
 
@@ -72,6 +72,7 @@ def predict_dataset(
     original_size=None,
     min_area=0,
     min_score=0.0,
+    instance_filter=None,
     offset=0,
     category_id=1,
     save_masks_dir=None,
@@ -90,6 +91,7 @@ def predict_dataset(
     :param original_size: Edge length to upsample to, or ``None`` to stay at model resolution
     :param min_area: Drop instances with at most this many pixels
     :param min_score: Drop instances whose mean probability is below this
+    :param instance_filter: A fitted :class:`InstanceFilter` deciding which instances to keep, or ``None``
     :param offset: Morphological steps applied to the thresholded mask
     :param category_id: Category assigned to every predicted instance
     :param save_masks_dir: Directory to write binary mask PNGs to, or ``None``
@@ -116,9 +118,13 @@ def predict_dataset(
                 align_corners=False,
             )
 
-        for probability, file_name in zip(probabilities[:, 0].numpy(), file_names):
+        for probability, image, file_name in zip(probabilities[:, 0].numpy(), images[:, 0].numpy(), file_names):
             image_id = Path(file_name).stem
             labels, n_labels = label_instances(probability, threshold, offset=offset, min_area=min_area, min_score=min_score)
+            if instance_filter is not None:
+                if image.shape != probability.shape:
+                    raise ValueError("the instance filter needs the observation at the resolution of the probabilities")
+                labels, n_labels = keep_labels(labels, n_labels, instance_filter.keep(labels, n_labels, probability, image))
             if save_masks_dir is not None:
                 Image.fromarray(((labels > 0) * 255).astype("uint8")).save(save_masks_dir / f"{image_id}.png")
             for number, instance in enumerate(instances_from_labels(labels, n_labels, probability), start=1):

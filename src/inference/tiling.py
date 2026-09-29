@@ -9,24 +9,31 @@ DEFAULT_OVERLAP = 0.25
 @torch.no_grad()
 def predict_probabilities(model, images, tta=True) -> Tensor:
     """
-    Foreground probabilities for a batch, optionally averaged over flips.
+    Foreground probabilities for a batch, optionally averaged over symmetries.
 
     :param model: Model in eval mode
     :param images: ``(B, 1, H, W)`` batch of observations
-    :param tta: Average over horizontal and vertical flips
+    :param tta: ``False`` for none, ``True`` or ``"flips"`` for the four flips, ``"d4"``
+        for all eight flips and quarter turns of the square
     :return: ``(B, 1, H, W)`` probabilities in ``[0, 1]``
     """
     if not tta:
         return torch.sigmoid(model(images).float())
 
+    turns = (0, 1) if tta == "d4" else (0,)
     total = torch.zeros_like(images, dtype=torch.float32)
-    for flip_x in (False, True):
-        for flip_y in (False, True):
-            dims = [d for d, on in ((-1, flip_x), (-2, flip_y)) if on]
-            transformed = torch.flip(images, dims) if dims else images
-            probabilities = torch.sigmoid(model(transformed).float())
-            total += torch.flip(probabilities, dims) if dims else probabilities
-    return total / 4.0
+    views = 0
+    for turn in turns:
+        rotated = torch.rot90(images, turn, (-2, -1)) if turn else images
+        for flip_x in (False, True):
+            for flip_y in (False, True):
+                dims = [d for d, on in ((-1, flip_x), (-2, flip_y)) if on]
+                transformed = torch.flip(rotated, dims) if dims else rotated
+                probabilities = torch.sigmoid(model(transformed).float())
+                probabilities = torch.flip(probabilities, dims) if dims else probabilities
+                total += torch.rot90(probabilities, -turn, (-2, -1)) if turn else probabilities
+                views += 1
+    return total / views
 
 
 def tile_offsets(size, tile, stride) -> list[int]:

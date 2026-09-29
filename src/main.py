@@ -6,7 +6,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import ConcatDataset, DataLoader, Dataset
 
 from .data import (
     DATA_ROOT,
@@ -17,6 +17,7 @@ from .data import (
     TRAIN_IMAGES,
     FilamentCropDataset,
     FilamentDataset,
+    PseudoLabelledCropDataset,
     TestImageDataset,
     load_annotations,
     preprocessed_dir,
@@ -114,6 +115,15 @@ def parse_args() -> argparse.Namespace:
     train.add_argument(
         "--raster", choices=RASTERS, default="coco", help="how annotation polygons are filled; coco matches the scored masks"
     )
+    train.add_argument(
+        "--pseudo-labels",
+        default=None,
+        help="directory of per-fold soft targets for unlabeled observations (scripts/pseudo_label.py); needs --folds",
+    )
+    train.add_argument(
+        "--pseudo-images", default="runs/external/gong/jpeg", help="directory holding the pseudo-labelled observations"
+    )
+    train.add_argument("--pseudo-crops-per-image", type=int, default=1, help="crops drawn per pseudo-labelled observation")
     train.add_argument(
         "--preprocess",
         choices=PREPROCESSING,
@@ -348,6 +358,18 @@ def build_datasets(args):
         **common,
     )
     valid_dataset = FilamentDataset(val_ids, size=native_size, **common)
+    if args.pseudo_labels:
+        if not args.folds:
+            raise SystemExit("--pseudo-labels needs --folds: the targets of fold k come from teachers that held fold k out")
+        pseudo = PseudoLabelledCropDataset(
+            args.pseudo_images,
+            Path(args.pseudo_labels) / f"fold{args.fold}",
+            crop=args.crop,
+            repeat=args.pseudo_crops_per_image,
+            foreground_prob=args.foreground_prob,
+        )
+        print(f"pseudo-labelled: {len(pseudo)} crops from {len(pseudo.targets)} observations")
+        train_dataset = ConcatDataset([train_dataset, pseudo])
     return train_dataset, valid_dataset, 1
 
 
@@ -441,6 +463,8 @@ def run_training(args, device) -> None:
         "raster": args.raster,
         "targets": args.targets,
         "preprocess": args.preprocess,
+        "pseudo_labels": args.pseudo_labels,
+        "pseudo_crops_per_image": args.pseudo_crops_per_image if args.pseudo_labels else 0,
         "seed": args.seed,
         "categories": list(categories) if categories else None,
         "morph": {

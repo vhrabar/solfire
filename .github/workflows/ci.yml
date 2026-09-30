@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Install
+        run: uv sync --locked --group cpu --group dev
+
+      - name: Lint
+        run: uv run --group cpu --group dev ruff check src scripts tests
+
+      - name: Format
+        run: uv run --group cpu --group dev ruff format --check src scripts tests
+
+      - name: Types
+        run: uv run --group cpu --group dev mypy
+
+      - name: Tests
+        run: uv run --group cpu --group dev pytest -q

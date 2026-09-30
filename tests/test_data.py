@@ -1,0 +1,76 @@
+"""
+Rasterisation of the annotations and the grouped folds.
+"""
+
+import numpy as np
+from pycocotools import mask as coco_mask
+from synthetic import filament_polygon
+
+from src.data.dataset import kfold_split, polygon_to_mask, train_val_split
+
+
+def test_coco_crop_equals_full_frame_fill(rng):
+    """
+    Filling a polygon inside a crop gives the same pixels as cropping the full-frame fill.
+    """
+    size, crop = 256, 64
+    for _ in range(20):
+        polygon = filament_polygon(rng, size)
+        full = coco_mask.decode(coco_mask.frPyObjects([polygon], size, size))[:, :, 0].astype(bool)
+        x, y = (int(v) for v in rng.integers(0, size - crop, 2))
+        window = polygon_to_mask(polygon, crop, crop, origin=(x, y), raster="coco")
+        assert (window != full[y : y + crop, x : x + crop]).sum() <= 2
+
+
+def test_pil_fill_is_fatter_than_coco(rng):
+    """
+    The reason ``--raster coco`` exists: PIL fills more pixels than the scored masks.
+    """
+    polygon = filament_polygon(rng)
+    pil = polygon_to_mask(polygon, 128, 128, raster="pil").sum()
+    coco = polygon_to_mask(polygon, 128, 128, raster="coco").sum()
+    assert pil > coco
+
+
+def records(n_files=40, annotators=(1, 2, 3)):
+    """
+    Fake image records: several annotator records per observation file.
+    """
+    rng = np.random.default_rng(0)
+    out = []
+    for index in range(n_files):
+        for annotator in range(int(rng.choice(annotators))):
+            out.append({"id": f"{annotator}-{index}", "file_name": f"{index:04d}.jpeg"})
+    return out
+
+
+def test_folds_keep_observations_together():
+    """
+    Every record of one observation lands in the same fold, and the folds cover everything once.
+    """
+    images = records()
+    by_id = {image["id"]: image["file_name"] for image in images}
+    seen = []
+    for fold in range(5):
+        train, val = kfold_split(images, fold, 5)
+        assert not {by_id[i] for i in train} & {by_id[i] for i in val}
+        seen += val
+    assert sorted(seen) == sorted(image["id"] for image in images)
+
+
+def test_folds_are_deterministic_and_seed_independent_of_training():
+    """
+    The same call gives the same folds, so models trained with different seeds share them.
+    """
+    images = records()
+    assert kfold_split(images, 2, 5) == kfold_split(images, 2, 5)
+
+
+def test_random_split_is_grouped():
+    """
+    The single validation split also keeps an observation's records together.
+    """
+    images = records()
+    by_id = {image["id"]: image["file_name"] for image in images}
+    train, val = train_val_split(images, 0.2, seed=1)
+    assert not {by_id[i] for i in train} & {by_id[i] for i in val}

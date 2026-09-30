@@ -24,10 +24,11 @@ dev = [
     "ruff",
     "py-spy",
     "types-tqdm",
+    "pytest",
 ]
-cpu      = ["torch", "torchvision"]
-cuda-130 = ["torch", "torchvision"]
-cuda-132 = ["torch", "torchvision"]
+cpu      = ["torch==2.14.1", "torchvision==0.29.1"]
+cuda-130 = ["torch==2.14.1", "torchvision==0.29.1"]
+cuda-132 = ["torch==2.14.1", "torchvision==0.29.1"]
 
 [tool.uv]
 required-environments = [
@@ -126,3 +127,11 @@ pretty               = true
 [[tool.mypy.overrides]]
 module = ["pycocotools.*", "segmentation_models_pytorch.*", "scipy.*", "sklearn.*", "threadpoolctl.*"]
 ignore_missing_imports = true
+
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = [
+    # pycocotools' decoder predates numpy 2's copy keyword; harmless and not ours to fix
+    "ignore:__array__ implementation doesn't accept a copy keyword:DeprecationWarning:pycocotools",
+]

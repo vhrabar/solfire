@@ -80,7 +80,8 @@ def train_one_epoch(
 
     for images, masks in progress:
         images = images.to(device, non_blocking=True)
-        targets = masks.to(device, non_blocking=True).unsqueeze(1)
+        targets = masks.to(device, non_blocking=True)
+        targets = targets.unsqueeze(1) if targets.dim() == 3 else targets
 
         bn_stats = batchnorm_running_stats(model)
 
@@ -139,7 +140,8 @@ def evaluate(model, loader, criterion, device, thresholds=DEFAULT_THRESHOLDS, am
 
     for images, masks in tqdm(loader, desc="validate", leave=False, mininterval=2.0):
         images = images.to(device, non_blocking=True)
-        targets = masks.to(device, non_blocking=True).unsqueeze(1)
+        targets = masks.to(device, non_blocking=True)
+        targets = targets.unsqueeze(1) if targets.dim() == 3 else targets
 
         context, _ = autocast_context(device, amp)
         with context:

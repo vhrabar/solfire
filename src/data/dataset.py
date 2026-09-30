@@ -24,6 +24,8 @@ CATEGORY_NAMES = {1: "Left", 2: "Right", 3: "Unidentifiable", 4: "Ambiguous"}
 
 RASTERS = ("coco", "pil")
 TARGETS = ("each", "mean")
+# category ids an auxiliary head predicts, one channel each
+CATEGORY_CHANNELS = (1, 2, 3)
 
 
 def candidate_roots() -> list[Path]:
@@ -384,6 +386,9 @@ class FilamentCropDataset(Dataset):
         seed=None,
         raster="pil",
         targets="each",
+        hard_negatives=None,
+        hard_negative_prob=0.0,
+        categories=False,
     ):
         """
         :param image_ids: Image ids to sample from, or ``None`` for all of them
@@ -399,6 +404,12 @@ class FilamentCropDataset(Dataset):
             which the data loader reseeds per worker
         :param raster: How polygons are filled, one of :data:`RASTERS`
         :param targets: How the records of one observation become samples, one of :data:`TARGETS`
+        :param hard_negatives: Per observation file, ``(x, y)`` points of dark features that
+            models mistake for filaments, or ``None``
+        :param hard_negative_prob: Probability of centring a crop on one of them, taken
+            from the uniformly placed crops
+        :param categories: Also return one indicator channel per category of
+            :data:`CATEGORY_CHANNELS` after the filament target, for an auxiliary head
         """
         if targets not in TARGETS:
             raise ValueError(f"unknown targets {targets!r}, expected one of {TARGETS}")
@@ -416,6 +427,9 @@ class FilamentCropDataset(Dataset):
         self.records = records
         self.annotations = by_image
         self._rng = None if seed is None else random.Random(seed)
+        self.hard_negatives = hard_negatives or {}
+        self.hard_negative_prob = hard_negative_prob
+        self.categories = categories
 
         # each sample is the list of records whose masks are averaged into its target
         if targets == "mean":
@@ -451,17 +465,23 @@ class FilamentCropDataset(Dataset):
             return annotations
         return [ann for ann in annotations if ann["category_id"] in self.category_ids]
 
-    def sample_window(self, annotations, size, scale) -> tuple[int, int]:
+    def sample_window(self, annotations, size, scale, hard_negatives=()) -> tuple[int, int]:
         """
         Pick the top left corner of a crop.
 
         :param annotations: Annotations of the observation
         :param size: Edge length the observation is decoded at
         :param scale: Factor the annotation coordinates are scaled by
+        :param hard_negatives: ``(x, y)`` points of look-alikes in the observation
         :return: ``(x, y)`` corner, clamped to keep the crop inside the observation
         """
         limit = max(0, size - self.crop)
-        if annotations and self.rng.random() < self.foreground_prob:
+        draw = self.rng.random()
+        if hard_negatives and self.foreground_prob <= draw < self.foreground_prob + self.hard_negative_prob:
+            x, y = self.rng.choice(hard_negatives)
+            x = int(x * scale) - self.rng.randrange(self.crop)
+            y = int(y * scale) - self.rng.randrange(self.crop)
+        elif annotations and draw < self.foreground_prob:
             annotation = self.rng.choice(annotations)
             points = np.asarray(annotation["segmentation"][0], dtype=np.float64).reshape(-1, 2)
             x, y = points[self.rng.randrange(len(points))] * scale
@@ -486,21 +506,32 @@ class FilamentCropDataset(Dataset):
         scale = size / record["width"]
 
         per_record = [self.selected(image_id) for image_id in group]
-        x, y = self.sample_window([ann for annotations in per_record for ann in annotations], size, scale)
+        x, y = self.sample_window(
+            [ann for annotations in per_record for ann in annotations],
+            size,
+            scale,
+            self.hard_negatives.get(record["file_name"], ()),
+        )
         image = load_image_window(observation_path(self.images_dir, record["file_name"]), self.native_size, (x, y), self.crop)
 
         target = np.zeros((self.crop, self.crop), dtype=np.float32)
+        categories = np.zeros((len(CATEGORY_CHANNELS), self.crop, self.crop), dtype=bool) if self.categories else None
         for annotations in per_record:
             mask = np.zeros((self.crop, self.crop), dtype=bool)
             for ann in annotations:
                 x0, y0, x1, y1 = polygon_bounds(ann["segmentation"][0], scale)
                 if x1 < x or x0 > x + self.crop or y1 < y or y0 > y + self.crop:
                     continue
-                mask |= polygon_to_mask(ann["segmentation"][0], self.crop, self.crop, scale, origin=(x, y), raster=self.raster)
+                filled = polygon_to_mask(ann["segmentation"][0], self.crop, self.crop, scale, origin=(x, y), raster=self.raster)
+                mask |= filled
+                if categories is not None and ann["category_id"] in CATEGORY_CHANNELS:
+                    categories[CATEGORY_CHANNELS.index(ann["category_id"])] |= filled
             target += mask
         target /= len(per_record)
 
-        return image, torch.from_numpy(target)
+        if categories is None:
+            return image, torch.from_numpy(target)
+        return image, torch.from_numpy(np.concatenate([target[None], categories.astype(np.float32)]))
 
 
 class PseudoLabelledCropDataset(Dataset):

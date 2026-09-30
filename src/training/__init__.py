@@ -16,6 +16,7 @@ from .engine import evaluate, fit, save_checkpoint, train_one_epoch
 from .losses import (
     KERNEL_SHAPES,
     BCEDiceLoss,
+    CategoryHeadLoss,
     MorphologyLoss,
     build_criterion,
     closing_residual,
@@ -38,6 +39,7 @@ __all__ = [
     "KERNEL_SHAPES",
     "AugmentedDataset",
     "BCEDiceLoss",
+    "CategoryHeadLoss",
     "MorphologyLoss",
     "PanopticQuality",
     "build_criterion",

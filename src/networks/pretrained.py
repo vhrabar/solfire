@@ -32,6 +32,7 @@ class Pretrained(nn.Module):
         encoder="resnet34",
         encoder_weights="imagenet",
         encoder_depth=5,
+        aux_channels=0,
     ):
         """
         :param in_channels: Channels of the input observation
@@ -41,6 +42,8 @@ class Pretrained(nn.Module):
         :param encoder_weights: Pretrained weights to start from, or ``None`` for random init;
             a checkpoint is always rebuilt with ``None`` since its state dict carries the weights
         :param encoder_depth: Number of encoder stages the decoder reads from
+        :param aux_channels: Extra output channels for an auxiliary task, produced only in
+            training mode, so inference sees ``out_channels`` alone
         """
         super().__init__()
         self.net = DECODERS[decoder](
@@ -48,8 +51,10 @@ class Pretrained(nn.Module):
             encoder_weights=encoder_weights,
             encoder_depth=encoder_depth,
             in_channels=in_channels,
-            classes=out_channels,
+            classes=out_channels + aux_channels,
         )
+        self.out_channels = out_channels
+        self.aux_channels = aux_channels
         self.divisor = 2**encoder_depth
 
     @property
@@ -65,9 +70,12 @@ class Pretrained(nn.Module):
         Accepts any input size; sizes the encoder cannot halve are padded and cropped back.
 
         :param x: ``(B, in_channels, H, W)`` batch of observations in ``[0, 1]``
-        :return: ``(B, out_channels, H, W)`` logits
+        :return: ``(B, out_channels, H, W)`` logits, with the auxiliary channels appended
+            in training mode
         """
         height, width = x.shape[-2:]
         x = pad_to_multiple((x - IMAGENET_MEAN) / IMAGENET_STD, self.divisor)
-        logits: Tensor = self.net(x)
-        return logits[..., :height, :width]
+        logits: Tensor = self.net(x)[..., :height, :width]
+        if self.aux_channels and not self.training:
+            return logits[:, : self.out_channels]
+        return logits

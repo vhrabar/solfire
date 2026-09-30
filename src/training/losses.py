@@ -57,25 +57,63 @@ def soft_dice_loss(logits: Tensor, targets: Tensor, eps: float = 1.0) -> Tensor:
     return 1.0 - dice.mean()
 
 
+def _lovasz_gradient(sorted_labels: Tensor) -> Tensor:
+    """
+    Gradient of the Lovász extension of the Jaccard loss at the sorted errors.
+    :param sorted_labels: ``(N,)`` binary labels, ordered by decreasing error
+    :return: ``(N,)`` weights of the sorted errors
+    """
+    positives = sorted_labels.sum()
+    intersection = positives - sorted_labels.cumsum(0)
+    union = positives + (1.0 - sorted_labels).cumsum(0)
+    jaccard = 1.0 - intersection / union
+    jaccard[1:] = jaccard[1:] - jaccard[:-1]
+    return jaccard
+
+
+def lovasz_hinge_loss(logits: Tensor, targets: Tensor) -> Tensor:
+    """
+    Lovász hinge: a convex surrogate of 1 - IoU, computed per sample and averaged.
+
+    Panoptic Quality pays nothing below an IoU of a half, so an objective on IoU itself
+    rather than on per-pixel likelihood is a closer fit (Berman et al., 2018). Soft
+    targets are binarised at a half.
+    :param logits: ``(B, 1, H, W)`` raw predictions
+    :param targets: ``(B, 1, H, W)`` targets in ``[0, 1]``
+    :return: Scalar loss
+    """
+    losses = []
+    with torch.autocast(device_type=logits.device.type, enabled=False):
+        for logit, target in zip(logits.float().flatten(1), targets.float().flatten(1)):
+            labels = (target >= 0.5).float()
+            errors = 1.0 - logit * (2.0 * labels - 1.0)
+            sorted_errors, order = torch.sort(errors, descending=True)
+            losses.append(torch.dot(torch.relu(sorted_errors), _lovasz_gradient(labels[order])))
+    return torch.stack(losses).mean()
+
+
 class BCEDiceLoss(nn.Module):
     """
-    Weighted sum of binary cross entropy and soft Dice.
+    Weighted sum of binary cross entropy, soft Dice and, optionally, the Lovász hinge.
 
     BCE -> pp grad
     DICE -> overlap optim
+    Lovász -> IoU optim
     """
 
     pos_weight: Tensor | None
 
-    def __init__(self, bce_weight=0.5, dice_weight=0.5, pos_weight=None):
+    def __init__(self, bce_weight=0.5, dice_weight=0.5, pos_weight=None, lovasz_weight=0.0):
         """
         :param bce_weight: Weight of the cross entropy term
         :param dice_weight: Weight of the Dice term
         :param pos_weight: Weight of positive pixels inside the BCE term, or ``None``
+        :param lovasz_weight: Weight of the Lovász hinge term; ``0`` leaves it out
         """
         super().__init__()
         self.bce_weight = bce_weight
         self.dice_weight = dice_weight
+        self.lovasz_weight = float(lovasz_weight)
         if pos_weight is not None:
             pos_weight = torch.as_tensor(float(pos_weight))
         self.register_buffer("pos_weight", pos_weight)
@@ -87,7 +125,10 @@ class BCEDiceLoss(nn.Module):
         :return: Scalar loss
         """
         bce = nn.functional.binary_cross_entropy_with_logits(logits, targets, pos_weight=self.pos_weight)
-        return self.bce_weight * bce + self.dice_weight * soft_dice_loss(logits, targets)
+        loss = self.bce_weight * bce + self.dice_weight * soft_dice_loss(logits, targets)
+        if self.lovasz_weight:
+            loss = loss + self.lovasz_weight * lovasz_hinge_loss(logits, targets)
+        return loss
 
 
 def _mean_over_batch(values: Tensor) -> Tensor:
@@ -254,6 +295,52 @@ class MorphologyLoss(nn.Module):
                 extra = extra + self.cldice_weight * soft_cldice_loss(probabilities, target, kernel, self.skeleton_iters)
 
         return loss + self._scale * extra.to(loss.dtype)
+
+
+class CategoryHeadLoss(nn.Module):
+    """
+    The segmentation objective on the first channel plus an auxiliary category head.
+
+    The annotations tell Left, Right and Unidentifiable filaments apart. Predicting
+    the category on annotated pixels is a second task that shares the features, and
+    only its first channel, the filament mask, is ever used at inference.
+    """
+
+    def __init__(self, base: nn.Module, weight: float) -> None:
+        """
+        :param base: Objective for the filament channel
+        :param weight: Weight of the category cross entropy
+        """
+        super().__init__()
+        self.base = base
+        self.weight = float(weight)
+
+    def set_epoch(self, epoch: int) -> None:
+        """
+        Pass the epoch on to a base objective that ramps its terms in.
+        :param epoch: Zero-based epoch index
+        :return: None
+        """
+        set_epoch = getattr(self.base, "set_epoch", None)
+        if callable(set_epoch):
+            set_epoch(epoch)
+
+    def forward(self, logits: Tensor, targets: Tensor) -> Tensor:
+        """
+        :param logits: ``(B, 1 + C, H, W)``: the filament logit, then one per category
+        :param targets: ``(B, 1 + C, H, W)``: the filament target, then one indicator per category
+        :return: Scalar loss
+        """
+        loss = cast(Tensor, self.base(logits[:, :1], targets[:, :1]))
+        indicators = targets[:, 1:]
+        annotated = indicators.sum(dim=1) > 0
+        if not annotated.any():
+            return loss + 0.0 * logits[:, 1:].sum()
+        with torch.autocast(device_type=logits.device.type, enabled=False):
+            category_logits = logits[:, 1:].float().permute(0, 2, 3, 1)[annotated]
+            classes = indicators.permute(0, 2, 3, 1)[annotated].argmax(dim=1)
+            category = nn.functional.cross_entropy(category_logits, classes)
+        return loss + self.weight * category
 
 
 def build_criterion(base: nn.Module, args) -> nn.Module:

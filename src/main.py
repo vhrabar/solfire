@@ -42,6 +42,7 @@ from .training import (
     KERNEL_SHAPES,
     AugmentedDataset,
     BCEDiceLoss,
+    CategoryHeadLoss,
     MorphologyLoss,
     build_criterion,
     build_optimizer,
@@ -153,6 +154,25 @@ def parse_args() -> argparse.Namespace:
         "--pos-weight", type=float, default=None, help="positive class weight in the BCE term (default: estimated)"
     )
     train.add_argument("--dice-weight", type=float, default=0.5)
+    train.add_argument(
+        "--category-head-weight",
+        type=float,
+        default=0.0,
+        help="pretrained only: weight of an auxiliary head predicting the filament category (Left/Right/Unidentifiable); 0 disables it",
+    )
+    train.add_argument("--lovasz-weight", type=float, default=0.0, help="weight of the Lovász hinge term; 0 leaves it out")
+    train.add_argument(
+        "--init-checkpoint", default=None, help="start from this checkpoint's weights (same architecture), e.g. to fine-tune"
+    )
+    train.add_argument(
+        "--hard-negatives", default=None, help="JSON of per-file (x, y) look-alike points (scripts/hard_negatives.py)"
+    )
+    train.add_argument(
+        "--hard-negative-prob",
+        type=float,
+        default=0.15,
+        help="share of crops centred on a hard negative, taken from random crops",
+    )
     train.add_argument(
         "--morph-open-weight",
         type=float,
@@ -309,6 +329,7 @@ def build_model_config(args) -> dict:
             "decoder": args.decoder,
             "encoder": args.encoder,
             "encoder_weights": weights,
+            "aux_channels": 3 if args.category_head_weight > 0 else 0,
         }
 
     stages = len(args.embed_dims)
@@ -355,6 +376,9 @@ def build_datasets(args):
         repeat=args.crops_per_image,
         foreground_prob=args.foreground_prob,
         targets=args.targets,
+        hard_negatives=json.loads(Path(args.hard_negatives).read_text()) if args.hard_negatives else None,
+        hard_negative_prob=args.hard_negative_prob if args.hard_negatives else 0.0,
+        categories=args.category_head_weight > 0,
         **common,
     )
     valid_dataset = FilamentDataset(val_ids, size=native_size, **common)
@@ -382,6 +406,30 @@ def require_images(images_dir) -> Path:
     if not Path(images_dir).is_dir():
         raise SystemExit(f"{images_dir} does not exist; build it with `python scripts/preprocess.py`")
     return Path(images_dir)
+
+
+def load_matching(model, state) -> None:
+    """
+    Load a state dict into a model whose output layer may have more channels.
+
+    Tensors of equal shape are copied; an output layer that grew along its first axis
+    gets the old channels in front and keeps its fresh initialisation for the new ones,
+    so a one-channel checkpoint can start a model with auxiliary outputs.
+    :param model: Model to load into
+    :param state: State dict of the starting checkpoint
+    :return: None
+    """
+    own = model.state_dict()
+    for key, value in state.items():
+        if key not in own:
+            raise KeyError(f"{key} is not in the model")
+        if own[key].shape == value.shape:
+            own[key] = value
+        elif own[key].shape[1:] == value.shape[1:] and own[key].shape[0] > value.shape[0]:
+            own[key][: value.shape[0]] = value
+        else:
+            raise ValueError(f"{key}: checkpoint shape {tuple(value.shape)} does not fit {tuple(own[key].shape)}")
+    model.load_state_dict(own)
 
 
 def run_training(args, device) -> None:
@@ -422,6 +470,10 @@ def run_training(args, device) -> None:
 
     model_config = build_model_config(args)
     model = ARCHITECTURES[args.arch](**model_config).to(device)
+    if args.init_checkpoint:
+        start = torch.load(args.init_checkpoint, map_location=device, weights_only=False)
+        load_matching(model, start["model_state"])
+        print(f"starting from {args.init_checkpoint} (epoch {start.get('epoch')})")
     n_params = sum(p.numel() for p in model.parameters())
     print(f"{type(model).__name__}: {n_params / 1e6:.2f}M parameters")
     encoder_lr_scale = 1.0
@@ -431,8 +483,15 @@ def run_training(args, device) -> None:
         # the state dict carries the trained weights, so rebuilding must not fetch the pretrained ones again
         model_config = model_config | {"encoder_weights": None}
 
-    base_criterion = BCEDiceLoss(bce_weight=1.0 - args.dice_weight, dice_weight=args.dice_weight, pos_weight=pos_weight)
-    criterion = build_criterion(base_criterion, args).to(device)
+    base_criterion = BCEDiceLoss(
+        bce_weight=1.0 - args.dice_weight, dice_weight=args.dice_weight, pos_weight=pos_weight, lovasz_weight=args.lovasz_weight
+    )
+    criterion = build_criterion(base_criterion, args)
+    if args.category_head_weight > 0:
+        if args.arch != "pretrained":
+            raise SystemExit("--category-head-weight needs --arch pretrained")
+        criterion = CategoryHeadLoss(criterion, args.category_head_weight)
+    criterion = criterion.to(device)
     if isinstance(criterion, MorphologyLoss):
         terms = [
             f"{name} {weight:g}"
@@ -463,6 +522,11 @@ def run_training(args, device) -> None:
         "raster": args.raster,
         "targets": args.targets,
         "preprocess": args.preprocess,
+        "lovasz_weight": args.lovasz_weight,
+        "category_head_weight": args.category_head_weight,
+        "init_checkpoint": args.init_checkpoint,
+        "hard_negatives": args.hard_negatives,
+        "hard_negative_prob": args.hard_negative_prob if args.hard_negatives else 0.0,
         "pseudo_labels": args.pseudo_labels,
         "pseudo_crops_per_image": args.pseudo_crops_per_image if args.pseudo_labels else 0,
         "seed": args.seed,

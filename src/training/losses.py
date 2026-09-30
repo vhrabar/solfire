@@ -1,6 +1,7 @@
 """
 Objectives for the strongly imbalanced filament segmentation task.
 """
+
 from functools import cache
 from typing import cast
 
@@ -181,9 +182,7 @@ def soft_skeleton(probabilities: Tensor, kernel: Tensor, iterations: int) -> Ten
     return skeleton.clamp(0.0, 1.0)
 
 
-def soft_cldice_loss(
-    probabilities: Tensor, targets: Tensor, kernel: Tensor, iterations: int = 5, eps: float = 1.0
-) -> Tensor:
+def soft_cldice_loss(probabilities: Tensor, targets: Tensor, kernel: Tensor, iterations: int = 5, eps: float = 1.0) -> Tensor:
     """
     Soft centre-line Dice: how well the predicted and annotated skeletons cover each other.
 

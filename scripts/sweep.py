@@ -150,9 +150,10 @@ def stream(command: list[str], log_path: Path) -> int:
     log_path.parent.mkdir(parents=True, exist_ok=True)
     decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
     stdout = sys.stdout.buffer if hasattr(sys.stdout, "buffer") else sys.stdout
-    with subprocess.Popen(
-        command, cwd=REPO, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, bufsize=0
-    ) as process, open(log_path, "w", encoding="utf-8") as log:
+    with (
+        subprocess.Popen(command, cwd=REPO, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, bufsize=0) as process,
+        open(log_path, "w", encoding="utf-8") as log,
+    ):
         assert process.stdout is not None
         line = ""
         while chunk := process.stdout.read(4096):
@@ -187,11 +188,33 @@ def run_one(config: dict, seed: int, sweep_dir: Path, calibrate_args: list[str],
         calibration = read_calibration(checkpoint)
         if calibration is not None:
             print(f"  cached: {run_dir.relative_to(REPO)}  calibrated pq {calibration['pq']:.4f}")
-            return {**row, "checkpoint": checkpoint.relative_to(REPO), "train_pq": train_pq,
-                    "calibrated_pq": calibration["pq"], "threshold": calibration["threshold"],
-                    "offset": calibration["offset"], "min_area": calibration["min_area"], "status": "cached"}
-    train_cmd = ["uv", "run", "--group", "cuda-132", "python", "-m", "src.main", "--seed", str(seed), *device, "train",
-                 *render_args(config["_params"]), "--output-dir", str(run_dir), "--resume"]
+            return {
+                **row,
+                "checkpoint": checkpoint.relative_to(REPO),
+                "train_pq": train_pq,
+                "calibrated_pq": calibration["pq"],
+                "threshold": calibration["threshold"],
+                "offset": calibration["offset"],
+                "min_area": calibration["min_area"],
+                "status": "cached",
+            }
+    train_cmd = [
+        "uv",
+        "run",
+        "--group",
+        "cuda-132",
+        "python",
+        "-m",
+        "src.main",
+        "--seed",
+        str(seed),
+        *device,
+        "train",
+        *render_args(config["_params"]),
+        "--output-dir",
+        str(run_dir),
+        "--resume",
+    ]
     calibrate_cmd_prefix = ["uv", "run", "--group", "cuda-132", "python", "-m", "src.main", *device, "calibrate"]
 
     if args.dry_run:
@@ -206,21 +229,41 @@ def run_one(config: dict, seed: int, sweep_dir: Path, calibrate_args: list[str],
         return {**row, "status": "train-failed"}
     checkpoint, train_pq = found
 
-    code = stream([*calibrate_cmd_prefix, "--checkpoint", str(checkpoint), *calibrate_args],
-                  run_dir.with_suffix(".calibrate.log"))
+    code = stream(
+        [*calibrate_cmd_prefix, "--checkpoint", str(checkpoint), *calibrate_args], run_dir.with_suffix(".calibrate.log")
+    )
     calibration = read_calibration(checkpoint) if code == 0 else None
     if calibration is None:
         return {**row, "checkpoint": checkpoint.relative_to(REPO), "train_pq": train_pq, "status": "calibrate-failed"}
 
-    return {**row, "checkpoint": checkpoint.relative_to(REPO), "train_pq": train_pq,
-            "calibrated_pq": calibration["pq"], "threshold": calibration["threshold"],
-            "offset": calibration["offset"], "min_area": calibration["min_area"], "status": "ok"}
+    return {
+        **row,
+        "checkpoint": checkpoint.relative_to(REPO),
+        "train_pq": train_pq,
+        "calibrated_pq": calibration["pq"],
+        "threshold": calibration["threshold"],
+        "offset": calibration["offset"],
+        "min_area": calibration["min_area"],
+        "status": "ok",
+    }
 
 
 def write_csv(path: Path, rows: list[dict], keys: list[str]) -> None:
     """Write every row so far, so an interrupted sweep keeps its partial results."""
-    columns = ["config", "tag", "seed", *keys, "train_pq", "calibrated_pq", "threshold",
-               "offset", "min_area", "checkpoint", "run_dir", "status"]
+    columns = [
+        "config",
+        "tag",
+        "seed",
+        *keys,
+        "train_pq",
+        "calibrated_pq",
+        "threshold",
+        "offset",
+        "min_area",
+        "checkpoint",
+        "run_dir",
+        "status",
+    ]
     with open(path, "w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=columns, extrasaction="ignore")
         writer.writeheader()
@@ -301,7 +344,9 @@ def main() -> None:
     plan = [(c, s) for c in configs for s in seeds]
     if args.max_runs:
         plan = plan[: args.max_runs]
-    print(f"sweep '{sweep_name}': {len(configs)} config(s) x {len(seeds)} seed(s) = {len(plan)} run(s) -> {sweep_dir.relative_to(REPO)}")
+    print(
+        f"sweep '{sweep_name}': {len(configs)} config(s) x {len(seeds)} seed(s) = {len(plan)} run(s) -> {sweep_dir.relative_to(REPO)}"
+    )
     print(f"varying: {', '.join(keys) or '(nothing)'}")
 
     rows: list[dict] = []

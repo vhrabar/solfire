@@ -208,8 +208,16 @@ def _restore_rng_state(state: dict) -> None:
 
 
 def _resume_fields(
-    optimizer, scheduler, scaler, averaged, total_epochs, best_pq, best_epoch, best_threshold,
-    epochs_without_improvement, history,
+    optimizer,
+    scheduler,
+    scaler,
+    averaged,
+    total_epochs,
+    best_pq,
+    best_epoch,
+    best_threshold,
+    epochs_without_improvement,
+    history,
 ) -> dict:
     """
     Extra fields ``last.pt`` carries on top of the model weights so :func:`fit` can pick a
@@ -282,8 +290,7 @@ def _load_resume_state(last_path, model, optimizer, scheduler, scaler, averaged,
         print(f"  last.pt already reached epoch {start_epoch}/{epochs}; nothing left to train")
     else:
         print(
-            f"  resuming from epoch {start_epoch}/{epochs} "
-            f"(best pq so far {state['best_pq']:.4f} @ epoch {state['best_epoch']})"
+            f"  resuming from epoch {start_epoch}/{epochs} (best pq so far {state['best_pq']:.4f} @ epoch {state['best_epoch']})"
         )
     return state
 
@@ -355,7 +362,14 @@ def fit(
     else:
         if resume:
             print(f"  --resume set but {last_path} does not exist; starting from scratch")
-        state = {"start_epoch": 0, "best_pq": -1.0, "best_epoch": -1, "best_threshold": 0.5, "epochs_without_improvement": 0, "history": []}
+        state = {
+            "start_epoch": 0,
+            "best_pq": -1.0,
+            "best_epoch": -1,
+            "best_threshold": 0.5,
+            "epochs_without_improvement": 0,
+            "history": [],
+        }
 
     history = state["history"]
     best_pq = state["best_pq"]
@@ -415,10 +429,21 @@ def fit(
             epochs_without_improvement += 1
 
         # last.pt carries everything a resumed run needs, on top of what best.pt/swa.pt store
-        resume_extra = {**(extra or {}), **_resume_fields(
-            optimizer, scheduler, scaler, averaged, epochs, best_pq, best_epoch, best_threshold,
-            epochs_without_improvement, history,
-        )}
+        resume_extra = {
+            **(extra or {}),
+            **_resume_fields(
+                optimizer,
+                scheduler,
+                scaler,
+                averaged,
+                epochs,
+                best_pq,
+                best_epoch,
+                best_threshold,
+                epochs_without_improvement,
+                history,
+            ),
+        }
         save_checkpoint(output_dir / "last.pt", model, model_config, epoch + 1, metrics, image_size, extra=resume_extra)
         (output_dir / "history.json").write_text(json.dumps(history, indent=2), encoding="utf-8")
 

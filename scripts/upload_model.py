@@ -277,7 +277,6 @@ def main() -> int:
     else:
         sys.exit(f"the checkpoints come from different recipes {sorted(recipes)}; pass --variation")
 
-
     api = KaggleApi()
     api.authenticate()
     owner = api.get_config_value("username")

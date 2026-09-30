@@ -17,8 +17,8 @@ from requests import HTTPError
 
 REPO = Path(__file__).resolve().parent.parent
 
-MODEL_SLUG = "solar-filament-segmentation"
-MODEL_TITLE = "Solar Filament Segmentation"
+MODEL_SLUG = "filament-segmentation-2026"
+MODEL_TITLE = "Solar Filament Segmentation 2026"
 FRAMEWORK = "pyTorch"
 LICENSE = "Attribution-NonCommercial 4.0 International (CC BY-NC 4.0)"
 # checkpoint keys that describe how it was trained and how its output is post-processed
@@ -73,11 +73,13 @@ def staged_name(path: Path) -> str:
     return f"{run}-{path.stem}" if run and path.parent != REPO else path.stem
 
 
-def stage(checkpoints: list[Path], stage_dir: Path) -> set[str]:
+def stage(checkpoints: list[Path], stage_dir: Path, extras: list[Path] | None = None) -> set[str]:
     """
     Copy the checkpoints and their calibration into a fresh ``stage_dir``, with a manifest.
     :param checkpoints: Checkpoint files to publish
     :param stage_dir: Directory to upload from; wiped first
+    :param extras: Further files to publish as they are, e.g. an ensemble's calibration
+        and learned filter
     :return: The recipe slugs of the staged checkpoints
     """
     if stage_dir.exists():
@@ -112,6 +114,9 @@ def stage(checkpoints: list[Path], stage_dir: Path) -> set[str]:
         pq_text = f"calibrated pq {pq:.4f}" if pq is not None else "uncalibrated"
         print(f"  staged {name}.pt  ({path.stat().st_size / 1e6:.1f} MB, {recipe_slug(checkpoint)}, {pq_text})")
 
+    for extra in extras or []:
+        shutil.copy2(extra, stage_dir / extra.name)
+        print(f"  staged {extra.name}  ({extra.stat().st_size / 1e6:.1f} MB)")
     (stage_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     return recipes
 
@@ -193,11 +198,8 @@ def upload(api, owner: str, stage_dir: Path, variation: str, notes: str, dry_run
                 "ownerSlug": owner,
                 "title": MODEL_TITLE,
                 "slug": MODEL_SLUG,
-                "subtitle": "Checkpoints for the Solar Filament Segmentation Challenge 2026",
                 "isPrivate": True,
-                "description": "Checkpoints written by `python -m src.main train` and tuned by `calibrate`. "
-                "Each variation is one training recipe; `manifest.json` lists every checkpoint with its "
-                "architecture, calibrated post-processing and validation Panoptic Quality.",
+                "description": "",
             },
         )
         if not dry_run:
@@ -219,9 +221,6 @@ def upload(api, owner: str, stage_dir: Path, variation: str, notes: str, dry_run
                 "modelSlug": MODEL_SLUG,
                 "instanceSlug": variation,
                 "framework": FRAMEWORK,
-                "overview": notes,
-                "usage": "Load with `src.inference.load_model(path, device)` from the "
-                "SolarFilamentSegmentationChallenge repository.",
                 "licenseName": LICENSE,
                 "fineTunable": False,
                 "trainingData": [],
@@ -253,6 +252,9 @@ def main() -> int:
     parser.add_argument("checkpoints", nargs="+", type=Path, help="checkpoint files, e.g. runs/<sweep>/<run>/best.pt")
     parser.add_argument("-m", "--message", help="version notes (default: UTC timestamp)")
     parser.add_argument("--variation", help="variation slug (default: derived from the checkpoints' recipe)")
+    parser.add_argument(
+        "--extra", nargs="*", type=Path, default=[], help="further files to publish, e.g. ensemble calibration and filter"
+    )
     parser.add_argument("--stage", type=Path, default=REPO / "build" / "kaggle-model", help="staging dir to upload from")
     parser.add_argument("--dry-run", action="store_true", help="stage and report, upload nothing")
     args = parser.parse_args()
@@ -263,7 +265,11 @@ def main() -> int:
         sys.exit(f"not found: {', '.join(missing)}")
 
     stage_dir = args.stage.resolve()
-    recipes = stage(checkpoints, stage_dir)
+    extras = [path.resolve() for path in args.extra]
+    missing_extras = [str(path) for path in extras if not path.is_file()]
+    if missing_extras:
+        sys.exit(f"not found: {', '.join(missing_extras)}")
+    recipes = stage(checkpoints, stage_dir, extras)
     if args.variation:
         variation = slugify(args.variation)
     elif len(recipes) == 1:

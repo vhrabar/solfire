@@ -7,6 +7,7 @@ import csv
 import json
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 from kaggle.api.kaggle_api_extended import KaggleApi
@@ -53,7 +54,7 @@ def model_name(checkpoint: Path) -> str:
     return f"{prefix} {checkpoint.stem}"
 
 
-def predict(checkpoints: list[Path], output_dir: Path, calibration: dict, calibration_path: Path | None = None) -> None:
+def predict(checkpoints: list[Path], output_dir: Path, calibration: dict, calibration_path: Path | None = None) -> float:
     """
     Write ``submission.csv`` for the test observations with the calibrated post-processing.
 
@@ -63,7 +64,7 @@ def predict(checkpoints: list[Path], output_dir: Path, calibration: dict, calibr
     :param output_dir: Where ``submission.csv`` goes
     :param calibration: The calibration to predict with
     :param calibration_path: File holding ``calibration`` when it is not stored in the checkpoint
-    :return: None
+    :return: Wall-clock seconds the prediction took, model loading included
     :raises SystemExit: When prediction fails
     """
     command = [
@@ -91,8 +92,48 @@ def predict(checkpoints: list[Path], output_dir: Path, calibration: dict, calibr
     if not calibration.get("tta", True):
         command.append("--no-tta")
     print("  " + " ".join(command[len(PYTHON) :]))
+    start = time.perf_counter()
     if subprocess.run(command, cwd=REPO).returncode:
         sys.exit(f"prediction failed for {' '.join(str(checkpoint) for checkpoint in checkpoints)}")
+    return time.perf_counter() - start
+
+
+def gpu_name() -> str:
+    """
+    :return: The first GPU's name as ``nvidia-smi`` reports it, or ``""`` without one
+    """
+    try:
+        result = subprocess.run(
+            ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"], capture_output=True, text=True, check=True
+        )
+    except OSError, subprocess.CalledProcessError:
+        return ""
+    return result.stdout.splitlines()[0].strip() if result.stdout.strip() else ""
+
+
+def write_manifest(
+    output_dir: Path, description: str, checkpoints: list[Path], calibration_path: Path | None, seconds: float
+) -> None:
+    """
+    Record what a ``submission.csv`` was predicted from and how long it took, for ``scripts/ledger.py``.
+    :param output_dir: Directory holding ``submission.csv``
+    :param description: The submission description
+    :param checkpoints: Checkpoints that were averaged
+    :param calibration_path: Calibration file, or ``None`` when it came from the checkpoint
+    :param seconds: Wall-clock prediction time
+    :return: None
+    """
+    manifest = {
+        "description": description,
+        "models": len(checkpoints),
+        "checkpoints": [str(checkpoint.relative_to(REPO)) for checkpoint in checkpoints],
+        "calibration": str(calibration_path.relative_to(REPO)) if calibration_path else None,
+        "predict_seconds": round(seconds, 1),
+        "seconds_per_image": round(seconds / TEST_OBSERVATIONS, 2),
+        "gpu": gpu_name(),
+        "predicted_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    (output_dir / "submission.json").write_text(json.dumps(manifest, indent=2) + "\n")
 
 
 def check_submission(path: Path) -> tuple[int, int]:
@@ -153,7 +194,9 @@ def submit_one(
     if fresh and not args.force_predict:
         print(f"  reusing {submission.relative_to(REPO)}")
     else:
-        predict(checkpoints, output_dir, calibration, calibration_path)
+        seconds = predict(checkpoints, output_dir, calibration, calibration_path)
+        write_manifest(output_dir, description, checkpoints, calibration_path, seconds)
+        print(f"  predicted in {seconds:.0f} s ({seconds / TEST_OBSERVATIONS:.2f} s per observation)")
 
     rows, observations = check_submission(submission)
     print(f"  {rows} filaments over {observations}/{TEST_OBSERVATIONS} test observations")
@@ -211,6 +254,10 @@ def main() -> int:
             submit_one(api, existing, model_name(checkpoint), [checkpoint], calibration, output_dir, args)
 
     if api is not None:
+        sys.path.insert(0, str(REPO))
+        from scripts.ledger import refresh
+
+        refresh(api, wait_seconds=900)
         print(f"\nscores appear at https://www.kaggle.com/competitions/{COMPETITION}/submissions")
     return 0
 

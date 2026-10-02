@@ -1,0 +1,3 @@
+[submodule "external/mleco-fits2jpegconvertor"]
+	path = external/mleco-fits2jpegconvertor
+	url = https://bitbucket.org/dataresearchlab/mleco-fits2jpegconvertor.git

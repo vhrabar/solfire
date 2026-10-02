@@ -24,7 +24,7 @@ from PIL import Image
 
 REPO = Path(__file__).resolve().parent.parent
 ARCHIVE = "https://gong2.nso.edu/HA/haf"
-CONVERTOR = REPO / "runs" / "external" / "mleco-fits2jpegconvertor" / "src"
+CONVERTOR = REPO / "external" / "mleco-fits2jpegconvertor" / "src"
 OUTPUT = REPO / "runs" / "external" / "gong"
 FRAME = re.compile(r'href="(\d{14})([A-Z])h\.fits\.fz"')
 OFFSETS = (-4, -2, 0, 2, 4)

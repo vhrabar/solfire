@@ -1,0 +1,60 @@
+{
+  "name": "lovasz60_effb3",
+  "seeds": [
+    1
+  ],
+  "base": {
+    "arch": "pretrained",
+    "decoder": "unet",
+    "encoder": "efficientnet-b3",
+    "encoder_weights": "imagenet",
+    "encoder_lr_scale": 0.25,
+    "crop": 512,
+    "crops_per_image": 7,
+    "foreground_prob": 0.7,
+    "pos_weight": 5,
+    "batch_size": 8,
+    "epochs": 60,
+    "lr": 0.0004,
+    "warmup_epochs": 3,
+    "amp": true,
+    "workers": 8,
+    "swa_epochs": 12,
+    "val_limit": 64,
+    "val_tile": 512,
+    "val_overlap": 0.0,
+    "tile_batch": 8,
+    "raster": "coco",
+    "folds": 5,
+    "targets": "mean",
+    "lovasz_weight": 0.5
+  },
+  "configs": [
+    {
+      "name": "lovasz60-unet-effb3-fold0",
+      "fold": 0
+    },
+    {
+      "name": "lovasz60-unet-effb3-fold1",
+      "fold": 1
+    },
+    {
+      "name": "lovasz60-unet-effb3-fold2",
+      "fold": 2
+    },
+    {
+      "name": "lovasz60-unet-effb3-fold3",
+      "fold": 3
+    },
+    {
+      "name": "lovasz60-unet-effb3-fold4",
+      "fold": 4
+    }
+  ],
+  "calibrate": {
+    "tile": 512,
+    "overlap": 0.25,
+    "tile_batch": 8,
+    "workers": 8
+  }
+}

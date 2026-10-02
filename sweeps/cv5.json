@@ -18,7 +18,7 @@
     "lr": 0.0004,
     "warmup_epochs": 3,
     "amp": true,
-    "workers": 12,
+    "workers": 8,
     "swa_epochs": 12,
     "val_limit": 64,
     "val_tile": 512,

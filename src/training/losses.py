@@ -342,6 +342,54 @@ class CategoryHeadLoss(nn.Module):
         return loss + self.weight * category
 
 
+class MagneticHeadLoss(nn.Module):
+    """
+    The segmentation objective on the first channel plus an auxiliary magnetic head.
+
+    Two extra channels regress targets derived from the co-temporal GONG magnetogram:
+    proximity to a polarity-inversion line, where filaments sit, and strong single-polarity
+    flux, where sunspots and plage sit. The magnetogram is a training-only signal; the head
+    is dropped at inference and the model still sees only the H-alpha image.
+    """
+
+    def __init__(self, base: nn.Module, weight: float) -> None:
+        """
+        :param base: Objective for the filament channel
+        :param weight: Weight of the magnetic cross entropy
+        """
+        super().__init__()
+        self.base = base
+        self.weight = float(weight)
+
+    def set_epoch(self, epoch: int) -> None:
+        """
+        Pass the epoch on to a base objective that ramps its terms in.
+        :param epoch: Zero-based epoch index
+        :return: None
+        """
+        set_epoch = getattr(self.base, "set_epoch", None)
+        if callable(set_epoch):
+            set_epoch(epoch)
+
+    def forward(self, logits: Tensor, targets: Tensor) -> Tensor:
+        """
+        :param logits: ``(B, 3, H, W)``: the filament logit, then PIL proximity and strong flux
+        :param targets: ``(B, 4, H, W)``: the filament target, the two magnetic targets in
+            ``[0, 1]``, then the mask of pixels a magnetogram covers
+        :return: Scalar loss
+        """
+        loss = cast(Tensor, self.base(logits[:, :1], targets[:, :1]))
+        valid = targets[:, 3:4]
+        if not valid.any():
+            return loss + 0.0 * logits[:, 1:3].sum()
+        with torch.autocast(device_type=logits.device.type, enabled=False):
+            per_pixel = nn.functional.binary_cross_entropy_with_logits(
+                logits[:, 1:3].float(), targets[:, 1:3].float(), reduction="none"
+            )
+            magnetic = (per_pixel * valid).sum() / (2 * valid.sum())
+        return loss + self.weight * magnetic
+
+
 def build_criterion(base: nn.Module, args) -> nn.Module:
     """
     Wrap ``base`` in :class:`MorphologyLoss` when any morphology weight is set.

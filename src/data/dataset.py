@@ -389,6 +389,7 @@ class FilamentCropDataset(Dataset):
         hard_negatives=None,
         hard_negative_prob=0.0,
         categories=False,
+        magnetic=None,
     ):
         """
         :param image_ids: Image ids to sample from, or ``None`` for all of them
@@ -410,9 +411,13 @@ class FilamentCropDataset(Dataset):
             from the uniformly placed crops
         :param categories: Also return one indicator channel per category of
             :data:`CATEGORY_CHANNELS` after the filament target, for an auxiliary head
+        :param magnetic: :class:`~src.data.magnetogram.MagneticTargets` whose PIL proximity,
+            strong-flux and valid channels follow the filament target, or ``None``
         """
         if targets not in TARGETS:
             raise ValueError(f"unknown targets {targets!r}, expected one of {TARGETS}")
+        if categories and magnetic is not None:
+            raise ValueError("the category and magnetic heads cannot be combined")
         images, by_image = load_annotations(annotations_path)
         self.images_dir = Path(images_dir)
         self.crop = crop
@@ -430,6 +435,7 @@ class FilamentCropDataset(Dataset):
         self.hard_negatives = hard_negatives or {}
         self.hard_negative_prob = hard_negative_prob
         self.categories = categories
+        self.magnetic = magnetic
 
         # each sample is the list of records whose masks are averaged into its target
         if targets == "mean":
@@ -529,6 +535,9 @@ class FilamentCropDataset(Dataset):
             target += mask
         target /= len(per_record)
 
+        if self.magnetic is not None:
+            extra = self.magnetic.window(record["file_name"], x, y, self.crop, size)
+            return image, torch.from_numpy(np.concatenate([target[None], extra]))
         if categories is None:
             return image, torch.from_numpy(target)
         return image, torch.from_numpy(np.concatenate([target[None], categories.astype(np.float32)]))

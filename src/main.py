@@ -23,6 +23,7 @@ from .data import (
     preprocessed_dir,
     validation_split,
 )
+from .data.magnetogram import MagneticTargets
 from .inference import (
     DEFAULT_OVERLAP,
     MIN_AREA,
@@ -43,6 +44,7 @@ from .training import (
     AugmentedDataset,
     BCEDiceLoss,
     CategoryHeadLoss,
+    MagneticHeadLoss,
     MorphologyLoss,
     build_criterion,
     build_optimizer,
@@ -159,6 +161,18 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=0.0,
         help="pretrained only: weight of an auxiliary head predicting the filament category (Left/Right/Unidentifiable); 0 disables it",
+    )
+    train.add_argument(
+        "--magnetic-head-weight",
+        type=float,
+        default=0.0,
+        help="pretrained only: weight of a training-only head regressing GONG magnetogram targets "
+        "(PIL proximity, strong flux); 0 disables it",
+    )
+    train.add_argument(
+        "--magnetic-targets",
+        default="runs/external/gong_bzi/targets",
+        help="directory of precomputed magnetic targets (scripts/magnetic_targets.py)",
     )
     train.add_argument("--lovasz-weight", type=float, default=0.0, help="weight of the Lovász hinge term; 0 leaves it out")
     train.add_argument(
@@ -329,7 +343,7 @@ def build_model_config(args) -> dict:
             "decoder": args.decoder,
             "encoder": args.encoder,
             "encoder_weights": weights,
-            "aux_channels": 3 if args.category_head_weight > 0 else 0,
+            "aux_channels": 3 if args.category_head_weight > 0 else 2 if args.magnetic_head_weight > 0 else 0,
         }
 
     stages = len(args.embed_dims)
@@ -379,6 +393,7 @@ def build_datasets(args):
         hard_negatives=json.loads(Path(args.hard_negatives).read_text()) if args.hard_negatives else None,
         hard_negative_prob=args.hard_negative_prob if args.hard_negatives else 0.0,
         categories=args.category_head_weight > 0,
+        magnetic=MagneticTargets(args.magnetic_targets) if args.magnetic_head_weight > 0 else None,
         **common,
     )
     valid_dataset = FilamentDataset(val_ids, size=native_size, **common)
@@ -491,6 +506,16 @@ def run_training(args, device) -> None:
         if args.arch != "pretrained":
             raise SystemExit("--category-head-weight needs --arch pretrained")
         criterion = CategoryHeadLoss(criterion, args.category_head_weight)
+    if args.magnetic_head_weight > 0:
+        if args.arch != "pretrained":
+            raise SystemExit("--magnetic-head-weight needs --arch pretrained")
+        if args.category_head_weight > 0:
+            raise SystemExit("--magnetic-head-weight and --category-head-weight cannot be combined")
+        if args.pseudo_labels:
+            raise SystemExit("--magnetic-head-weight does not support --pseudo-labels yet")
+        if not args.crop:
+            raise SystemExit("--magnetic-head-weight needs --crop")
+        criterion = MagneticHeadLoss(criterion, args.magnetic_head_weight)
     criterion = criterion.to(device)
     if isinstance(criterion, MorphologyLoss):
         terms = [
@@ -524,6 +549,8 @@ def run_training(args, device) -> None:
         "preprocess": args.preprocess,
         "lovasz_weight": args.lovasz_weight,
         "category_head_weight": args.category_head_weight,
+        "magnetic_head_weight": args.magnetic_head_weight,
+        "magnetic_targets": args.magnetic_targets if args.magnetic_head_weight > 0 else None,
         "init_checkpoint": args.init_checkpoint,
         "hard_negatives": args.hard_negatives,
         "hard_negative_prob": args.hard_negative_prob if args.hard_negatives else 0.0,

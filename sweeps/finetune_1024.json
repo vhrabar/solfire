@@ -1,0 +1,65 @@
+{
+  "name": "finetune_1024",
+  "seeds": [
+    1
+  ],
+  "base": {
+    "arch": "pretrained",
+    "decoder": "unetplusplus",
+    "encoder": "resnet34",
+    "encoder_weights": "imagenet",
+    "encoder_lr_scale": 0.25,
+    "crop": 1024,
+    "crops_per_image": 2,
+    "foreground_prob": 0.7,
+    "pos_weight": 5,
+    "batch_size": 2,
+    "epochs": 8,
+    "lr": 0.0001,
+    "warmup_epochs": 0,
+    "amp": true,
+    "workers": 12,
+    "swa_epochs": 0,
+    "val_limit": 64,
+    "val_tile": 1024,
+    "val_overlap": 0.0,
+    "tile_batch": 2,
+    "raster": "coco",
+    "folds": 5,
+    "targets": "mean",
+    "lovasz_weight": 0.5
+  },
+  "calibrate": {
+    "tile": 1024,
+    "overlap": 0.25,
+    "tile_batch": 2,
+    "workers": 8
+  },
+  "configs": [
+    {
+      "name": "lovasz-1024-fold0",
+      "fold": 0,
+      "init_checkpoint": "runs/cv5_1024/c01_unetpp-r34-1024-fold0_seed1/best.pt"
+    },
+    {
+      "name": "lovasz-1024-fold1",
+      "fold": 1,
+      "init_checkpoint": "runs/cv5_1024/c02_unetpp-r34-1024-fold1_seed1/best.pt"
+    },
+    {
+      "name": "lovasz-1024-fold2",
+      "fold": 2,
+      "init_checkpoint": "runs/cv5_1024/c03_unetpp-r34-1024-fold2_seed1/best.pt"
+    },
+    {
+      "name": "lovasz-1024-fold3",
+      "fold": 3,
+      "init_checkpoint": "runs/cv5_1024/c04_unetpp-r34-1024-fold3_seed1/best.pt"
+    },
+    {
+      "name": "lovasz-1024-fold4",
+      "fold": 4,
+      "init_checkpoint": "runs/cv5_1024/c05_unetpp-r34-1024-fold4_seed1/best.pt"
+    }
+  ]
+}

@@ -13,6 +13,7 @@ dependencies = [
     "timm==1.0.30",
     "segmentation-models-pytorch==0.5.0",
     "scipy==1.18.1",
+    "scipy-stubs==1.18.1.1",
     "scikit-image==0.26.0",
     "scikit-learn==1.9.1",
     "astropy==8.0.1",
@@ -20,11 +21,11 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "mypy",
     "ruff",
     "py-spy",
     "types-tqdm",
     "pytest",
+    "pyrefly",
 ]
 cpu      = ["torch==2.14.1", "torchvision==0.29.1"]
 cuda-130 = ["torch==2.14.1", "torchvision==0.29.1"]
@@ -110,28 +111,28 @@ indent-style          = "space"
 docstring-code-format = true
 
 
-[tool.mypy]
-python_version = "3.14"
-files          = ["src"]
-
-
-check_untyped_defs   = true
-warn_return_any      = true
-warn_redundant_casts = true
-warn_unused_configs  = true
-warn_unused_ignores  = true
-show_error_codes     = true
-pretty               = true
-
-
-[[tool.mypy.overrides]]
-module = ["astropy.*", "pycocotools.*", "segmentation_models_pytorch.*", "scipy.*", "sklearn.*", "threadpoolctl.*"]
-ignore_missing_imports = true
+[tool.pyrefly]
+project-includes = ["src"]
+python-version = "3.14.0"
+preset = "legacy"
+check-unannotated-defs = true
+infer-return-types = "never"
+min-severity = "warn"
+replace-imports-with-any = ["pycocotools.*"]
+baseline = "baseline.json"
+baseline-error-level = "info"
+ignore-missing-imports = [
+    "astropy.*",
+    "segmentation_models_pytorch.*",
+    "scipy.*",
+    "sklearn.*",
+    "threadpoolctl.*",
+]
 
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 filterwarnings = [
-    # pycocotools' decoder predates numpy 2's copy keyword; harmless and not ours to fix
+    # pycocotools' decoder predates numpy 2's copy keyword
     "ignore:__array__ implementation doesn't accept a copy keyword:DeprecationWarning:pycocotools",
 ]

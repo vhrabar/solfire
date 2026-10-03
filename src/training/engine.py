@@ -6,6 +6,7 @@ import json
 import random
 import time
 from pathlib import Path
+from typing import TypedDict
 
 import numpy as np
 import torch
@@ -13,6 +14,19 @@ from tqdm import tqdm
 
 from .metrics import DEFAULT_THRESHOLDS, PanopticQuality, grid_edges
 from .plots import plot_evaluation
+
+
+class ResumeState(TypedDict):
+    """
+    Where :func:`fit` starts: epoch, best result so far, early-stopping count and history.
+    """
+
+    start_epoch: int
+    best_pq: float
+    best_epoch: int
+    best_threshold: float
+    epochs_without_improvement: int
+    history: list[dict]
 
 
 def autocast_context(device, enabled):
@@ -240,7 +254,7 @@ def _resume_fields(
     }
 
 
-def _load_resume_state(last_path, model, optimizer, scheduler, scaler, averaged, epochs, device) -> dict:
+def _load_resume_state(last_path, model, optimizer, scheduler, scaler, averaged, epochs, device) -> ResumeState:
     """
     Restore model/optimizer/scheduler/scaler/SWA-average/RNG from ``last_path`` in place.
 
@@ -252,8 +266,7 @@ def _load_resume_state(last_path, model, optimizer, scheduler, scaler, averaged,
     :param averaged: SWA :class:`~torch.optim.swa_utils.AveragedModel` to restore, or ``None``
     :param epochs: Total epochs requested for this call, to size the remaining range
     :param device: Device the checkpoint is loaded onto
-    :return: ``{"start_epoch", "best_pq", "best_epoch", "best_threshold",
-        "epochs_without_improvement", "history"}``
+    :return: The state :func:`fit` continues from
     """
     checkpoint = torch.load(last_path, map_location=device, weights_only=False)
     model.load_state_dict(checkpoint["model_state"])
@@ -278,7 +291,7 @@ def _load_resume_state(last_path, model, optimizer, scheduler, scaler, averaged,
         )
 
     start_epoch = min(int(checkpoint.get("epoch", 0)), epochs)
-    state = {
+    state: ResumeState = {
         "start_epoch": start_epoch,
         "best_pq": float(checkpoint.get("best_pq", -1.0)),
         "best_epoch": int(checkpoint.get("best_epoch", -1)),
@@ -357,6 +370,7 @@ def fit(
     swa_start = epochs - swa_epochs
 
     last_path = output_dir / "last.pt"
+    state: ResumeState
     if resume and last_path.is_file():
         state = _load_resume_state(last_path, model, optimizer, scheduler, scaler, averaged, epochs, device)
     else:

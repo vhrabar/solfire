@@ -248,9 +248,9 @@ class MorphologyLoss(nn.Module):
         self.close_weight = float(close_weight)
         self.cldice_weight = float(cldice_weight)
         self.kernel_shape = kernel_shape
-        self.kernel_size = int(kernel_size)
-        self.skeleton_iters = int(skeleton_iters)
-        self.warmup_epochs = int(warmup_epochs)
+        self.kernel_size = kernel_size
+        self.skeleton_iters = skeleton_iters
+        self.warmup_epochs = warmup_epochs
         self._scale = 1.0
 
         self.terms_active = max(self.open_weight, self.close_weight, self.cldice_weight) > 0.0

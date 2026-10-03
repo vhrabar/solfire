@@ -24,7 +24,7 @@ jobs:
         run: uv run --group cpu --group dev ruff format --check src scripts tests
 
       - name: Types
-        run: uv run --group cpu --group dev mypy
+        run: uv run --group cpu --group dev pyrefly check
 
       - name: Tests
         run: uv run --group cpu --group dev pytest -q

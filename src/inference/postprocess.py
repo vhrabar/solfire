@@ -25,7 +25,7 @@ def connected_components(mask) -> tuple[np.ndarray, int]:
     :return: Tuple of (``(H, W)`` int32 label array with 0 as background, number of labels)
     """
     labels, n_labels = ndimage.label(mask, structure=EIGHT_CONNECTED)
-    return labels.astype(np.int32, copy=False), int(n_labels)
+    return labels.astype(np.int32, copy=False), n_labels
 
 
 def dilate(mask: np.ndarray, radius: int) -> np.ndarray:

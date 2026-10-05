@@ -7,8 +7,6 @@ from typing import cast
 
 import numpy as np
 import torch
-from serron import functional as sf
-from serron import structuring_element as sse
 from torch import Tensor, nn
 
 from ..data import polygon_to_mask
@@ -31,6 +29,8 @@ def _structuring_element(shape: str, size: int, device: torch.device) -> Tensor:
         raise ValueError(f"structuring element size must be a positive odd integer, got {size}")
     if shape not in KERNEL_SHAPES:
         raise ValueError(f"unknown structuring element shape {shape!r}, expected one of {KERNEL_SHAPES}")
+    from serron import structuring_element as sse
+
     if shape == "square":
         return sse.square(size, device=device)
     if shape == "cross":
@@ -149,6 +149,8 @@ def opening_residual(probabilities: Tensor, kernel: Tensor) -> Tensor:
     :param kernel: serron flat structuring element from :func:`_structuring_element`
     :return: Scalar penalty in ``[0, 1]``
     """
+    from serron import functional as sf
+
     return _mean_over_batch(torch.relu(probabilities - sf.opening(probabilities, kernel)))
 
 
@@ -160,6 +162,8 @@ def closing_residual(probabilities: Tensor, kernel: Tensor) -> Tensor:
     :param kernel: serron flat structuring element from :func:`_structuring_element`
     :return: Scalar penalty in ``[0, 1]``
     """
+    from serron import functional as sf
+
     return _mean_over_batch(torch.relu(sf.closing(probabilities, kernel) - probabilities))
 
 
@@ -173,6 +177,8 @@ def soft_skeleton(probabilities: Tensor, kernel: Tensor, iterations: int) -> Ten
         the skeleton should thin, measured in structuring elements
     :return: Soft skeleton in ``[0, 1]``, the shape of the input
     """
+    from serron import functional as sf
+
     eroded = probabilities
     skeleton = torch.relu(eroded - sf.opening(eroded, kernel))
     for _ in range(iterations):

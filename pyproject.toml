@@ -17,6 +17,7 @@ dependencies = [
     "scikit-image==0.26.0",
     "scikit-learn==1.9.1",
     "astropy==8.0.1",
+    "kagglehub==1.0.2",
 ]
 
 [dependency-groups]
@@ -100,6 +101,7 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "__init__.py"  = ["F401"]
 "*.ipynb"      = ["E402", "F401", "F811"]
+"notebook/*.py" = ["E402"]
 
 
 [tool.ruff.lint.isort]

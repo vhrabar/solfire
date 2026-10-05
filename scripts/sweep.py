@@ -7,6 +7,7 @@ import codecs
 import csv
 import itertools
 import json
+import shlex
 import statistics
 import subprocess
 import sys
@@ -20,6 +21,7 @@ from scripts.pick_checkpoint import best_checkpoint
 REPO = Path(__file__).resolve().parent.parent
 BOOL_OPTIONAL = {"bilinear", "tta"}
 CALIBRATION_FIELDS = ("pq", "threshold", "offset", "min_area")
+DEFAULT_LAUNCHER = "uv run --group cuda-132 python"
 
 
 def parse_scalar(text: str):
@@ -198,12 +200,9 @@ def run_one(config: dict, seed: int, sweep_dir: Path, calibrate_args: list[str],
                 "min_area": calibration["min_area"],
                 "status": "cached",
             }
+    launcher = shlex.split(args.launcher)
     train_cmd = [
-        "uv",
-        "run",
-        "--group",
-        "cuda-132",
-        "python",
+        *launcher,
         "-m",
         "src.main",
         "--seed",
@@ -215,7 +214,7 @@ def run_one(config: dict, seed: int, sweep_dir: Path, calibrate_args: list[str],
         str(run_dir),
         "--resume",
     ]
-    calibrate_cmd_prefix = ["uv", "run", "--group", "cuda-132", "python", "-m", "src.main", *device, "calibrate"]
+    calibrate_cmd_prefix = [*launcher, "-m", "src.main", *device, "calibrate"]
 
     if args.dry_run:
         print("  train:    " + " ".join(train_cmd))
@@ -305,6 +304,11 @@ def main() -> None:
     parser.add_argument("--seeds", help="comma-separated, overrides the spec")
     parser.add_argument("--name", help="sweep name -> runs/<name>/, overrides the spec")
     parser.add_argument("--device", help="passed through to src.main")
+    parser.add_argument(
+        "--launcher",
+        default=DEFAULT_LAUNCHER,
+        help="Python command the runs start with, e.g. 'python' where uv is unavailable (Kaggle)",
+    )
     parser.add_argument("--only", help="run only configs whose name contains one of these comma-separated substrings")
     parser.add_argument("--max-runs", type=int, default=0, help="stop after this many (config, seed) runs; 0 is no limit")
     parser.add_argument("--force", action="store_true", help="retrain configs that already have a calibration.json")

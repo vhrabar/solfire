@@ -11,7 +11,10 @@
 # | `unetpp-r34` | U-Net++ | ResNet-34 | 0.4503 |
 # | `unet-mitb2` | U-Net | MiT-B2 (SegFormer) | 0.4514 |
 # | `unet-hrnet32` | U-Net | HRNet-W32 | 0.4521 |
-# | **ensemble** | | | **0.4564** |
+# | **ensemble** | | | **0.4594** |
+#
+# The ensemble's post-processing is tuned on the same predictions it is scored on. Tuned on four folds and scored
+# on the fifth instead, it reaches 0.4564; that is the estimate to expect on unseen observations. Public LB: 0.40.
 #
 # **Recipe**, per family and fold:
 # 1. 40 epochs from ImageNet on random 512 px windows at native resolution (filaments are ~11 px wide, so
@@ -51,8 +54,8 @@ TRAIN = False  # True: train every model from the competition data; False: fetch
 SEED = 1
 FOLDS = 5  # grouped by observation, the assignment is fixed (seed 0) whatever SEED is
 
-MODEL_HANDLE = "vhrabar/filament-segmentation-2026/pyTorch/cv15-hrnet/1"  # Kaggle Models: 15 checkpoints + calibration
-CALIBRATION_NAME = "cv15-hrnet-oof.calibration.json"
+MODEL_HANDLE = "vhrabar/filament-segmentation-2026/pyTorch/cv15-hrnet/2"  # Kaggle Models: 15 checkpoints + calibration
+CALIBRATION_NAME = "cv15-hrnet-fine-oof.calibration.json"
 WEIGHTS_DIR = None  # a local folder holding the checkpoints and the calibration; None downloads MODEL_HANDLE
 
 FAMILIES = {
@@ -78,10 +81,10 @@ STAGES = {
 }
 TILE, OVERLAP, TILE_BATCH = 512, 0.25, 8
 CALIBRATION_GRID = {
-    "threshold": (0.25, 0.3, 0.4, 0.5, 0.65),
+    "threshold": (0.25, 0.3, 0.325, 0.35, 0.375, 0.4, 0.45, 0.5, 0.65),
     "offset": (-2, -1, 0, 1),  # signed one-pixel dilation/erosion steps
     "min_area": (0, 256),
-    "min_score": (0.0, 0.7, 0.8, 0.85, 0.88, 0.91, 0.94),
+    "min_score": (0.0, 0.6, 0.625, 0.65, 0.675, 0.7, 0.725, 0.75, 0.8, 0.85, 0.88, 0.91, 0.94),
 }
 
 SUBMISSION_SIZE = 2048
@@ -704,6 +707,8 @@ def train_run(family: str, stage: str, fold: int, init=None) -> Path:
         num_workers=WORKERS,
         pin_memory=DEVICE.type == "cuda",
         persistent_workers=WORKERS > 0,
+        # classes defined in a notebook cannot be pickled into a spawned worker, so fork it
+        multiprocessing_context="fork" if WORKERS > 0 else None,
     )
     model = Pretrained(**FAMILIES[family], encoder_weights="imagenet").to(DEVICE)
     if init is not None:

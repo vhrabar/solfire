@@ -34,6 +34,10 @@ COLUMNS = [
     "status",
     "prediction_dir",
 ]
+# every submission was predicted on this machine; manifests only exist for the ones submit.py timed
+GPU = "NVIDIA GeForce RTX 5070 Ti"
+# descriptions as they should read in the ledger, for submissions whose Kaggle description is wrong
+RENAMED = {"test?best": "base_best"}
 ENSEMBLE = re.compile(r"^(?P<parent>[^/ ]+)/(?P<stem>\S+) \((?P<models>\d+) models\)")
 SINGLE = re.compile(r"^(?P<sweep>[^/ ]+)/(?P<run>\S+) (?P<checkpoint>\S+) \| val pq")
 VAL_PQ = re.compile(r"\| val pq (?P<pq>[0-9.]+)")
@@ -90,14 +94,14 @@ def row(submission) -> dict:
     return {
         "ref": submission.ref,
         "date": str(submission.date)[:19],
-        "description": description,
+        "description": RENAMED.get(description, description),
         "models": manifest.get("models", model_count(description)),
         "val_pq": val_pq["pq"] if val_pq else "",
         "public": submission.public_score or "",
         "private": submission.private_score or "",
         "seconds_per_image": manifest.get("seconds_per_image", ""),
         "predict_seconds": manifest.get("predict_seconds", ""),
-        "gpu": manifest.get("gpu", ""),
+        "gpu": manifest.get("gpu") or GPU,
         "status": str(submission.status).removeprefix("SubmissionStatus."),
         "prediction_dir": directory.relative_to(REPO) if directory is not None and directory.is_dir() else "",
     }
@@ -136,9 +140,20 @@ def same_rows(first: Path, second: Path) -> bool:
         return sorted(a.read().splitlines()) == sorted(b.read().splitlines())
 
 
+def measured(manifest: Path) -> bool:
+    """
+    :param manifest: A submission's timing manifest
+    :return: Whether it holds a measured prediction time, rather than none or an estimate backfilled
+        from a log's progress bar, which leaves out model loading
+    """
+    if not manifest.is_file():
+        return False
+    return not json.loads(manifest.read_text()).get("note", "").startswith("backfilled")
+
+
 def retime(api: KaggleApi) -> None:
     """
-    Predict again every ``submit.py`` submission that has no timing manifest, and record the time.
+    Predict again every ``submit.py`` submission without a measured time, and record the time.
 
     Predictions go to a scratch directory, so the submitted ``submission.csv`` is never touched; the
     manifest notes whether the new output is identical to it.
@@ -149,7 +164,7 @@ def retime(api: KaggleApi) -> None:
     for submission in reversed(submissions(api)):
         description = submission.description or ""
         directory = prediction_dir(description)
-        if directory is None or not (directory / "submission.csv").is_file() or (directory / MANIFEST).is_file():
+        if directory is None or not (directory / "submission.csv").is_file() or measured(directory / MANIFEST):
             continue
         found = sources(description)
         if found is None:
@@ -182,10 +197,11 @@ def refresh(api: KaggleApi, output: Path = LEDGER, wait_seconds: float = 0) -> N
     while any("PENDING" in str(s.status) for s in found) and time.monotonic() < deadline:
         time.sleep(20)
         found = submissions(api)
-    rows = [row(submission) for submission in reversed(found)]
+    # submissions without a description were not made by submit.py and carry nothing to trace them by
+    rows = [row(submission) for submission in reversed(found) if submission.description]
     output.parent.mkdir(parents=True, exist_ok=True)
     with open(output, "w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=COLUMNS)
+        writer = csv.DictWriter(handle, fieldnames=COLUMNS, lineterminator="\n")
         writer.writeheader()
         writer.writerows(rows)
     timed = sum(1 for r in rows if r["seconds_per_image"] != "")
@@ -203,7 +219,7 @@ def main() -> int:
     parser.add_argument("--output", type=Path, default=LEDGER, help="where to write the ledger")
     parser.add_argument("--wait", type=float, default=0, help="seconds to wait for pending submissions to be scored")
     parser.add_argument(
-        "--retime", action="store_true", help="predict again every submission that has no timing, then write the ledger"
+        "--retime", action="store_true", help="predict again every submission without a measured time, then write the ledger"
     )
     args = parser.parse_args()
     api = KaggleApi()

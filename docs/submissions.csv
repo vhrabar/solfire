@@ -1,6 +1,6 @@
 ref,date,description,models,val_pq,public,private,seconds_per_image,predict_seconds,gpu,status,prediction_dir
 55184544,2026-08-02 11:29:04,base_last,,,0.03,,,,NVIDIA GeForce RTX 5070 Ti,COMPLETE,
-55184577,2026-08-02 11:30:10,test_best,,,0.03,,,,NVIDIA GeForce RTX 5070 Ti,COMPLETE,
+55184577,2026-08-02 11:30:10,base_best,,,0.03,,,,NVIDIA GeForce RTX 5070 Ti,COMPLETE,
 55273231,2026-08-05 14:46:35,SegFormer test,,,0.02,,,,NVIDIA GeForce RTX 5070 Ti,COMPLETE,
 55279321,2026-08-05 19:35:32,TransUnet test v1,,,0.12,,,,NVIDIA GeForce RTX 5070 Ti,COMPLETE,
 55279387,2026-08-05 19:39:11,TransUnet v2,,,0.12,,,,NVIDIA GeForce RTX 5070 Ti,COMPLETE,
@@ -20,3 +20,6 @@ ref,date,description,models,val_pq,public,private,seconds_per_image,predict_seco
 56712868,2026-09-30 16:15:16,ensembles/cv10-lovasz-oof (10 models) | val pq 0.4507,10,0.4507,0.40,,8.15,1467.1,NVIDIA GeForce RTX 5070 Ti,COMPLETE,runs/ensembles/predictions_cv10-lovasz-oof
 56769824,2026-10-02 08:33:01,ensembles/cv15-mitb2-oof (15 models) | val pq 0.4553,15,0.4553,0.39,,11.84,2131.0,NVIDIA GeForce RTX 5070 Ti,COMPLETE,runs/ensembles/predictions_cv15-mitb2-oof
 56771474,2026-10-02 10:05:43,ensembles/cv10-r34-mitb2-oof (10 models) | val pq 0.4539,10,0.4539,0.40,,8.58,1544.0,NVIDIA GeForce RTX 5070 Ti,COMPLETE,runs/ensembles/predictions_cv10-r34-mitb2-oof
+56847948,2026-10-05 08:58:04,ensembles/cv35-hrnet-oof (35 models) | val pq 0.4558,35,0.4558,0.40,,28.5,5129.5,NVIDIA GeForce RTX 5070 Ti,COMPLETE,runs/ensembles/predictions_cv35-hrnet-oof
+56848890,2026-10-05 09:48:02,ensembles/cv15-hrnet-oof (15 models) | val pq 0.4564,15,0.4564,0.40,,13.55,2439.8,NVIDIA GeForce RTX 5070 Ti,COMPLETE,runs/ensembles/predictions_cv15-hrnet-oof
+56858672,2026-10-05 18:00:13,ensembles/cv15-hrnet-fine-oof (15 models) | val pq 0.4594,15,0.4594,0.40,,13.53,2435.8,NVIDIA GeForce RTX 5070 Ti,COMPLETE,runs/ensembles/predictions_cv15-hrnet-fine-oof

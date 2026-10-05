@@ -34,10 +34,11 @@ from .metrics import (
     pq_from_counts,
 )
 
-CALIBRATION_THRESHOLDS = (0.25, 0.3, 0.4, 0.5, 0.65)
+# fine around the optimum: chosen on 4 folds this grid scores +0.0016 PQ on the 5th over a coarse one
+CALIBRATION_THRESHOLDS = (0.25, 0.3, 0.325, 0.35, 0.375, 0.4, 0.45, 0.5, 0.65)
 DEFAULT_OFFSETS = (-2, -1, 0, 1)
 DEFAULT_MIN_AREAS = (0, 128, 256, 512)
-DEFAULT_MIN_SCORES = (0.0, 0.7, 0.8, 0.85, 0.88, 0.91, 0.94)
+DEFAULT_MIN_SCORES = (0.0, 0.6, 0.625, 0.65, 0.675, 0.7, 0.725, 0.75, 0.8, 0.85, 0.88, 0.91, 0.94)
 CACHE_SCALE = 255
 
 

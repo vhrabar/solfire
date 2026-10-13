@@ -15,6 +15,7 @@ from pycocotools import mask as coco_mask
 from torch.utils.data import Dataset
 
 from .preprocess import IMAGE_SUFFIXES, observation_path
+from .structure import spine_heatmap, thickness_weight, thin_mask
 
 ANNOTATIONS_NAME = "MAGFiLO_1.0_Annotations_kaggle2026_train.json"
 REPO_DATA = Path(__file__).resolve().parents[2] / "data"
@@ -390,6 +391,8 @@ class FilamentCropDataset(Dataset):
         hard_negative_prob=0.0,
         categories=False,
         magnetic=None,
+        thickness_cap=0.0,
+        thin_head=False,
     ):
         """
         :param image_ids: Image ids to sample from, or ``None`` for all of them
@@ -413,11 +416,16 @@ class FilamentCropDataset(Dataset):
             :data:`CATEGORY_CHANNELS` after the filament target, for an auxiliary head
         :param magnetic: :class:`~src.data.magnetogram.MagneticTargets` whose PIL proximity,
             strong-flux and valid channels follow the filament target, or ``None``
+        :param thickness_cap: Above ``0``, a per-pixel loss weight channel follows the filament
+            target, growing as the annotated structure gets thinner, up to this value
+            (:func:`~src.data.structure.thickness_weight`)
+        :param thin_head: Append the thin mask and the spine heatmap of the annotations as
+            the last two channels, for an auxiliary head
         """
         if targets not in TARGETS:
             raise ValueError(f"unknown targets {targets!r}, expected one of {TARGETS}")
-        if categories and magnetic is not None:
-            raise ValueError("the category and magnetic heads cannot be combined")
+        if sum((bool(categories), magnetic is not None, bool(thickness_cap) or thin_head)) > 1:
+            raise ValueError("the category, magnetic and thin-structure targets cannot be combined")
         images, by_image = load_annotations(annotations_path)
         self.images_dir = Path(images_dir)
         self.crop = crop
@@ -436,6 +444,8 @@ class FilamentCropDataset(Dataset):
         self.hard_negative_prob = hard_negative_prob
         self.categories = categories
         self.magnetic = magnetic
+        self.thickness_cap = float(thickness_cap)
+        self.thin_head = thin_head
 
         # each sample is the list of records whose masks are averaged into its target
         if targets == "mean":
@@ -504,7 +514,8 @@ class FilamentCropDataset(Dataset):
         Draw one crop and rasterise the annotations that reach into it.
         :param index: Position in the epoch; samples are cycled ``repeat`` times
         :return: Tuple of (``(1, crop, crop)`` image tensor, ``(crop, crop)`` float mask,
-            the fraction of the sample's records that mark each pixel)
+            the fraction of the sample's records that mark each pixel; ``(C, crop, crop)``
+            with the auxiliary channels after it)
         """
         group = self.samples[index % len(self.samples)]
         record = self.records[group[0]]
@@ -522,8 +533,12 @@ class FilamentCropDataset(Dataset):
 
         target = np.zeros((self.crop, self.crop), dtype=np.float32)
         categories = np.zeros((len(CATEGORY_CHANNELS), self.crop, self.crop), dtype=bool) if self.categories else None
+        union = np.zeros((self.crop, self.crop), dtype=bool)
+        thin = np.zeros((self.crop, self.crop), dtype=np.float32) if self.thin_head else None
+        spine = np.zeros((self.crop, self.crop), dtype=np.float32) if self.thin_head else None
         for annotations in per_record:
             mask = np.zeros((self.crop, self.crop), dtype=bool)
+            spines = []
             for ann in annotations:
                 x0, y0, x1, y1 = polygon_bounds(ann["segmentation"][0], scale)
                 if x1 < x or x0 > x + self.crop or y1 < y or y0 > y + self.crop:
@@ -532,8 +547,22 @@ class FilamentCropDataset(Dataset):
                 mask |= filled
                 if categories is not None and ann["category_id"] in CATEGORY_CHANNELS:
                     categories[CATEGORY_CHANNELS.index(ann["category_id"])] |= filled
+                if ann.get("spine"):
+                    spines.append(ann["spine"])
             target += mask
+            union |= mask
+            if self.thin_head:
+                thin += thin_mask(mask)
+                spine += spine_heatmap(spines, self.crop, self.crop, scale, origin=(x, y))
         target /= len(per_record)
+
+        if self.thickness_cap or self.thin_head:
+            channels = [target]
+            if self.thickness_cap:
+                channels.append(thickness_weight(union, self.thickness_cap))
+            if self.thin_head:
+                channels += [thin / len(per_record), spine / len(per_record)]
+            return image, torch.from_numpy(np.stack(channels))
 
         if self.magnetic is not None:
             extra = self.magnetic.window(record["file_name"], x, y, self.crop, size)

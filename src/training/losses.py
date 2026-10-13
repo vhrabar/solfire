@@ -58,21 +58,24 @@ def soft_dice_loss(logits: Tensor, targets: Tensor, eps: float = 1.0) -> Tensor:
     return 1.0 - dice.mean()
 
 
-def _lovasz_gradient(sorted_labels: Tensor) -> Tensor:
+def _lovasz_gradient(sorted_labels: Tensor, sorted_weights: Tensor | None = None) -> Tensor:
     """
     Gradient of the Lovász extension of the Jaccard loss at the sorted errors.
     :param sorted_labels: ``(N,)`` binary labels, ordered by decreasing error
+    :param sorted_weights: ``(N,)`` positive pixel weights in the same order, or ``None``
     :return: ``(N,)`` weights of the sorted errors
     """
-    positives = sorted_labels.sum()
-    intersection = positives - sorted_labels.cumsum(0)
-    union = positives + (1.0 - sorted_labels).cumsum(0)
+    weights = torch.ones_like(sorted_labels) if sorted_weights is None else sorted_weights
+    positive_mass = sorted_labels * weights
+    positives = positive_mass.sum()
+    intersection = positives - positive_mass.cumsum(0)
+    union = positives + ((1.0 - sorted_labels) * weights).cumsum(0)
     jaccard = 1.0 - intersection / union
     jaccard[1:] = jaccard[1:] - jaccard[:-1]
     return jaccard
 
 
-def lovasz_hinge_loss(logits: Tensor, targets: Tensor) -> Tensor:
+def lovasz_hinge_loss(logits: Tensor, targets: Tensor, weights: Tensor | None = None) -> Tensor:
     """
     Lovász hinge: a convex surrogate of 1 - IoU, computed per sample and averaged.
 
@@ -81,15 +84,18 @@ def lovasz_hinge_loss(logits: Tensor, targets: Tensor) -> Tensor:
     targets are binarised at a half.
     :param logits: ``(B, 1, H, W)`` raw predictions
     :param targets: ``(B, 1, H, W)`` targets in ``[0, 1]``
+    :param weights: ``(B, 1, H, W)`` positive pixel weights of a weighted Jaccard, or ``None``
     :return: Scalar loss
     """
     losses = []
     with torch.autocast(device_type=logits.device.type, enabled=False):
-        for logit, target in zip(logits.float().flatten(1), targets.float().flatten(1)):
+        flat_weights = [None] * len(logits) if weights is None else weights.float().flatten(1)
+        for logit, target, weight in zip(logits.float().flatten(1), targets.float().flatten(1), flat_weights):
             labels = (target >= 0.5).float()
             errors = 1.0 - logit * (2.0 * labels - 1.0)
             sorted_errors, order = torch.sort(errors, descending=True)
-            losses.append(torch.dot(torch.relu(sorted_errors), _lovasz_gradient(labels[order])))
+            gradient = _lovasz_gradient(labels[order], None if weight is None else weight[order])
+            losses.append(torch.dot(torch.relu(sorted_errors), gradient))
     return torch.stack(losses).mean()
 
 
@@ -104,17 +110,20 @@ class BCEDiceLoss(nn.Module):
 
     pos_weight: Tensor | None
 
-    def __init__(self, bce_weight=0.5, dice_weight=0.5, pos_weight=None, lovasz_weight=0.0):
+    def __init__(self, bce_weight=0.5, dice_weight=0.5, pos_weight=None, lovasz_weight=0.0, pixel_weights=False):
         """
         :param bce_weight: Weight of the cross entropy term
         :param dice_weight: Weight of the Dice term
         :param pos_weight: Weight of positive pixels inside the BCE term, or ``None``
         :param lovasz_weight: Weight of the Lovász hinge term; ``0`` leaves it out
+        :param pixel_weights: The targets carry a second channel of per-pixel weights
+            (:func:`~src.data.structure.thickness_weight`), applied to the BCE and Lovász terms
         """
         super().__init__()
         self.bce_weight = bce_weight
         self.dice_weight = dice_weight
         self.lovasz_weight = float(lovasz_weight)
+        self.pixel_weights = pixel_weights
         if pos_weight is not None:
             pos_weight = torch.as_tensor(float(pos_weight))
         self.register_buffer("pos_weight", pos_weight)
@@ -122,13 +131,17 @@ class BCEDiceLoss(nn.Module):
     def forward(self, logits, targets):
         """
         :param logits: ``(B, 1, H, W)`` raw predictions
-        :param targets: ``(B, 1, H, W)`` binary targets
+        :param targets: ``(B, 1, H, W)`` binary targets, or ``(B, 2, H, W)`` with the pixel
+            weights second when ``pixel_weights`` is set
         :return: Scalar loss
         """
-        bce = nn.functional.binary_cross_entropy_with_logits(logits, targets, pos_weight=self.pos_weight)
+        weights = None
+        if self.pixel_weights:
+            targets, weights = targets[:, :1], targets[:, 1:2]
+        bce = nn.functional.binary_cross_entropy_with_logits(logits, targets, weight=weights, pos_weight=self.pos_weight)
         loss = self.bce_weight * bce + self.dice_weight * soft_dice_loss(logits, targets)
         if self.lovasz_weight:
-            loss = loss + self.lovasz_weight * lovasz_hinge_loss(logits, targets)
+            loss = loss + self.lovasz_weight * lovasz_hinge_loss(logits, targets, weights)
         return loss
 
 
@@ -396,6 +409,54 @@ class MagneticHeadLoss(nn.Module):
         return loss + self.weight * magnetic
 
 
+class ThinHeadLoss(nn.Module):
+    """
+    The segmentation objective plus a training-only head for the fine structure.
+
+    Two extra channels predict the thin part of the annotation (what an opening of radius 2
+    removes: barbs and thin ends) and a heatmap of the annotated spine, the centre line every
+    filament ships with. Both give the decoder an explicit objective on structures that are
+    a two percent minority of the filament pixels; only the first channel is used at inference.
+    """
+
+    def __init__(self, base: nn.Module, weight: float, pos_weight: float = 10.0) -> None:
+        """
+        :param base: Objective for the filament channel; receives every target channel
+            before the last two, so it can carry pixel weights
+        :param weight: Weight of the head
+        :param pos_weight: Weight of positive pixels in the head's cross entropy; both
+            targets cover well under one percent of a crop
+        """
+        super().__init__()
+        self.base = base
+        self.weight = float(weight)
+        self.register_buffer("pos_weight", torch.as_tensor(float(pos_weight)))
+
+    def set_epoch(self, epoch: int) -> None:
+        """
+        Pass the epoch on to a base objective that ramps its terms in.
+        :param epoch: Zero-based epoch index
+        :return: None
+        """
+        set_epoch = getattr(self.base, "set_epoch", None)
+        if callable(set_epoch):
+            set_epoch(epoch)
+
+    def forward(self, logits: Tensor, targets: Tensor) -> Tensor:
+        """
+        :param logits: ``(B, 3, H, W)``: the filament logit, then thin and spine
+        :param targets: ``(B, K + 2, H, W)``: the ``K`` channels of the base objective, then
+            the thin mask and the spine heatmap, both in ``[0, 1]``
+        :return: Scalar loss
+        """
+        loss = cast(Tensor, self.base(logits[:, :1], targets[:, :-2]))
+        with torch.autocast(device_type=logits.device.type, enabled=False):
+            head = nn.functional.binary_cross_entropy_with_logits(
+                logits[:, 1:3].float(), targets[:, -2:].float(), pos_weight=self.pos_weight
+            )
+        return loss + self.weight * head
+
+
 def build_criterion(base: nn.Module, args) -> nn.Module:
     """
     Wrap ``base`` in :class:`MorphologyLoss` when any morphology weight is set.
@@ -433,6 +494,7 @@ def estimate_pos_weight(dataset, max_samples: int = 128, cap: float = 20.0) -> f
         total = 0
         for index in range(0, len(dataset), step):
             _, mask = dataset[index]
+            mask = mask[0] if mask.dim() == 3 else mask  # auxiliary channels follow the target
             positive += int(mask.sum().item())
             total += mask.numel()
     else:

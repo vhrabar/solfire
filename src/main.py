@@ -46,6 +46,7 @@ from .training import (
     CategoryHeadLoss,
     MagneticHeadLoss,
     MorphologyLoss,
+    ThinHeadLoss,
     build_criterion,
     build_optimizer,
     build_scheduler,
@@ -175,6 +176,20 @@ def parse_args() -> argparse.Namespace:
         help="directory of precomputed magnetic targets (scripts/magnetic_targets.py)",
     )
     train.add_argument("--lovasz-weight", type=float, default=0.0, help="weight of the Lovász hinge term; 0 leaves it out")
+    train.add_argument(
+        "--thickness-weight-cap",
+        type=float,
+        default=0.0,
+        help="weight filament pixels in the BCE and Lovász terms by 6 / local half-width, clamped to [1, cap], "
+        "so barbs and thin ends count as much as the body; needs --crop; 0 disables it",
+    )
+    train.add_argument(
+        "--thin-head-weight",
+        type=float,
+        default=0.0,
+        help="pretrained only: weight of a training-only head predicting the thin part of the annotation "
+        "(opening residual, r=2) and the spine heatmap; 0 disables it",
+    )
     train.add_argument(
         "--init-checkpoint", default=None, help="start from this checkpoint's weights (same architecture), e.g. to fine-tune"
     )
@@ -343,7 +358,11 @@ def build_model_config(args) -> dict:
             "decoder": args.decoder,
             "encoder": args.encoder,
             "encoder_weights": weights,
-            "aux_channels": 3 if args.category_head_weight > 0 else 2 if args.magnetic_head_weight > 0 else 0,
+            "aux_channels": 3
+            if args.category_head_weight > 0
+            else 2
+            if args.magnetic_head_weight > 0 or args.thin_head_weight > 0
+            else 0,
         }
 
     stages = len(args.embed_dims)
@@ -394,6 +413,8 @@ def build_datasets(args):
         hard_negative_prob=args.hard_negative_prob if args.hard_negatives else 0.0,
         categories=args.category_head_weight > 0,
         magnetic=MagneticTargets(args.magnetic_targets) if args.magnetic_head_weight > 0 else None,
+        thickness_cap=args.thickness_weight_cap,
+        thin_head=args.thin_head_weight > 0,
         **common,
     )
     valid_dataset = FilamentDataset(val_ids, size=native_size, **common)
@@ -498,10 +519,31 @@ def run_training(args, device) -> None:
         # the state dict carries the trained weights, so rebuilding must not fetch the pretrained ones again
         model_config = model_config | {"encoder_weights": None}
 
+    thin_structure = args.thickness_weight_cap > 0 or args.thin_head_weight > 0
+    if thin_structure:
+        if not args.crop:
+            raise SystemExit("--thickness-weight-cap and --thin-head-weight need --crop")
+        if args.pseudo_labels:
+            raise SystemExit("--thickness-weight-cap and --thin-head-weight do not support --pseudo-labels")
+        if args.category_head_weight > 0 or args.magnetic_head_weight > 0:
+            raise SystemExit("the thin-structure targets cannot be combined with the category or magnetic head")
+        if max(args.morph_open_weight, args.morph_close_weight, args.morph_cldice_weight) > 0:
+            raise SystemExit("the thin-structure targets cannot be combined with the morphology terms")
+    if args.thin_head_weight > 0 and args.arch != "pretrained":
+        raise SystemExit("--thin-head-weight needs --arch pretrained")
+    if args.thickness_weight_cap and args.thickness_weight_cap < 1:
+        raise SystemExit("--thickness-weight-cap must be at least 1")
+
     base_criterion = BCEDiceLoss(
-        bce_weight=1.0 - args.dice_weight, dice_weight=args.dice_weight, pos_weight=pos_weight, lovasz_weight=args.lovasz_weight
+        bce_weight=1.0 - args.dice_weight,
+        dice_weight=args.dice_weight,
+        pos_weight=pos_weight,
+        lovasz_weight=args.lovasz_weight,
+        pixel_weights=args.thickness_weight_cap > 0,
     )
     criterion = build_criterion(base_criterion, args)
+    if args.thin_head_weight > 0:
+        criterion = ThinHeadLoss(criterion, args.thin_head_weight)
     if args.category_head_weight > 0:
         if args.arch != "pretrained":
             raise SystemExit("--category-head-weight needs --arch pretrained")
@@ -551,6 +593,8 @@ def run_training(args, device) -> None:
         "category_head_weight": args.category_head_weight,
         "magnetic_head_weight": args.magnetic_head_weight,
         "magnetic_targets": args.magnetic_targets if args.magnetic_head_weight > 0 else None,
+        "thickness_weight_cap": args.thickness_weight_cap,
+        "thin_head_weight": args.thin_head_weight,
         "init_checkpoint": args.init_checkpoint,
         "hard_negatives": args.hard_negatives,
         "hard_negative_prob": args.hard_negative_prob if args.hard_negatives else 0.0,

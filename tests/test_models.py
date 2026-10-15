@@ -112,3 +112,25 @@ def test_tiled_inference_matches_whole_image():
     whole = predict_probabilities(model, image[None], tta=False)[0, 0]
     tiled = predict_tiled(model, image, torch.device("cpu"), tile=32, overlap=0.25, tta=False)
     assert torch.allclose(tiled, whole, atol=1e-5)
+
+
+def test_flips_and_turned_views_average_to_d4():
+    """
+    The ``turned`` half and the ``flips`` half of the square's symmetries average to ``d4``.
+    """
+    torch.manual_seed(0)
+    model = small_model().eval()
+    image = torch.rand(1, 1, 64, 64)
+    halves = (predict_probabilities(model, image, tta=True) + predict_probabilities(model, image, tta="turned")) / 2
+    assert torch.allclose(halves, predict_probabilities(model, image, tta="d4"), atol=1e-6)
+
+
+def test_scaled_tiling_returns_the_native_size():
+    """
+    A scaled pass comes back at the observation's own size, in ``[0, 1]``.
+    """
+    model = small_model().eval()
+    image = torch.rand(1, 64, 64)
+    for scale in (0.8, 1.25):
+        tiled = predict_tiled(model, image, torch.device("cpu"), tile=32, overlap=0.25, tta=False, scale=scale)
+        assert tiled.shape == (64, 64) and 0 <= tiled.min() and tiled.max() <= 1

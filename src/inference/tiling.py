@@ -14,13 +14,14 @@ def predict_probabilities(model, images, tta=True) -> Tensor:
     :param model: Model in eval mode
     :param images: ``(B, 1, H, W)`` batch of observations
     :param tta: ``False`` for none, ``True`` or ``"flips"`` for the four flips, ``"d4"``
-        for all eight flips and quarter turns of the square
+        for all eight flips and quarter turns of the square, ``"turned"`` for the four flips
+        of the quarter-turned square only (the half of ``"d4"`` that ``"flips"`` leaves out)
     :return: ``(B, 1, H, W)`` probabilities in ``[0, 1]``
     """
     if not tta:
         return torch.sigmoid(model(images).float())
 
-    turns = (0, 1) if tta == "d4" else (0,)
+    turns = {"d4": (0, 1), "turned": (1,)}.get(tta, (0,)) if isinstance(tta, str) else (0,)
     total = torch.zeros_like(images, dtype=torch.float32)
     views = 0
     for turn in turns:
@@ -71,7 +72,7 @@ def blend_window(tile, device, floor=0.05) -> Tensor:
 
 
 @torch.no_grad()
-def predict_tiled(model, image, device, tile=DEFAULT_TILE, overlap=DEFAULT_OVERLAP, tta=True, batch_size=8) -> Tensor:
+def predict_tiled(model, image, device, tile=DEFAULT_TILE, overlap=DEFAULT_OVERLAP, tta=True, batch_size=8, scale=1.0) -> Tensor:
     """
     Probabilities for one whole observation, assembled from overlapping windows.
 
@@ -80,12 +81,20 @@ def predict_tiled(model, image, device, tile=DEFAULT_TILE, overlap=DEFAULT_OVERL
     :param device: Device to run on
     :param tile: Edge length of the windows the model is applied to
     :param overlap: Fraction of a window shared with its neighbour
-    :param tta: Average predictions over flips
+    :param tta: Symmetries to average over, see :func:`predict_probabilities`
     :param batch_size: Windows evaluated per forward pass
+    :param scale: Resize the observation by this factor before tiling and the probabilities
+        back afterwards; above 1 a thin filament spans more pixels than in training
     :return: ``(H, W)`` probabilities on the cpu
     """
     if image.dim() == 3:
         image = image.unsqueeze(0)
+    if scale != 1.0:
+        height, width = image.shape[-2:]
+        size = (round(height * scale), round(width * scale))
+        resized = F.interpolate(image.float(), size=size, mode="bilinear", align_corners=False, antialias=scale < 1.0)
+        probabilities = predict_tiled(model, resized, device, tile, overlap, tta, batch_size)
+        return F.interpolate(probabilities[None, None], size=(height, width), mode="bilinear", align_corners=False)[0, 0]
     height, width = image.shape[-2:]
 
     padded = image

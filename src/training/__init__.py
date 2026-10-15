@@ -10,6 +10,7 @@ from .calibrate import (
     cache_probabilities,
     calibrate,
     evaluate_tiled,
+    parse_variant,
     write_calibration,
 )
 from .engine import evaluate, fit, save_checkpoint, train_one_epoch
@@ -60,6 +61,7 @@ __all__ = [
     "grid_edges",
     "opening_residual",
     "panoptic_quality",
+    "parse_variant",
     "plot_distribution",
     "plot_evaluation",
     "plot_matching_cases",

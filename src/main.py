@@ -56,6 +56,7 @@ from .training import (
     estimate_pos_weight,
     evaluate_tiled,
     fit,
+    parse_variant,
     plot_evaluation,
     threshold_grid,
     write_calibration,
@@ -281,6 +282,13 @@ def parse_args() -> argparse.Namespace:
     calibration.add_argument("--overlap", type=float, default=DEFAULT_OVERLAP)
     calibration.add_argument("--tile-batch", type=int, default=8)
     calibration.add_argument("--tta", action=argparse.BooleanOptionalAction, default=True)
+    calibration.add_argument(
+        "--variants",
+        nargs="+",
+        default=["base"],
+        help="inference variants averaged per checkpoint, each cached on its own: base, or '-'-joined parts "
+        "turned|d4, s<scale>, o<overlap> (e.g. base turned s1.25); base+turned is the full D4 average",
+    )
     calibration.add_argument("--workers", type=int, default=8, help="processes scoring observations")
     calibration.add_argument("--output", default=None, help="calibration JSON to write; required with several checkpoints")
     calibration.add_argument("--top", type=int, default=10, help="settings to print")
@@ -294,6 +302,13 @@ def parse_args() -> argparse.Namespace:
     evaluation.add_argument("--overlap", type=float, default=DEFAULT_OVERLAP)
     evaluation.add_argument("--tile-batch", type=int, default=8)
     evaluation.add_argument("--tta", action=argparse.BooleanOptionalAction, default=True)
+    evaluation.add_argument(
+        "--variants",
+        nargs="+",
+        default=["base"],
+        help="inference variants averaged per checkpoint, each cached on its own: base, or '-'-joined parts "
+        "turned|d4, s<scale>, o<overlap> (e.g. base turned s1.25); base+turned is the full D4 average",
+    )
     evaluation.add_argument("--workers", type=int, default=8)
     evaluation.add_argument("--output", default=None, help="JSON to write the summaries to")
     evaluation.add_argument("--plots", default=None, help="directory to write the distribution plots to")
@@ -308,6 +323,13 @@ def parse_args() -> argparse.Namespace:
     fitting.add_argument("--overlap", type=float, default=DEFAULT_OVERLAP)
     fitting.add_argument("--tile-batch", type=int, default=8)
     fitting.add_argument("--tta", action=argparse.BooleanOptionalAction, default=True)
+    fitting.add_argument(
+        "--variants",
+        nargs="+",
+        default=["base"],
+        help="inference variants averaged per checkpoint, each cached on its own: base, or '-'-joined parts "
+        "turned|d4, s<scale>, o<overlap> (e.g. base turned s1.25); base+turned is the full D4 average",
+    )
     fitting.add_argument("--workers", type=int, default=8)
     fitting.add_argument("--output", required=True, help="calibration JSON to write; the filter is pickled next to it")
 
@@ -783,25 +805,30 @@ def held_out_maps(args, device) -> tuple[dict, dict, set, str]:
             checkpoint.get("seed", args.seed),
         )
         files = sorted({file_names[image_id] for image_id in val_ids})
-        cache = cache_directory(path)
         print(f"{path}: {len(val_ids)} held-out records over {len(files)} observations, tile {tile}")
-        cache_probabilities(
-            model,
-            files,
-            cache,
-            device,
-            tile=tile,
-            overlap=args.overlap,
-            tta=args.tta,
-            batch_size=args.tile_batch,
-            identity={"epoch": checkpoint.get("epoch")},
-            images_dir=require_images(preprocessed_dir(TRAIN_IMAGES, checkpoint.get("preprocess"))),
-        )
+        caches = []
+        for variant in args.variants:
+            settings = parse_variant(variant, tta=args.tta, overlap=args.overlap)
+            cache = cache_directory(path, variant)
+            cache_probabilities(
+                model,
+                files,
+                cache,
+                device,
+                tile=tile,
+                overlap=settings["overlap"],
+                tta=settings["tta"],
+                scale=settings["scale"],
+                batch_size=args.tile_batch,
+                identity={"epoch": checkpoint.get("epoch")},
+                images_dir=require_images(preprocessed_dir(TRAIN_IMAGES, checkpoint.get("preprocess"))),
+            )
+            caches.append(cache)
         del model
         if device.type == "cuda":
             torch.cuda.empty_cache()
         for name in files:
-            sources.setdefault(name, []).append(cache)
+            sources.setdefault(name, []).extend(caches)
         for image_id in val_ids:
             records.setdefault(file_names[image_id], {})[image_id] = by_image[image_id]
 
@@ -835,6 +862,7 @@ def run_calibration(args, device) -> None:
         "tile": tiles.pop() if len(tiles) == 1 else None,
         "overlap": args.overlap,
         "tta": args.tta,
+        "variants": args.variants,
         "checkpoints": [str(path) for path in args.checkpoint],
     }
 

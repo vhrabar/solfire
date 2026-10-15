@@ -107,14 +107,45 @@ def observation_probabilities(
                 return
 
 
-def cache_directory(checkpoint) -> Path:
+def cache_directory(checkpoint, variant="base") -> Path:
     """
     Where the validation probabilities of a checkpoint are kept.
     :param checkpoint: Path to the checkpoint
+    :param variant: Name of an inference variant (:func:`parse_variant`); every variant
+        but ``base`` gets its own directory, so trying one never drops the shipped maps
     :return: Directory next to the checkpoint
     """
     path = Path(checkpoint)
-    return path.with_name(f"{path.stem}.val")
+    suffix = "" if variant == "base" else f".{variant}"
+    return path.with_name(f"{path.stem}{suffix}.val")
+
+
+def parse_variant(name, tta=True, overlap=DEFAULT_OVERLAP) -> dict:
+    """
+    Read an inference variant from its name.
+
+    A name is ``base`` or ``-``-joined parts: ``turned`` or ``d4`` for the symmetries,
+    ``s<factor>`` for the input scale, ``o<fraction>`` for the tile overlap, e.g.
+    ``turned-s1.25``. Parts left out keep the defaults. Averaging the maps of ``base``
+    and ``turned`` gives the full eight-view D4 average.
+    :param name: Variant name
+    :param tta: Symmetries of ``base``
+    :param overlap: Overlap of ``base``
+    :return: ``{"tta", "overlap", "scale"}``
+    """
+    settings = {"tta": tta, "overlap": overlap, "scale": 1.0}
+    if name == "base":
+        return settings
+    for part in name.split("-"):
+        if part in ("turned", "d4"):
+            settings["tta"] = part
+        elif part.startswith("s"):
+            settings["scale"] = float(part[1:])
+        elif part.startswith("o"):
+            settings["overlap"] = float(part[1:])
+        else:
+            raise ValueError(f"unknown part {part!r} in inference variant {name!r}")
+    return settings
 
 
 @torch.no_grad()
@@ -129,6 +160,7 @@ def cache_probabilities(
     tta=True,
     batch_size=8,
     identity=None,
+    scale=1.0,
 ) -> None:
     """
     Run a model over whole validation observations once and keep what it said.
@@ -149,11 +181,13 @@ def cache_probabilities(
     :param batch_size: Windows evaluated per forward pass
     :param identity: What the cached maps depend on beyond the inference settings,
         such as the epoch of the checkpoint; a cache made under anything else is dropped
+    :param scale: Input scale passed to :func:`predict_tiled`
     :return: None
     """
     cache_dir = Path(cache_dir)
     cache_dir.mkdir(parents=True, exist_ok=True)
-    settings = {"tile": tile, "overlap": overlap, "tta": tta, **(identity or {})}
+    # scale is only stamped when used, so the caches written before it existed stay valid
+    settings = {"tile": tile, "overlap": overlap, "tta": tta, **({"scale": scale} if scale != 1.0 else {}), **(identity or {})}
     stamp = cache_dir / "settings.json"
     if not stamp.is_file() or json.loads(stamp.read_text()) != settings:
         for stale in cache_dir.glob("*.npy"):
@@ -163,7 +197,9 @@ def cache_probabilities(
     model.eval()
     for name in tqdm(missing, desc="inference", leave=False, mininterval=2.0):
         image = load_image(observation_path(images_dir, name))
-        probabilities = predict_tiled(model, image, device, tile=tile, overlap=overlap, tta=tta, batch_size=batch_size)
+        probabilities = predict_tiled(
+            model, image, device, tile=tile, overlap=overlap, tta=tta, batch_size=batch_size, scale=scale
+        )
         np.save(cache_dir / f"{Path(name).stem}.npy", (probabilities.numpy() * CACHE_SCALE).round().astype(np.uint8))
 
 

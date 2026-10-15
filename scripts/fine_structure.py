@@ -5,6 +5,7 @@ Fine-structure diagnostic on the pooled out-of-fold maps of the cv15-hrnet ensem
 
 import itertools
 import json
+import os
 import sys
 from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor
@@ -20,14 +21,25 @@ from src.inference.postprocess import connected_components, erode, instance_scor
 from src.training.calibrate import load_probabilities
 from src.training.metrics import annotation_pixels, instance_iou, pq_counts
 
-THRESHOLD, MIN_SCORE = 0.375, 0.675
+# FINE_SET=thin measures the thin-aware fine-tunes (sweeps/finetune_thin*.json) instead
+SET = os.environ.get("FINE_SET", "lovasz")
+THRESHOLD = float(os.environ.get("FINE_THRESHOLD", 0.375))
+MIN_SCORE = float(os.environ.get("FINE_MIN_SCORE", 0.675))
 RADII = (1, 2)
-FAMILIES = {
-    "r34": "runs/finetune/c{:02d}_lovasz-fold{k}_seed1/best.val",
-    "mitb2": "runs/finetune_mitb2/c{:02d}_lovasz-mitb2-fold{k}_seed1/best.val",
-    "hrnet": "runs/finetune_hrnet/c{:02d}_lovasz-hrnet32-fold{k}_seed1/best.val",
+SETS = {
+    "lovasz": {
+        "r34": "runs/finetune/c{:02d}_lovasz-fold{k}_seed1/best.val",
+        "mitb2": "runs/finetune_mitb2/c{:02d}_lovasz-mitb2-fold{k}_seed1/best.val",
+        "hrnet": "runs/finetune_hrnet/c{:02d}_lovasz-hrnet32-fold{k}_seed1/best.val",
+    },
+    "thin": {
+        "r34": "runs/finetune_thin/c{:02d}_thin-r34-fold{k}_seed1/best.val",
+        "mitb2": "runs/finetune_thin_mitb2/c{:02d}_thin-mitb2-fold{k}_seed1/best.val",
+        "hrnet": "runs/finetune_thin_hrnet/c{:02d}_thin-hrnet32-fold{k}_seed1/best.val",
+    },
 }
-FIRST = {"r34": 6, "mitb2": 1, "hrnet": 1}
+FAMILIES = SETS[SET]
+FIRST = {"r34": 6, "mitb2": 1, "hrnet": 1} if SET == "lovasz" else {"r34": 1, "mitb2": 1, "hrnet": 1}
 H = W = 2048
 
 

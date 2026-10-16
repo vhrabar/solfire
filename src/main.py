@@ -739,7 +739,7 @@ def run_prediction(args, device) -> None:
         f"min_area {min_area}, min_score {min_score:.2f}"
         + (f", learned filter cut {instance_filter.cut:.2f}" if instance_filter else "")
     )
-    if refiner_settings:
+    if refiner_settings and refiners:
         print(
             f"{len(refiners)} crop refiner(s): proposals at {refiner_settings['proposal_threshold']:.3f} "
             f"offset {refiner_settings['proposal_offset']:+d}, refined masks at {refiner_settings['threshold']:.2f}, "

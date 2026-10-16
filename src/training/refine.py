@@ -213,8 +213,8 @@ class RefinerCrops(Dataset):
         self.augment = augment
         with open(self.directory / "meta.pkl", "rb") as handle:
             self.meta = pickle.load(handle)
-        self.inputs = None
-        self.targets = None
+        self.inputs: np.ndarray | None = None
+        self.targets: np.ndarray | None = None
 
     def __len__(self) -> int:
         return len(self.indices)
@@ -224,7 +224,7 @@ class RefinerCrops(Dataset):
         :param item: Position in ``indices``
         :return: Tuple of (``(3, S, S)`` inputs, ``(MAX_RECORDS, S, S)`` targets, number of records)
         """
-        if self.inputs is None:
+        if self.inputs is None or self.targets is None:
             self.inputs = np.load(self.directory / "inputs.npy", mmap_mode="r")
             self.targets = np.load(self.directory / "targets.npy", mmap_mode="r")
         index = int(self.indices[item])

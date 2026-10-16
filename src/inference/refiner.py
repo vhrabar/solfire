@@ -199,14 +199,13 @@ def predict_refiner(models, inputs, tta=True) -> tuple[Tensor, Tensor]:
     """
     models = models if isinstance(models, (list, tuple)) else [models]
     flips = [(), (-1,), (-2,)] if tta else [()]
-    masks, scores = 0, 0
+    masks, scores = [], []
     for model in models:
         for dims in flips:
             logits, score = model(torch.flip(inputs, dims) if dims else inputs)
-            masks = masks + torch.sigmoid(torch.flip(logits, dims) if dims else logits)
-            scores = scores + torch.sigmoid(score)
-    views = len(models) * len(flips)
-    return masks / views, scores / views
+            masks.append(torch.sigmoid(torch.flip(logits, dims) if dims else logits))
+            scores.append(torch.sigmoid(score))
+    return torch.stack(masks).mean(0), torch.stack(scores).mean(0)
 
 
 def assemble(refined, height, width, threshold=0.5, min_score=0.0) -> tuple[np.ndarray, int, np.ndarray]:

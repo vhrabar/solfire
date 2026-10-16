@@ -75,7 +75,7 @@ training, and further post-processing.
 Requires Python 3.14 and [uv](https://docs.astral.sh/uv/). Pick the dependency group that matches your hardware:
 
 ```bash
-uv sync --group cuda-132   # or cuda-130, cpu
+uv sync --group cuda-132   # or rocm-714 (AMD, x86_64), cpu
 ```
 
 Place the competition data under `data/`:

@@ -330,18 +330,6 @@ def train_refiner(
     return {"history": history}
 
 
-def load_refiner(path, device) -> Refiner:
-    """
-    :param path: Checkpoint written by :func:`train_refiner`
-    :param device: Device to place it on
-    :return: The refiner in eval mode
-    """
-    checkpoint = torch.load(path, map_location="cpu", weights_only=False)
-    model = Refiner(encoder_weights=None)
-    model.load_state_dict(checkpoint["state_dict"])
-    return model.to(device).eval()
-
-
 def refine_held_out(models, sources, folds, output_dir, device, threshold=0.375, offset=-1, tta=True) -> None:
     """
     Refine every held-out observation with the refiner that did not train on its fold.

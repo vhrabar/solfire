@@ -133,4 +133,4 @@ def test_scaled_tiling_returns_the_native_size():
     image = torch.rand(1, 64, 64)
     for scale in (0.8, 1.25):
         tiled = predict_tiled(model, image, torch.device("cpu"), tile=32, overlap=0.25, tta=False, scale=scale)
-        assert tiled.shape == (64, 64) and 0 <= tiled.min() and tiled.max() <= 1
+        assert tiled.shape == (64, 64) and tiled.min() >= 0 and tiled.max() <= 1

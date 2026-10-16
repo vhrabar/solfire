@@ -11,7 +11,8 @@
 # | `unetpp-r34` | U-Net++ | ResNet-34 | 0.4503 |
 # | `unet-mitb2` | U-Net | MiT-B2 (SegFormer) | 0.4514 |
 # | `unet-hrnet32` | U-Net | HRNet-W32 | 0.4521 |
-# | **ensemble** | | | **0.4594** |
+# | ensemble | | | 0.4594 |
+# | **ensemble + crop refiner** | | | **0.4637** |
 #
 # The ensemble's post-processing is tuned on the same predictions it is scored on. Tuned on four folds and scored
 # on the fifth instead, it reaches 0.4564; that is the estimate to expect on unseen observations. Public LB: 0.40.
@@ -27,11 +28,12 @@
 # over the 15 models, then thresholded, eroded by one pixel, and split into 8-connected instances. Instances with a
 # mean probability below the cut are dropped. Threshold, offset, minimum area and score cut are chosen by grid
 # search, scored with the organizers' Panoptic Quality on the pooled out-of-fold predictions of all 707 training
-# observations.
+# observations. Then a crop refiner (5 fold models, ResNet-34 U-Net) redraws every instance on a window around it
+# and predicts the IoU it will earn, which replaces the mean probability as the keep/drop score (see *Crop refiner*).
 #
 # **Running it.**
 # - `TRAIN = False` (default): downloads the published checkpoints and their calibration, then predicts the test set.
-# - `TRAIN = True`: trains all 30 runs, calibrates, then predicts. That is about 20 GPU-hours on an RTX 5070 Ti,
+# - `TRAIN = True`: trains all 30 runs and the 5 refiners, calibrates, then predicts. That is about 20 GPU-hours on an RTX 5070 Ti,
 #   more than one Kaggle session. Finished runs are skipped, so the notebook can be rerun until it completes.
 #
 # Source: https://github.com/vhrabar/SolarFilamentSegmentationChallenge
@@ -85,6 +87,25 @@ CALIBRATION_GRID = {
     "offset": (-2, -1, 0, 1),  # signed one-pixel dilation/erosion steps
     "min_area": (0, 256),
     "min_score": (0.0, 0.6, 0.625, 0.65, 0.675, 0.7, 0.725, 0.75, 0.8, 0.85, 0.88, 0.91, 0.94),
+}
+
+REFINE = True  # redraw and rescore every instance with the crop refiner (needs its checkpoints)
+REFINER = {
+    "crop": 256,  # edge the refiner works at
+    "context": 1.5,  # window edge as a multiple of the instance's longer box side
+    "min_window": 128,
+    "min_pixels": 32,  # smaller proposals are never refined nor submitted
+    "proposal_thresholds": (0.3, 0.375, 0.45),  # training proposals; the calibrated cut sits in the middle
+    "duplicate_iou": 0.85,  # a training proposal this close to one already taken is skipped
+    "epochs": 12,
+    "batch_size": 32,
+    "lr": 3e-4,
+    "encoder_lr_scale": 0.5,
+    "score_weight": 0.5,
+}
+REFINE_GRID = {
+    "threshold": (0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6),
+    "min_score": tuple(round(0.02 * step, 2) for step in range(31)),  # cut on the predicted IoU
 }
 
 SUBMISSION_SIZE = 2048
@@ -740,10 +761,13 @@ def train_run(family: str, stage: str, fold: int, init=None) -> Path:
 # Every observation is predicted by the three models (one per family) that did not train on it. The averaged map
 # is scored against all its annotator records for every combination in `CALIBRATION_GRID`. Area and score cuts only
 # remove columns from the IoU matrices, so components are labelled once per (threshold, offset). Maps are rounded
-# to 8 bits before averaging.
+# to 8 bits before averaging. The averaged maps are kept in `OOF_DIR`: the crop refiner learns from them.
 
 
 # %%
+OOF_DIR = WORK / "oof"
+
+
 def score_observation(probabilities: np.ndarray, records) -> dict:
     """
     :param probabilities: (H, W) averaged out-of-fold probabilities
@@ -788,7 +812,10 @@ def calibrate(checkpoints) -> dict:
                 total = sum(
                     (predict_tiled(model, image).numpy() * 255).round().astype(np.uint8).astype(np.float32) for model in models
                 )
-                pending[name] = pool.submit(score_observation, np.asarray(total / (255 * len(models)), dtype=np.float32), records)
+                probabilities = np.asarray(total / (255 * len(models)), dtype=np.float32)
+                OOF_DIR.mkdir(parents=True, exist_ok=True)
+                np.save(OOF_DIR / f"{Path(name).stem}.npy", (probabilities * 255).round().astype(np.uint8))
+                pending[name] = pool.submit(score_observation, probabilities, records)
             del models
             torch.cuda.empty_cache()
         accumulated: dict = {}
@@ -806,6 +833,394 @@ def calibrate(checkpoints) -> dict:
         "fn": int(best_terms[3]),
         "files": len(pending),
         "checkpoints": [str(path) for path in checkpoints],
+    }
+
+
+# %% [markdown]
+# ## Crop refiner
+#
+# The ensemble finds most filaments but draws many of them a little wrong: a partial mask (IoU under 0.5) counts as
+# both a miss and a false positive. The refiner takes a second look at every predicted instance. It cuts a square
+# window around it (1.5x its longer box side, at least 128 px), resamples it to 256 px, and reads three channels:
+# the observation, the ensemble's probabilities and the instance's own mask. A ResNet-34 U-Net redraws the instance,
+# and a head on its bottleneck predicts the IoU the redrawn mask will earn; that prediction is the keep/drop score.
+# Two fragments of one filament are both redrawn as the whole filament, so a mask mostly covered by a higher
+# scoring one is dropped.
+#
+# It learns from the instances of the pooled out-of-fold maps (cut at three thresholds), so it trains on the
+# proposals it meets at test time. The refiner of fold k trains on the other folds only and is scored on fold k.
+# Out of fold it lifts PQ from 0.4594 to 0.4637 (0.4628 with its two cuts chosen on four folds and scored on the
+# fifth). At test time the five fold refiners are averaged.
+
+
+# %%
+def component_window(box) -> tuple[int, int, int]:
+    """
+    :param box: (rows, columns) slices of a component, from ndimage.find_objects
+    :return: (top, left, side) of the square window it is refined on; it may reach past the image
+    """
+    rows, columns = box
+    side = max(REFINER["min_window"], round(REFINER["context"] * max(rows.stop - rows.start, columns.stop - columns.start)))
+    return round((rows.start + rows.stop - side) / 2), round((columns.start + columns.stop - side) / 2), side
+
+
+def clipped(window, height: int, width: int) -> tuple[slice, slice, slice, slice]:
+    """:return: (rows, columns) of the window inside the observation, then the same region inside the window"""
+    top, left, side = window
+    y0, x0, y1, x1 = max(top, 0), max(left, 0), min(top + side, height), min(left + side, width)
+    return slice(y0, y1), slice(x0, x1), slice(y0 - top, y1 - top), slice(x0 - left, x1 - left)
+
+
+def window_of(array: np.ndarray, window) -> np.ndarray:
+    """:return: (side, side) cut of the array, zeros past its edges"""
+    out = np.zeros((window[2], window[2]), dtype=array.dtype)
+    rows, columns, window_rows, window_columns = clipped(window, *array.shape)
+    out[window_rows, window_columns] = array[rows, columns]
+    return out
+
+
+def resample(windows: Tensor, size: int) -> Tensor:
+    """(B, C, s, s) -> (B, C, size, size), antialiased on the way down"""
+    if windows.shape[-1] == size:
+        return windows
+    return F.interpolate(windows, size=(size, size), mode="bilinear", align_corners=False, antialias=True)
+
+
+def refiner_inputs(image: np.ndarray, probabilities: np.ndarray, seed: np.ndarray, window) -> Tensor:
+    """:return: (3, crop, crop) observation, ensemble probability and seed mask, in [0, 1]"""
+    stacked = np.stack([window_of(image, window), window_of(probabilities, window), window_of(seed, window).astype(np.float32)])
+    return resample(torch.from_numpy(stacked)[None], REFINER["crop"])[0].clamp_(0, 1)
+
+
+class Refiner(nn.Module):
+    """ResNet-34 U-Net that redraws one instance, with a head on the bottleneck predicting the IoU it will earn."""
+
+    def __init__(self, encoder_weights=None):
+        super().__init__()
+        self.net = smp.Unet(
+            encoder_name="resnet34",
+            encoder_weights=encoder_weights,
+            in_channels=3,
+            classes=1,
+            aux_params={"classes": 1, "dropout": 0.2},
+        )
+
+    @property
+    def encoder(self) -> nn.Module:
+        return self.net.encoder
+
+    def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
+        """:return: Tuple of ((B, 1, S, S) mask logits, (B,) logits of the earned IoU)"""
+        masks, scores = self.net((x - IMAGENET_MEAN) / IMAGENET_STD)
+        return masks, scores[:, 0]
+
+
+def load_refiner(path) -> Refiner:
+    model = Refiner()
+    model.load_state_dict(torch.load(path, map_location="cpu", weights_only=False)["state_dict"])
+    return model.to(DEVICE).eval()
+
+
+@torch.no_grad()
+def predict_refiner(refiners, inputs: Tensor) -> tuple[Tensor, Tensor]:
+    """:return: Mask probabilities and predicted IoU, averaged over the refiners and three flips"""
+    masks, scores = 0, 0
+    for model in refiners:
+        for dims in ((), (-1,), (-2,)):
+            logits, score = model(torch.flip(inputs, dims) if dims else inputs)
+            masks = masks + torch.sigmoid(torch.flip(logits, dims) if dims else logits)
+            scores = scores + torch.sigmoid(score)
+    return masks / (3 * len(refiners)), scores / (3 * len(refiners))
+
+
+def refine_components(refiners, image: np.ndarray, probabilities: np.ndarray, labels: np.ndarray, n_labels: int) -> list:
+    """
+    :return: Per proposal of at least min_pixels pixels, (window, uint8 refined probabilities at native size, score)
+    """
+    areas = np.bincount(labels.ravel(), minlength=n_labels + 1)
+    jobs = [
+        (index + 1, component_window(box))
+        for index, box in enumerate(ndimage.find_objects(labels))
+        if box and areas[index + 1] >= REFINER["min_pixels"]
+    ]
+    refined = []
+    for start in range(0, len(jobs), REFINER["batch_size"]):
+        chunk = jobs[start : start + REFINER["batch_size"]]
+        inputs = torch.stack([refiner_inputs(image, probabilities, labels == k, window) for k, window in chunk])
+        masks, scores = predict_refiner(refiners, inputs.to(DEVICE))
+        for (_, window), mask, score in zip(chunk, masks, scores):
+            native = resample(mask[None].float(), window[2])[0, 0]
+            refined.append((window, (native * 255).round().byte().cpu().numpy(), float(score)))
+    return refined
+
+
+def assemble(refined, threshold: float, min_score=0.0) -> tuple[np.ndarray, int, np.ndarray]:
+    """
+    Paint refined instances into one label array, most confident first; a mask that more than half falls on
+    instances already painted is a duplicate and is dropped.
+    :return: Tuple of ((H, W) labels, number of instances, their scores)
+    """
+    labels = np.zeros((SUBMISSION_SIZE, SUBMISSION_SIZE), dtype=np.int32)
+    scores = []
+    for window, probabilities, score in sorted(refined, key=lambda item: -item[2]):
+        if score < min_score:
+            break
+        rows, columns, window_rows, window_columns = clipped(window, SUBMISSION_SIZE, SUBMISSION_SIZE)
+        components, count = connected_components(probabilities[window_rows, window_columns] >= round(threshold * 255))
+        mask = components == int(np.bincount(components.ravel())[1:].argmax()) + 1 if count > 1 else components > 0
+        area = int(mask.sum())
+        free = mask & (labels[rows, columns] == 0)
+        if area < REFINER["min_pixels"] or free.sum() < 0.5 * area:
+            continue
+        scores.append(score)
+        labels[rows, columns][free] = len(scores)
+    return labels, len(scores), np.asarray(scores)
+
+
+def refine_observation(refiners, image: np.ndarray, probabilities: np.ndarray, settings: dict) -> tuple[np.ndarray, int]:
+    """The instances of one observation the way the refined submission is written."""
+    proposals = apply_offset(probabilities >= settings["proposal_threshold"], settings["proposal_offset"])
+    labels, n_labels = connected_components(proposals)
+    refined = refine_components(refiners, image, probabilities, labels, n_labels)
+    labels, n_labels, _ = assemble(refined, settings["threshold"], settings["min_score"])
+    return labels, n_labels
+
+
+# %% [markdown]
+# Training: every proposal of the out-of-fold maps becomes a sample. Its target, per annotator record, is the
+# annotated filament it overlaps most (empty for a false positive); the mask loss is BCE + soft Dice against the
+# record average, and the score head regresses the IoU the refined mask, cut at a half, earns against each record.
+
+
+# %%
+REFINER_DIR = WORK / "refiner"
+MAX_RECORDS = 3
+
+
+def fold_of_file() -> dict:
+    """:return: The fold that holds each training observation out"""
+    folds = {}
+    for fold in range(FOLDS):
+        for image_id in kfold_split(fold)[1]:
+            folds[RECORDS[image_id]["file_name"]] = fold
+    return folds
+
+
+def records_of_file() -> dict:
+    """:return: Per training observation, the annotations of each of its records"""
+    files: dict = {}
+    for image_id, record in RECORDS.items():
+        files.setdefault(record["file_name"], []).append(BY_RECORD[image_id])
+    return files
+
+
+def collect_one(job):
+    """:return: (inputs, targets, n_records, file) of every training proposal of one observation"""
+    name, records, offset = job
+    probabilities = np.load(OOF_DIR / f"{Path(name).stem}.npy").astype(np.float32) / 255
+    image = load_image(TRAIN_IMAGES / name).numpy()[0]
+    gt = [annotation_pixels(record) for record in records]
+    taken, inputs, targets = [], [], []
+    for threshold in REFINER["proposal_thresholds"]:
+        labels, n_labels = connected_components(apply_offset(probabilities >= threshold, offset))
+        areas = np.bincount(labels.ravel(), minlength=n_labels + 1)
+        overlaps = [instance_iou(pixels, labels, n_labels) for pixels in gt]
+        for index, box in enumerate(ndimage.find_objects(labels)):
+            if box is None or areas[index + 1] < REFINER["min_pixels"]:
+                continue
+            seed = labels == index + 1
+            flat = np.flatnonzero(seed)
+            if any(
+                len(np.intersect1d(flat, other)) / len(np.union1d(flat, other)) >= REFINER["duplicate_iou"] for other in taken
+            ):
+                continue
+            taken.append(flat)
+            window = component_window(box)
+            target = np.zeros((MAX_RECORDS, REFINER["crop"], REFINER["crop"]), dtype=np.uint8)
+            for record, (pixels, iou) in enumerate(zip(gt, overlaps)):
+                if iou.shape[0] and iou[:, index].max() > 0:
+                    mask = np.zeros(SUBMISSION_SIZE * SUBMISSION_SIZE, dtype=np.float32)
+                    mask[pixels[int(iou[:, index].argmax())]] = 1
+                    cut = window_of(mask.reshape(SUBMISSION_SIZE, SUBMISSION_SIZE), window)
+                    target[record] = (resample(torch.from_numpy(cut)[None, None], REFINER["crop"])[0, 0].numpy() * 255).round()
+            inputs.append((refiner_inputs(image, probabilities, seed, window).numpy() * 255).round().astype(np.uint8))
+            targets.append(target)
+    return inputs, targets, len(records), name
+
+
+def collect_refiner_samples(offset: int) -> dict:
+    """
+    Write every training proposal to REFINER_DIR as two uint8 arrays; reused when present.
+    :param offset: Morphological offset of the calibration, which the proposals are cut with
+    """
+    meta_path = REFINER_DIR / "samples.json"
+    if meta_path.is_file():
+        return json.loads(meta_path.read_text())
+    REFINER_DIR.mkdir(parents=True, exist_ok=True)
+    chunks, records, files = [], [], []
+    jobs = [(name, records, offset) for name, records in sorted(records_of_file().items())]
+    with ProcessPoolExecutor(WORKERS, mp_context=multiprocessing.get_context("fork")) as pool:
+        for inputs, targets, n_records, name in tqdm(pool.map(collect_one, jobs), total=len(jobs), desc="proposals"):
+            if inputs:
+                path = REFINER_DIR / f"chunk-{len(chunks)}.npz"
+                np.savez(path, inputs=np.stack(inputs), targets=np.stack(targets))
+                chunks.append(path)
+                records += [n_records] * len(inputs)
+                files += [name] * len(inputs)
+    shape = (len(records), 3, REFINER["crop"], REFINER["crop"])
+    stored_inputs = np.lib.format.open_memmap(REFINER_DIR / "inputs.npy", "w+", np.uint8, shape)
+    stored_targets = np.lib.format.open_memmap(REFINER_DIR / "targets.npy", "w+", np.uint8, (shape[0], MAX_RECORDS, *shape[2:]))
+    start = 0
+    for path in chunks:
+        with np.load(path) as chunk:
+            stored_inputs[start : start + len(chunk["inputs"])] = chunk["inputs"]
+            stored_targets[start : start + len(chunk["inputs"])] = chunk["targets"]
+            start += len(chunk["inputs"])
+        path.unlink()
+    stored_inputs.flush()
+    stored_targets.flush()
+    folds = fold_of_file()
+    meta = {"records": records, "folds": [folds[name] for name in files]}
+    meta_path.write_text(json.dumps(meta))
+    print(f"{len(records)} refiner samples")
+    return meta
+
+
+class RefinerSamples(Dataset):
+    """The collected samples, with random flips, transposes and a gamma/gain jitter of the observation channel."""
+
+    def __init__(self, indices, records):
+        self.indices, self.records = indices, records
+        self.inputs = self.targets = None
+
+    def __len__(self) -> int:
+        return len(self.indices)
+
+    def __getitem__(self, item):
+        if self.inputs is None:  # opened in the worker
+            self.inputs = np.load(REFINER_DIR / "inputs.npy", mmap_mode="r")
+            self.targets = np.load(REFINER_DIR / "targets.npy", mmap_mode="r")
+        index = self.indices[item]
+        inputs = torch.from_numpy(np.array(self.inputs[index], dtype=np.float32) / 255)
+        targets = torch.from_numpy(np.array(self.targets[index], dtype=np.float32) / 255)
+        flip_x, flip_y, transpose, gain, gamma = torch.rand(5).tolist()
+        if flip_x < 0.5:
+            inputs, targets = inputs.flip(-1), targets.flip(-1)
+        if flip_y < 0.5:
+            inputs, targets = inputs.flip(-2), targets.flip(-2)
+        if transpose < 0.5:
+            inputs, targets = inputs.transpose(-1, -2), targets.transpose(-1, -2)
+        inputs[0] = (inputs[0] ** (0.8 + 0.45 * gamma) * (0.85 + 0.3 * gain)).clamp(0, 1)
+        return inputs, targets, self.records[index]
+
+
+def refiner_loss(masks: Tensor, scores: Tensor, targets: Tensor, n_records: Tensor) -> Tensor:
+    valid = (torch.arange(MAX_RECORDS, device=targets.device)[None] < n_records[:, None]).float()
+    soft = (targets * valid[:, :, None, None]).sum(1, keepdim=True) / n_records[:, None, None, None].float()
+    logits = masks.float()
+    probabilities = torch.sigmoid(logits)
+    dice = 1 - (2 * (probabilities * soft).sum((1, 2, 3)) + 1) / (probabilities.sum((1, 2, 3)) + soft.sum((1, 2, 3)) + 1)
+    with torch.no_grad():
+        predicted, truth = probabilities >= 0.5, targets >= 0.5
+        union = (predicted | truth).sum((2, 3)).float()
+        iou = (predicted & truth).sum((2, 3)).float() / union.clamp(min=1)
+        earned = (torch.where(iou > 0.5, iou, torch.zeros_like(iou)) * valid).sum(1) / n_records.float()
+    score = F.binary_cross_entropy_with_logits(scores.float(), earned)
+    return F.binary_cross_entropy_with_logits(logits, soft) + dice.mean() + REFINER["score_weight"] * score
+
+
+def train_refiner(fold: int, meta: dict) -> Path:
+    """Train the refiner of one fold on the samples of the other folds; a finished one is reused."""
+    path = REFINER_DIR / f"refiner-fold{fold}.pt"
+    if path.is_file():
+        return path
+    set_seeds(SEED)
+    indices = [index for index, sample_fold in enumerate(meta["folds"]) if sample_fold != fold]
+    loader = DataLoader(
+        RefinerSamples(indices, meta["records"]),
+        batch_size=REFINER["batch_size"],
+        shuffle=True,
+        drop_last=True,
+        num_workers=WORKERS,
+        persistent_workers=WORKERS > 0,
+        multiprocessing_context="fork" if WORKERS > 0 else None,
+    )
+    model = Refiner(encoder_weights="imagenet").to(DEVICE)
+    encoder_ids = {id(param) for param in model.encoder.parameters()}
+    optimizer = torch.optim.AdamW(
+        [
+            {
+                "params": [p for p in model.parameters() if id(p) in encoder_ids],
+                "lr": REFINER["lr"] * REFINER["encoder_lr_scale"],
+            },
+            {"params": [p for p in model.parameters() if id(p) not in encoder_ids], "lr": REFINER["lr"]},
+        ],
+        weight_decay=TRAINING["weight_decay"],
+    )
+    scheduler = build_scheduler(optimizer, REFINER["epochs"], len(loader), warmup_epochs=1)
+    for epoch in range(1, REFINER["epochs"] + 1):
+        model.train()
+        total = 0.0
+        for inputs, targets, n_records in tqdm(loader, desc=f"refiner fold {fold} epoch {epoch}", leave=False, mininterval=2.0):
+            inputs, targets, n_records = inputs.to(DEVICE), targets.to(DEVICE), n_records.to(DEVICE)
+            with torch.autocast(DEVICE.type, dtype=torch.bfloat16, enabled=DEVICE.type == "cuda"):
+                masks, scores = model(inputs)
+            loss = refiner_loss(masks, scores, targets, n_records)
+            optimizer.zero_grad(set_to_none=True)
+            loss.backward()
+            optimizer.step()
+            scheduler.step()
+            total += loss.item()
+        print(f"refiner fold {fold} epoch {epoch}/{REFINER['epochs']}  loss {total / len(loader):.4f}")
+    torch.save({"state_dict": model.state_dict(), "fold": fold}, path)
+    return path
+
+
+def score_refined_one(job) -> dict:
+    """:return: PQ terms of one refined observation per (mask threshold, min_score) of REFINE_GRID"""
+    refined, records = job
+    gt = [annotation_pixels(record) for record in records]
+    terms = {}
+    for threshold in REFINE_GRID["threshold"]:
+        labels, n_labels, scores = assemble(refined, threshold)
+        overlaps = [instance_iou(pixels, labels, n_labels) for pixels in gt]
+        for min_score in REFINE_GRID["min_score"]:
+            keep = scores >= min_score
+            terms[(threshold, min_score)] = sum(pq_terms(iou[:, keep]) for iou in overlaps)
+    return terms
+
+
+def calibrate_refiner(refiner_paths, calibration: dict) -> dict:
+    """
+    Refine every out-of-fold map with the refiner of its fold and choose the two cuts on pooled PQ.
+    :param refiner_paths: Refiner checkpoint per fold
+    :param calibration: The ensemble's calibration, whose threshold and offset cut the proposals
+    :return: The ``refiner`` block of the calibration
+    """
+    folds, files = fold_of_file(), records_of_file()
+    accumulated: dict = {}
+    with ProcessPoolExecutor(WORKERS, mp_context=multiprocessing.get_context("fork")) as pool:
+        pending = []
+        for fold, path in enumerate(refiner_paths):
+            refiners = [load_refiner(path)]
+            for name in tqdm([name for name in sorted(files) if folds[name] == fold], desc=f"refining fold {fold}"):
+                probabilities = np.load(OOF_DIR / f"{Path(name).stem}.npy").astype(np.float32) / 255
+                image = load_image(TRAIN_IMAGES / name).numpy()[0]
+                proposals = apply_offset(probabilities >= calibration["threshold"], calibration["offset"])
+                labels, n_labels = connected_components(proposals)
+                refined = refine_components(refiners, image, probabilities, labels, n_labels)
+                pending.append(pool.submit(score_refined_one, (refined, files[name])))
+        for future in tqdm(pending, desc="scoring"):
+            for key, value in future.result().items():
+                accumulated[key] = accumulated.get(key, 0) + value
+    (threshold, min_score), terms = max(accumulated.items(), key=lambda item: panoptic_quality(item[1]))
+    return {
+        "checkpoints": [str(path) for path in refiner_paths],
+        "proposal_threshold": calibration["threshold"],
+        "proposal_offset": calibration["offset"],
+        "threshold": threshold,
+        "min_score": min_score,
+        "pq": panoptic_quality(terms),
     }
 
 
@@ -828,6 +1243,10 @@ if TRAIN:
             first = train_run(family, "stage1", fold)
             checkpoints.append(train_run(family, "stage2", fold, init=first))
     calibration = calibrate(checkpoints)
+    if REFINE:
+        meta = collect_refiner_samples(calibration["offset"])
+        refiner_paths = [train_refiner(fold, meta) for fold in range(FOLDS)]
+        calibration["refiner"] = calibrate_refiner(refiner_paths, calibration)
     (WORK / CALIBRATION_NAME).write_text(json.dumps(calibration, indent=2), encoding="utf-8")
 else:
     if WEIGHTS_DIR is None:
@@ -836,8 +1255,10 @@ else:
         weights = Path(kagglehub.model_download(MODEL_HANDLE))
     else:
         weights = Path(WEIGHTS_DIR)
-    checkpoints = sorted(weights.glob("*.pt"), key=family_and_fold)
+    checkpoints = sorted((path for path in weights.glob("*.pt") if not path.name.startswith("refiner")), key=family_and_fold)
     calibration = json.loads((weights / CALIBRATION_NAME).read_text(encoding="utf-8"))
+    if "refiner" in calibration:  # the published refiners sit next to the ensemble
+        calibration["refiner"]["checkpoints"] = [str(path) for path in sorted(weights.glob("refiner-fold*.pt"))]
 
 assert len(checkpoints) == len(calibration["checkpoints"]), (
     f"{len(checkpoints)} checkpoints, calibration made for {len(calibration['checkpoints'])}"
@@ -846,6 +1267,15 @@ print(
     f"{len(checkpoints)} checkpoints; out-of-fold PQ {calibration['pq']:.4f} at threshold {calibration['threshold']}, "
     f"offset {calibration['offset']:+d}, min_area {calibration['min_area']}, min_score {calibration['min_score']}"
 )
+REFINE = REFINE and bool(calibration.get("refiner", {}).get("checkpoints"))
+if REFINE:
+    refiner_settings = calibration["refiner"]
+    print(
+        f"{len(refiner_settings['checkpoints'])} crop refiners; out-of-fold PQ {refiner_settings['pq']:.4f} with refined "
+        f"masks at {refiner_settings['threshold']} and predicted IoU >= {refiner_settings['min_score']}"
+    )
+else:
+    print("no crop refiner: instances are cut and filtered by the calibration above")
 
 # %% [markdown]
 # ## Predict the test set
@@ -858,14 +1288,18 @@ def encode_rle(mask: np.ndarray) -> str:
 
 
 models = [load_model(path)[0] for path in checkpoints]
+refiners = [load_refiner(path) for path in refiner_settings["checkpoints"]] if REFINE else []
 started = time.time()
 rows = []
 for path in tqdm(TEST_FILES, desc="predict", mininterval=2.0):
     image = load_image(path)
     probabilities = (sum(predict_tiled(model, image) for model in models) / len(models)).numpy()
-    labels, n_labels = label_instances(
-        probabilities, calibration["threshold"], calibration["offset"], calibration["min_area"], calibration["min_score"]
-    )
+    if REFINE:
+        labels, n_labels = refine_observation(refiners, image.numpy()[0], probabilities, refiner_settings)
+    else:
+        labels, n_labels = label_instances(
+            probabilities, calibration["threshold"], calibration["offset"], calibration["min_area"], calibration["min_score"]
+        )
     rows += [(f"{path.stem}_{label}", encode_rle(labels == label)) for label in range(1, n_labels + 1)]
 seconds = time.time() - started
 

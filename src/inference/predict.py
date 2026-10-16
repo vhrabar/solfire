@@ -11,6 +11,7 @@ from tqdm import tqdm
 
 from ..networks import ARCHITECTURES
 from .postprocess import encode_rle, instances_from_labels, keep_labels, label_instances
+from .refiner import refine_observation
 from .tiling import DEFAULT_OVERLAP, predict_probabilities, predict_tiled
 
 
@@ -79,6 +80,8 @@ def predict_dataset(
     tile=None,
     overlap=DEFAULT_OVERLAP,
     tile_batch=8,
+    refiners=None,
+    refiner_settings=None,
 ) -> list[dict]:
     """
     Run the model over a loader of unlabelled observations.
@@ -99,6 +102,10 @@ def predict_dataset(
         the whole observation at once
     :param overlap: Fraction of a window shared with its neighbour
     :param tile_batch: Windows evaluated per forward pass
+    :param refiners: :class:`Refiner` models that redraw and score every proposal, or
+        ``None``; given, they replace ``threshold``, ``offset``, ``min_area``, ``min_score``
+        and ``instance_filter`` with the cuts of ``refiner_settings``
+    :param refiner_settings: The ``refiner`` block of a calibration
     :return: List of COCO-style detection records
     """
     if save_masks_dir is not None:
@@ -120,8 +127,13 @@ def predict_dataset(
 
         for probability, image, file_name in zip(probabilities[:, 0].numpy(), images[:, 0].numpy(), file_names):
             image_id = Path(file_name).stem
-            labels, n_labels = label_instances(probability, threshold, offset=offset, min_area=min_area, min_score=min_score)
-            if instance_filter is not None:
+            if refiners:
+                if image.shape != probability.shape:
+                    raise ValueError("the refiner needs the observation at the resolution of the probabilities")
+                labels, n_labels = refine_observation(refiners, image, probability, refiner_settings, device, tta=tta)
+            else:
+                labels, n_labels = label_instances(probability, threshold, offset=offset, min_area=min_area, min_score=min_score)
+            if instance_filter is not None and not refiners:
                 if image.shape != probability.shape:
                     raise ValueError("the instance filter needs the observation at the resolution of the probabilities")
                 labels, n_labels = keep_labels(labels, n_labels, instance_filter.keep(labels, n_labels, probability, image))

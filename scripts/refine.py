@@ -12,8 +12,9 @@ import torch
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.data import load_annotations, validation_split
+from src.inference.refiner import load_refiner
 from src.training.calibrate import cache_directory
-from src.training.refine import collect_crops, load_refiner, refine_held_out, score_refined, train_refiner
+from src.training.refine import collect_crops, refine_held_out, score_refined, train_refiner
 
 STEPS = ("collect", "train", "refine", "score")
 
@@ -59,6 +60,9 @@ def main() -> int:
     parser.add_argument("--lr", type=float, default=3e-4)
     parser.add_argument("--folds", type=int, nargs="+", default=[0, 1, 2, 3, 4])
     parser.add_argument("--workers", type=int, default=8)
+    parser.add_argument(
+        "--output", type=Path, default=None, help="refined calibration JSON; default: <calibration>-refined next to it"
+    )
     args = parser.parse_args()
 
     calibration = json.loads(args.calibration.read_text())
@@ -88,6 +92,21 @@ def main() -> int:
                 f"(tp {best['tp']} fp {best['fp']} fn {best['fn']}); nested {best['nested']['pq']:.4f}"
             )
         (run / "score.json").write_text(json.dumps(report, indent=2))
+        best = report["refined"]
+        calibration["refiner"] = {
+            "checkpoints": [str(run / f"fold{fold}.pt") for fold in sorted(set(folds.values()))],
+            "proposal_threshold": threshold,
+            "proposal_offset": offset,
+            "threshold": best["threshold"],
+            "min_score": best["min_score"],
+            "pq": best["pq"],
+            "nested_pq": best["nested"]["pq"],
+        }
+        output = args.output or args.calibration.with_name(
+            args.calibration.name.removesuffix(".calibration.json") + "-refined.calibration.json"
+        )
+        output.write_text(json.dumps(calibration, indent=2))
+        print(f"refined calibration -> {output}")
     return 0
 
 

@@ -34,6 +34,7 @@ from .inference import (
     write_submission,
 )
 from .inference.instance_filter import InstanceFilter
+from .inference.refiner import load_refiner
 from .networks import ARCHITECTURES, DECODERS
 from .training import (
     CALIBRATION_THRESHOLDS,
@@ -263,6 +264,12 @@ def parse_args() -> argparse.Namespace:
     predict.add_argument("--min-score", type=float, default=None, help="drop predicted instances with a lower mean probability")
     predict.add_argument("--category-id", type=int, default=1)
     predict.add_argument("--save-masks", action="store_true", help="also write mask PNGs")
+    predict.add_argument(
+        "--refine",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="use the crop refiner when the calibration names one (scripts/refine.py)",
+    )
     predict.add_argument("--output-dir", default="runs/unet/predictions")
 
     calibration = subparsers.add_parser(
@@ -724,12 +731,20 @@ def run_prediction(args, device) -> None:
     min_area = checkpoint_setting(settings, "min_area", args.min_area, MIN_AREA)
     min_score = checkpoint_setting(settings, "min_score", args.min_score, 0.0)
     instance_filter = InstanceFilter.load(settings["filter"]) if settings.get("filter") else None
+    refiner_settings = settings.get("refiner") if args.refine else None
+    refiners = [load_refiner(path, device) for path in refiner_settings["checkpoints"]] if refiner_settings else None
     print(
         f"{len(models)} model(s), checkpoint epoch {checkpoint.get('epoch')}, size {size or 'native'}, "
         f"tile {tile or 'whole observation'}, threshold {threshold:.2f}, offset {offset:+d}, "
         f"min_area {min_area}, min_score {min_score:.2f}"
         + (f", learned filter cut {instance_filter.cut:.2f}" if instance_filter else "")
     )
+    if refiner_settings:
+        print(
+            f"{len(refiners)} crop refiner(s): proposals at {refiner_settings['proposal_threshold']:.3f} "
+            f"offset {refiner_settings['proposal_offset']:+d}, refined masks at {refiner_settings['threshold']:.2f}, "
+            f"min predicted IoU {refiner_settings['min_score']:.2f}; they replace the cuts above"
+        )
     if args.calibration is None and (len(models) > 1 or checkpoint.get("calibration") is None):
         print("warning: no calibration for this set of models; run `calibrate` before submitting")
 
@@ -759,6 +774,8 @@ def run_prediction(args, device) -> None:
         tile=tile,
         overlap=args.overlap,
         tile_batch=args.tile_batch,
+        refiners=refiners,
+        refiner_settings=refiner_settings,
     )
 
     submission_path = output_dir / "submission.csv"

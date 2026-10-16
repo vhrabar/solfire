@@ -14,6 +14,7 @@ from src.inference.refiner import (
     Window,
     assemble,
     component_window,
+    refine_observation,
     refiner_inputs,
     window_of,
 )
@@ -124,3 +125,21 @@ def test_flat_iou():
     """
     assert _flat_iou(np.arange(0, 10), np.arange(5, 15)) == pytest.approx(5 / 15)
     assert _flat_iou(np.arange(0, 10), np.arange(20, 30)) == 0
+
+
+def test_refine_observation_labels_every_kept_instance():
+    """
+    End to end on a small observation with two untrained refiners averaged: proposals are
+    cut, redrawn, scored and painted, and nothing is kept past a score cut above one.
+    """
+    torch.manual_seed(0)
+    models = [Refiner(encoder_weights=None).eval() for _ in range(2)]
+    probabilities = np.zeros((160, 160), dtype=np.float32)
+    probabilities[40:52, 20:140] = 0.9
+    image = np.full((160, 160), 0.5, dtype=np.float32)
+    settings = {"proposal_threshold": 0.5, "proposal_offset": 0, "threshold": 0.0, "min_score": 0.0}
+    labels, n_labels = refine_observation(models, image, probabilities, settings, torch.device("cpu"), tta=False)
+    assert n_labels == 1
+    assert labels.shape == (160, 160) and labels.max() == 1
+    _, n_labels = refine_observation(models, image, probabilities, {**settings, "min_score": 1.1}, torch.device("cpu"), tta=False)
+    assert n_labels == 0

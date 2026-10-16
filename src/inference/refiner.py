@@ -12,7 +12,7 @@ from scipy import ndimage
 from torch import Tensor, nn
 
 from ..networks.pretrained import IMAGENET_MEAN, IMAGENET_STD
-from .postprocess import connected_components
+from .postprocess import apply_offset, connected_components
 
 CROP_SIZE = 256
 # window edge as a multiple of the longer side of the component's box
@@ -160,10 +160,10 @@ class RefinedInstance:
 
 
 @torch.no_grad()
-def refine_components(model, image, probabilities, labels, n_labels, device, size=CROP_SIZE, batch_size=32, tta=True):
+def refine_components(models, image, probabilities, labels, n_labels, device, size=CROP_SIZE, batch_size=32, tta=True):
     """
     Run the refiner over every component of an observation.
-    :param model: :class:`Refiner` in eval mode
+    :param models: :class:`Refiner` in eval mode, or a list of them whose outputs are averaged
     :param image: ``(H, W)`` observation in ``[0, 1]``
     :param probabilities: ``(H, W)`` ensemble probabilities
     :param labels: ``(H, W)`` candidate components, 0 as background
@@ -182,28 +182,31 @@ def refine_components(model, image, probabilities, labels, n_labels, device, siz
     for start in range(0, len(jobs), batch_size):
         chunk = jobs[start : start + batch_size]
         inputs = torch.stack([refiner_inputs(image, probabilities, labels == k, window, size) for k, window in chunk])
-        masks, scores = predict_refiner(model, inputs.to(device), tta=tta)
+        masks, scores = predict_refiner(models, inputs.to(device), tta=tta)
         for (_, window), mask, score in zip(chunk, masks, scores):
             native = resample(mask[None].float(), window.side)[0, 0]
             refined.append(RefinedInstance(window, (native * 255).round().byte().cpu().numpy(), float(score)))
     return refined
 
 
-def predict_refiner(model, inputs, tta=True) -> tuple[Tensor, Tensor]:
+def predict_refiner(models, inputs, tta=True) -> tuple[Tensor, Tensor]:
     """
-    Refiner probabilities, averaged over flips.
-    :param model: :class:`Refiner` in eval mode
-    :param inputs: ``(B, 3, S, S)`` inputs on the model's device
+    Refiner probabilities, averaged over flips and over the models.
+    :param models: :class:`Refiner` in eval mode, or a list of them
+    :param inputs: ``(B, 3, S, S)`` inputs on the models' device
     :param tta: Average over horizontal and vertical flips
     :return: Tuple of (``(B, 1, S, S)`` mask probabilities, ``(B,)`` predicted earned IoU)
     """
+    models = models if isinstance(models, (list, tuple)) else [models]
     flips = [(), (-1,), (-2,)] if tta else [()]
     masks, scores = 0, 0
-    for dims in flips:
-        logits, score = model(torch.flip(inputs, dims) if dims else inputs)
-        masks = masks + torch.sigmoid(torch.flip(logits, dims) if dims else logits)
-        scores = scores + torch.sigmoid(score)
-    return masks / len(flips), scores / len(flips)
+    for model in models:
+        for dims in flips:
+            logits, score = model(torch.flip(inputs, dims) if dims else inputs)
+            masks = masks + torch.sigmoid(torch.flip(logits, dims) if dims else logits)
+            scores = scores + torch.sigmoid(score)
+    views = len(models) * len(flips)
+    return masks / views, scores / views
 
 
 def assemble(refined, height, width, threshold=0.5, min_score=0.0) -> tuple[np.ndarray, int, np.ndarray]:
@@ -237,6 +240,39 @@ def assemble(refined, height, width, threshold=0.5, min_score=0.0) -> tuple[np.n
         scores.append(instance.score)
         labels[rows, columns][free] = len(scores)
     return labels, len(scores), np.asarray(scores, dtype=np.float32)
+
+
+def load_refiner(path, device) -> Refiner:
+    """
+    :param path: Checkpoint written by :func:`training.refine.train_refiner`
+    :param device: Device to place it on
+    :return: The refiner in eval mode
+    """
+    checkpoint = torch.load(path, map_location="cpu", weights_only=False)
+    model = Refiner(encoder_weights=None)
+    model.load_state_dict(checkpoint["state_dict"])
+    return model.to(device).eval()
+
+
+def refine_observation(models, image, probabilities, settings, device, tta=True) -> tuple[np.ndarray, int]:
+    """
+    Instances of one observation the way the refined submission is written.
+    :param models: :class:`Refiner` models whose outputs are averaged
+    :param image: ``(H, W)`` observation in ``[0, 1]``
+    :param probabilities: ``(H, W)`` ensemble probabilities
+    :param settings: The ``refiner`` block of a calibration: ``proposal_threshold`` and
+        ``proposal_offset`` cut the proposals, ``threshold`` the refined masks, and
+        ``min_score`` the predicted earned IoU
+    :param device: Device to run on
+    :param tta: Average the refiner over flips
+    :return: Tuple of (``(H, W)`` labels, number of labels)
+    """
+    mask = apply_offset(probabilities >= settings["proposal_threshold"], settings["proposal_offset"])
+    labels, n_labels = connected_components(mask)
+    refined = refine_components(models, image, probabilities, labels, n_labels, device, tta=tta)
+    height, width = probabilities.shape
+    labels, n_labels, _ = assemble(refined, height, width, threshold=settings["threshold"], min_score=settings["min_score"])
+    return labels, n_labels
 
 
 def largest_component(mask) -> np.ndarray:

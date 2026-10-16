@@ -389,7 +389,9 @@ def seed_instances(labels, n_labels, probabilities) -> list[RefinedInstance]:
     return seeds
 
 
-def score_refined(refined_dir, records, thresholds=REFINE_THRESHOLDS, min_scores=REFINE_MIN_SCORES, workers=8) -> dict:
+def score_refined(
+    refined_dir, records, folds=None, thresholds=REFINE_THRESHOLDS, min_scores=REFINE_MIN_SCORES, workers=8
+) -> dict:
     """
     Panoptic Quality of the refined instances over a grid of mask cuts and score cuts.
 
@@ -398,19 +400,30 @@ def score_refined(refined_dir, records, thresholds=REFINE_THRESHOLDS, min_scores
     the shipped rule), so the gain of the masks and of the scores can be told apart.
     :param refined_dir: Directory written by :func:`refine_held_out`
     :param records: Per observation file, the annotations of each of its records
+    :param folds: Per observation file, its fold; given, each reading also gets a
+        ``nested`` score, its cuts chosen on the other folds and scored on the held-out one
     :param thresholds: Cuts on the refined probabilities
     :param min_scores: Cuts on the instance score
     :param workers: Processes working in parallel
-    :return: Per reading, the winning setting with its ``pq`` and counts, and its table
+    :return: Per reading, the winning setting with its ``pq`` and counts, its table, and
+        with ``folds`` the ``nested`` pooled score and the cuts each fold chose
     """
-    jobs = [(name, Path(refined_dir), records[name], tuple(thresholds), tuple(min_scores)) for name in sorted(records)]
-    accumulated: dict[tuple, np.ndarray] = {}
+    names = sorted(records)
+    jobs = [(name, Path(refined_dir), records[name], tuple(thresholds), tuple(min_scores)) for name in names]
+    by_fold: dict[int, dict[tuple, np.ndarray]] = {}
     with ProcessPoolExecutor(
         max(1, workers), mp_context=multiprocessing.get_context("forkserver"), initializer=_single_thread
     ) as pool:
-        for terms in tqdm(pool.map(_score_one, jobs), total=len(jobs), desc="scoring", leave=False, mininterval=2.0):
+        for name, terms in zip(
+            names, tqdm(pool.map(_score_one, jobs), total=len(jobs), desc="scoring", leave=False, mininterval=2.0)
+        ):
+            fold_terms = by_fold.setdefault(folds[name] if folds else 0, {})
             for key, value in terms.items():
-                accumulated[key] = accumulated.get(key, 0) + value
+                fold_terms[key] = fold_terms.get(key, 0) + value
+    accumulated: dict[tuple, np.ndarray] = {}
+    for fold_terms in by_fold.values():
+        for key, value in fold_terms.items():
+            accumulated[key] = accumulated.get(key, 0) + value
     report = {}
     for reading in ("refined", "rescored", "seeds"):
         table = [
@@ -420,7 +433,27 @@ def score_refined(refined_dir, records, thresholds=REFINE_THRESHOLDS, min_scores
         ]
         table.sort(key=lambda row: -row["pq"])
         report[reading] = {**table[0], "table": table}
+        if folds:
+            report[reading]["nested"] = _nested(by_fold, accumulated, reading)
     return report
+
+
+def _nested(by_fold, accumulated, reading) -> dict:
+    """
+    Choose the cuts of a reading on all folds but one, score them on that one, and pool.
+    :param by_fold: Per fold, the summed terms keyed by ``(reading, threshold, min_score)``
+    :param accumulated: The terms summed over every fold
+    :param reading: Reading to score
+    :return: Dict with the pooled ``pq`` and counts and the ``chosen`` cuts per fold
+    """
+    pooled = np.zeros(4)
+    chosen = {}
+    keys = [key for key in accumulated if key[0] == reading]
+    for fold, fold_terms in sorted(by_fold.items()):
+        best = max(keys, key=lambda key: pq_from_counts(*(accumulated[key] - fold_terms[key])))
+        pooled += fold_terms[best]
+        chosen[fold] = {"threshold": best[1], "min_score": float(best[2])}
+    return {"pq": pq_from_counts(*pooled), "tp": int(pooled[1]), "fp": int(pooled[2]), "fn": int(pooled[3]), "chosen": chosen}
 
 
 def _score_one(job) -> dict:

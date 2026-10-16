@@ -81,11 +81,11 @@ def main() -> int:
         models = {fold: load_refiner(run / f"fold{fold}.pt", device) for fold in sorted(set(folds.values()))}
         refine_held_out(models, sources, folds, run / "refined", device, threshold=threshold, offset=offset)
     if "score" in steps:
-        report = score_refined(run / "refined", records, workers=args.workers)
+        report = score_refined(run / "refined", records, folds, workers=args.workers)
         for reading, best in report.items():
             print(
                 f"{reading}: pq {best['pq']:.4f} at threshold {best['threshold']}, min_score {best['min_score']} "
-                f"(tp {best['tp']} fp {best['fp']} fn {best['fn']})"
+                f"(tp {best['tp']} fp {best['fp']} fn {best['fn']}); nested {best['nested']['pq']:.4f}"
             )
         (run / "score.json").write_text(json.dumps(report, indent=2))
     return 0

@@ -3,6 +3,8 @@ Training and validation loops.
 """
 
 import json
+import os
+import pickle
 import random
 import time
 from pathlib import Path
@@ -171,6 +173,32 @@ def evaluate(model, loader, criterion, device, thresholds=DEFAULT_THRESHOLDS, am
     return results
 
 
+def atomic_save(state, path) -> None:
+    """
+    ``torch.save`` that never leaves a half-written file: a run killed mid-write keeps the
+    previous checkpoint.
+    :param state: Object to save
+    :param path: Destination file
+    :return: None
+    """
+    path = Path(path)
+    partial = path.with_name(path.name + ".partial")
+    torch.save(state, partial)
+    os.replace(partial, path)
+
+
+def atomic_write_text(path, text) -> None:
+    """
+    :param path: Destination file, replaced in one step
+    :param text: UTF-8 contents
+    :return: None
+    """
+    path = Path(path)
+    partial = path.with_name(path.name + ".partial")
+    partial.write_text(text, encoding="utf-8")
+    os.replace(partial, path)
+
+
 def save_checkpoint(path, model, model_config, epoch, metrics, image_size, extra=None) -> None:
     """
     Write the weights together with everything inference needs to rebuild them.
@@ -196,7 +224,7 @@ def save_checkpoint(path, model, model_config, epoch, metrics, image_size, extra
         "threshold": metrics.get("best_threshold", 0.5),
     }
     state.update(extra or {})
-    torch.save(state, path)
+    atomic_save(state, path)
 
 
 def _rng_state() -> dict:
@@ -254,7 +282,7 @@ def _resume_fields(
     }
 
 
-def _load_resume_state(last_path, model, optimizer, scheduler, scaler, averaged, epochs, device) -> ResumeState:
+def _load_resume_state(last_path, model, optimizer, scheduler, scaler, averaged, epochs, device) -> ResumeState | None:
     """
     Restore model/optimizer/scheduler/scaler/SWA-average/RNG from ``last_path`` in place.
 
@@ -266,9 +294,14 @@ def _load_resume_state(last_path, model, optimizer, scheduler, scaler, averaged,
     :param averaged: SWA :class:`~torch.optim.swa_utils.AveragedModel` to restore, or ``None``
     :param epochs: Total epochs requested for this call, to size the remaining range
     :param device: Device the checkpoint is loaded onto
-    :return: The state :func:`fit` continues from
+    :return: The state :func:`fit` continues from, or ``None`` when ``last_path`` is unreadable
     """
-    checkpoint = torch.load(last_path, map_location=device, weights_only=False)
+    try:
+        checkpoint = torch.load(last_path, map_location=device, weights_only=False)
+    except (RuntimeError, EOFError, pickle.UnpicklingError) as error:
+        # a last.pt written before saves were atomic may be cut short; nothing is loaded yet
+        print(f"  could not read {last_path} ({error}); starting from scratch")
+        return None
     model.load_state_dict(checkpoint["model_state"])
     if checkpoint.get("optimizer_state") is not None:
         optimizer.load_state_dict(checkpoint["optimizer_state"])
@@ -370,12 +403,12 @@ def fit(
     swa_start = epochs - swa_epochs
 
     last_path = output_dir / "last.pt"
-    state: ResumeState
+    state: ResumeState | None = None
     if resume and last_path.is_file():
         state = _load_resume_state(last_path, model, optimizer, scheduler, scaler, averaged, epochs, device)
-    else:
-        if resume:
-            print(f"  --resume set but {last_path} does not exist; starting from scratch")
+    elif resume:
+        print(f"  --resume set but {last_path} does not exist; starting from scratch")
+    if state is None:
         state = {
             "start_epoch": 0,
             "best_pq": -1.0,
@@ -459,7 +492,7 @@ def fit(
             ),
         }
         save_checkpoint(output_dir / "last.pt", model, model_config, epoch + 1, metrics, image_size, extra=resume_extra)
-        (output_dir / "history.json").write_text(json.dumps(history, indent=2), encoding="utf-8")
+        atomic_write_text(output_dir / "history.json", json.dumps(history, indent=2))
 
         if not improved and patience and epochs_without_improvement >= patience:
             print(f"early stopping after {patience} epochs without improvement")

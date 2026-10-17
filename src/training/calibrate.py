@@ -22,6 +22,7 @@ from ..data import TRAIN_IMAGES, load_image
 from ..data.preprocess import observation_path
 from ..inference.postprocess import apply_offset, connected_components, instance_scores
 from ..inference.tiling import DEFAULT_OVERLAP, DEFAULT_TILE, predict_probabilities, predict_tiled
+from .engine import atomic_write_text
 from .metrics import (
     DEFAULT_THRESHOLDS,
     annotation_pixels,
@@ -432,4 +433,4 @@ def write_calibration(path, calibration) -> None:
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(calibration, indent=2), encoding="utf-8")
+    atomic_write_text(path, json.dumps(calibration, indent=2))

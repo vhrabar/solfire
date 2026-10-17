@@ -174,6 +174,24 @@ def stream(command: list[str], log_path: Path) -> int:
         return process.wait()
 
 
+def attempt(command: list[str], log_path: Path, retries: int) -> bool:
+    """
+    Run ``command``, and again after a failure; training resumes from its ``last.pt``, so a
+    crash costs at most the epoch it happened in.
+    :param command: argv
+    :param log_path: Log of the latest attempt; earlier ones are kept as ``<log>.<n>``
+    :param retries: Further attempts after the first failure
+    :return: Whether an attempt succeeded
+    """
+    for number in range(retries + 1):
+        if number:
+            log_path.replace(log_path.with_name(f"{log_path.name}.{number}"))
+            print(f"  attempt {number + 1}/{retries + 1} after a failure; see {log_path.name}.{number}")
+        if stream(command, log_path) == 0:
+            return True
+    return False
+
+
 def run_one(config: dict, seed: int, sweep_dir: Path, calibrate_args: list[str], device: list[str], args) -> dict:
     """
     Train + calibrate one config at one seed, or reuse an existing result.
@@ -221,17 +239,19 @@ def run_one(config: dict, seed: int, sweep_dir: Path, calibrate_args: list[str],
         print("  calibrate: " + " ".join([*calibrate_cmd_prefix, "--checkpoint", str(run_dir / "<best>.pt"), *calibrate_args]))
         return {**row, "status": "dry-run"}
 
-    if stream(train_cmd, run_dir.with_suffix(".train.log")) != 0:
+    if not attempt(train_cmd, run_dir.with_suffix(".train.log"), args.retries):
         return {**row, "status": "train-failed"}
     found = best_checkpoint(run_dir)
     if found is None:
         return {**row, "status": "train-failed"}
     checkpoint, train_pq = found
 
-    code = stream(
-        [*calibrate_cmd_prefix, "--checkpoint", str(checkpoint), *calibrate_args], run_dir.with_suffix(".calibrate.log")
+    calibrated = attempt(
+        [*calibrate_cmd_prefix, "--checkpoint", str(checkpoint), *calibrate_args],
+        run_dir.with_suffix(".calibrate.log"),
+        args.retries,
     )
-    calibration = read_calibration(checkpoint) if code == 0 else None
+    calibration = read_calibration(checkpoint) if calibrated else None
     if calibration is None:
         return {**row, "checkpoint": checkpoint.relative_to(REPO), "train_pq": train_pq, "status": "calibrate-failed"}
 
@@ -312,6 +332,7 @@ def main() -> None:
     parser.add_argument("--only", help="run only configs whose name contains one of these comma-separated substrings")
     parser.add_argument("--max-runs", type=int, default=0, help="stop after this many (config, seed) runs; 0 is no limit")
     parser.add_argument("--force", action="store_true", help="retrain configs that already have a calibration.json")
+    parser.add_argument("--retries", type=int, default=2, help="re-run a failed train/calibrate this many times")
     parser.add_argument("--continue-on-error", action="store_true", help="keep going after a failed train/calibrate")
     parser.add_argument("--dry-run", action="store_true", help="print the commands, run nothing")
     args = parser.parse_args()

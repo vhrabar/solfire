@@ -36,6 +36,7 @@ from ..inference.refiner import (
     window_of,
 )
 from .calibrate import load_probabilities
+from .engine import atomic_save
 from .metrics import IOU_THRESHOLD, annotation_pixels, instance_iou, pq_counts, pq_from_counts
 from .optim import build_optimizer, build_scheduler
 
@@ -309,7 +310,17 @@ def train_refiner(
     optimizer = build_optimizer(model, lr=lr, encoder_lr_scale=encoder_lr_scale)
     scheduler = build_scheduler(optimizer, epochs, len(loader), warmup_epochs=1)
     history = []
-    for epoch in range(epochs):
+    # every finished epoch is kept here, so a killed run picks up where it stopped
+    last = Path(output).with_suffix(".last.pt")
+    if last.is_file():
+        state = torch.load(last, map_location=device, weights_only=False)
+        model.load_state_dict(state["state_dict"])
+        optimizer.load_state_dict(state["optimizer"])
+        scheduler.load_state_dict(state["scheduler"])
+        torch.set_rng_state(state["rng"])
+        history = state["history"]
+        print(f"fold {fold}: resuming after epoch {len(history)}/{epochs}")
+    for epoch in range(len(history), epochs):
         model.train()
         totals = np.zeros(3)
         progress = tqdm(loader, desc=f"fold {fold} epoch {epoch + 1}/{epochs}", leave=False, mininterval=2.0)
@@ -325,8 +336,19 @@ def train_refiner(
             totals += [loss.item(), mask_loss.item(), score_loss.item()]
         history.append(dict(zip(("loss", "mask", "score"), (totals / len(loader)).tolist())))
         print(f"fold {fold} epoch {epoch + 1}/{epochs} " + " ".join(f"{k} {v:.4f}" for k, v in history[-1].items()))
-    Path(output).parent.mkdir(parents=True, exist_ok=True)
-    torch.save({"state_dict": model.state_dict(), "fold": fold, "epochs": epochs, "size": CROP_SIZE, "history": history}, output)
+        last.parent.mkdir(parents=True, exist_ok=True)
+        atomic_save(
+            {
+                "state_dict": model.state_dict(),
+                "optimizer": optimizer.state_dict(),
+                "scheduler": scheduler.state_dict(),
+                "rng": torch.get_rng_state(),
+                "history": history,
+            },
+            last,
+        )
+    atomic_save({"state_dict": model.state_dict(), "fold": fold, "epochs": epochs, "size": CROP_SIZE, "history": history}, output)
+    last.unlink(missing_ok=True)
     return {"history": history}
 
 

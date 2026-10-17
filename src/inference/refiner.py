@@ -160,7 +160,9 @@ class RefinedInstance:
 
 
 @torch.no_grad()
-def refine_components(models, image, probabilities, labels, n_labels, device, size=CROP_SIZE, batch_size=32, tta=True):
+def refine_components(
+    models, image, probabilities, labels, n_labels, device, size=CROP_SIZE, batch_size=32, tta=True, context=CONTEXT
+):
     """
     Run the refiner over every component of an observation.
     :param models: :class:`Refiner` in eval mode, or a list of them whose outputs are averaged
@@ -172,12 +174,15 @@ def refine_components(models, image, probabilities, labels, n_labels, device, si
     :param size: Edge length the refiner works at
     :param batch_size: Components per forward pass
     :param tta: Average over horizontal and vertical flips
+    :param context: Window edge as a multiple of the longer side of a component's box
     :return: List of :class:`RefinedInstance`, one per component of at least
         :data:`MIN_PIXELS` pixels
     """
     areas = np.bincount(labels.ravel(), minlength=n_labels + 1)
     boxes = ndimage.find_objects(labels)
-    jobs = [(index + 1, component_window(box)) for index, box in enumerate(boxes) if box and areas[index + 1] >= MIN_PIXELS]
+    jobs = [
+        (index + 1, component_window(box, context)) for index, box in enumerate(boxes) if box and areas[index + 1] >= MIN_PIXELS
+    ]
     refined = []
     for start in range(0, len(jobs), batch_size):
         chunk = jobs[start : start + batch_size]
@@ -261,14 +266,16 @@ def refine_observation(models, image, probabilities, settings, device, tta=True)
     :param probabilities: ``(H, W)`` ensemble probabilities
     :param settings: The ``refiner`` block of a calibration: ``proposal_threshold`` and
         ``proposal_offset`` cut the proposals, ``threshold`` the refined masks, and
-        ``min_score`` the predicted earned IoU
+        ``min_score`` the predicted earned IoU; ``context`` the window the refiners were
+        trained on, :data:`CONTEXT` when absent
     :param device: Device to run on
     :param tta: Average the refiner over flips
     :return: Tuple of (``(H, W)`` labels, number of labels)
     """
     mask = apply_offset(probabilities >= settings["proposal_threshold"], settings["proposal_offset"])
     labels, n_labels = connected_components(mask)
-    refined = refine_components(models, image, probabilities, labels, n_labels, device, tta=tta)
+    context = settings.get("context", CONTEXT)
+    refined = refine_components(models, image, probabilities, labels, n_labels, device, tta=tta, context=context)
     height, width = probabilities.shape
     labels, n_labels, _ = assemble(refined, height, width, threshold=settings["threshold"], min_score=settings["min_score"])
     return labels, n_labels

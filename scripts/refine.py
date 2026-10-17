@@ -12,7 +12,7 @@ import torch
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.data import load_annotations, validation_split
-from src.inference.refiner import load_refiner
+from src.inference.refiner import CONTEXT, load_refiner
 from src.training.calibrate import cache_directory
 from src.training.refine import collect_crops, refine_held_out, score_refined, train_refiner
 
@@ -60,6 +60,15 @@ def main() -> int:
     parser.add_argument("--lr", type=float, default=3e-4)
     parser.add_argument("--folds", type=int, nargs="+", default=[0, 1, 2, 3, 4])
     parser.add_argument("--workers", type=int, default=8)
+    parser.add_argument("--crops", default="crops", help="sample directory under --output-dir")
+    parser.add_argument("--context", type=float, default=CONTEXT, help="window edge per longer side of the proposal box")
+    parser.add_argument(
+        "--train-offsets",
+        type=int,
+        nargs="+",
+        default=None,
+        help="offsets the training proposals are cut with; default: the calibration's",
+    )
     parser.add_argument(
         "--output", type=Path, default=None, help="refined calibration JSON; default: <calibration>-refined next to it"
     )
@@ -68,14 +77,22 @@ def main() -> int:
     calibration = json.loads(args.calibration.read_text())
     threshold, offset = calibration["threshold"], calibration["offset"]
     sources, records, folds = held_out(calibration["checkpoints"])
-    crops = args.output_dir / "crops"
+    crops = args.output_dir / args.crops
+    crop_settings = {"context": args.context, "offsets": args.train_offsets or [offset]}
     run = args.output_dir / args.name
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     steps = STEPS if args.step == "all" else (args.step,)
 
     if "collect" in steps and not (crops / "meta.pkl").is_file():
-        total = collect_crops(sources, records, folds, crops, offset=offset, workers=args.workers)
+        total = collect_crops(
+            sources, records, folds, crops, offsets=crop_settings["offsets"], workers=args.workers, context=args.context
+        )
+        (crops / "settings.json").write_text(json.dumps(crop_settings))
         print(f"wrote {total} samples to {crops}")
+    stored = crops / "settings.json"
+    found = json.loads(stored.read_text()) if stored.is_file() else {"context": CONTEXT, "offsets": [offset]}
+    if found != crop_settings:
+        raise SystemExit(f"{crops} was collected with {found}, not {crop_settings}; pick another --crops")
     if "train" in steps:
         for fold in args.folds:
             path = run / f"fold{fold}.pt"
@@ -83,7 +100,7 @@ def main() -> int:
                 train_refiner(crops, fold, path, device, args.epochs, args.batch_size, args.lr, workers=args.workers)
     if "refine" in steps:
         models = {fold: load_refiner(run / f"fold{fold}.pt", device) for fold in sorted(set(folds.values()))}
-        refine_held_out(models, sources, folds, run / "refined", device, threshold=threshold, offset=offset)
+        refine_held_out(models, sources, folds, run / "refined", device, threshold=threshold, offset=offset, context=args.context)
     if "score" in steps:
         report = score_refined(run / "refined", records, folds, workers=args.workers)
         for reading, best in report.items():
@@ -97,6 +114,7 @@ def main() -> int:
             "checkpoints": [str(run / f"fold{fold}.pt") for fold in sorted(set(folds.values()))],
             "proposal_threshold": threshold,
             "proposal_offset": offset,
+            "context": args.context,
             "threshold": best["threshold"],
             "min_score": best["min_score"],
             "pq": best["pq"],

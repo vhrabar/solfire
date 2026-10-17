@@ -1,0 +1,66 @@
+{
+  "name": "finetune_spine",
+  "seeds": [
+    1
+  ],
+  "base": {
+    "arch": "pretrained",
+    "decoder": "unetplusplus",
+    "encoder": "resnet34",
+    "encoder_weights": "imagenet",
+    "encoder_lr_scale": 0.25,
+    "crop": 512,
+    "crops_per_image": 7,
+    "foreground_prob": 0.7,
+    "pos_weight": 5,
+    "batch_size": 8,
+    "epochs": 8,
+    "lr": 0.0001,
+    "warmup_epochs": 0,
+    "amp": true,
+    "workers": 12,
+    "swa_epochs": 0,
+    "val_limit": 64,
+    "val_tile": 512,
+    "val_overlap": 0.0,
+    "tile_batch": 8,
+    "raster": "coco",
+    "folds": 5,
+    "targets": "mean",
+    "lovasz_weight": 0.5,
+    "thin_head_weight": 0.5
+  },
+  "configs": [
+    {
+      "name": "spine-r34-fold0",
+      "fold": 0,
+      "init_checkpoint": "runs/cv5/c01_unetpp-r34-mean-fold0_seed1/best.pt"
+    },
+    {
+      "name": "spine-r34-fold1",
+      "fold": 1,
+      "init_checkpoint": "runs/cv5/c02_unetpp-r34-mean-fold1_seed1/best.pt"
+    },
+    {
+      "name": "spine-r34-fold2",
+      "fold": 2,
+      "init_checkpoint": "runs/cv5/c03_unetpp-r34-mean-fold2_seed1/best.pt"
+    },
+    {
+      "name": "spine-r34-fold3",
+      "fold": 3,
+      "init_checkpoint": "runs/cv5/c04_unetpp-r34-mean-fold3_seed1/best.pt"
+    },
+    {
+      "name": "spine-r34-fold4",
+      "fold": 4,
+      "init_checkpoint": "runs/cv5/c05_unetpp-r34-mean-fold4_seed1/best.pt"
+    }
+  ],
+  "calibrate": {
+    "tile": 512,
+    "overlap": 0.25,
+    "tile_batch": 8,
+    "workers": 8
+  }
+}

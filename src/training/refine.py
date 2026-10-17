@@ -24,6 +24,7 @@ from ..data import TRAIN_IMAGES, load_image
 from ..data.preprocess import observation_path
 from ..inference.postprocess import SUBMISSION_SIZE, apply_offset, connected_components
 from ..inference.refiner import (
+    CONTEXT,
     CROP_SIZE,
     MIN_PIXELS,
     RefinedInstance,
@@ -49,7 +50,9 @@ REFINE_THRESHOLDS = (0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6)
 REFINE_MIN_SCORES = tuple(round(value, 2) for value in np.arange(0.0, 0.62, 0.02))
 
 
-def collect_crops(sources, records, folds, output_dir, offset=-1, thresholds=TRAIN_THRESHOLDS, workers=8, size=CROP_SIZE):
+def collect_crops(
+    sources, records, folds, output_dir, offsets=(-1,), thresholds=TRAIN_THRESHOLDS, workers=8, size=CROP_SIZE, context=CONTEXT
+):
     """
     Cut every proposal of the held-out maps into a refiner sample, on disk.
 
@@ -57,15 +60,16 @@ def collect_crops(sources, records, folds, output_dir, offset=-1, thresholds=TRA
     :param records: Per observation file, the annotations of each of its records
     :param folds: Per observation file, the fold that held it out
     :param output_dir: Directory the samples are written to
-    :param offset: Morphological step the proposals are cut with
+    :param offsets: Morphological steps the proposals are cut with
     :param thresholds: Probability thresholds the proposals are cut at
     :param workers: Processes working in parallel
     :param size: Edge length the refiner works at
+    :param context: Window edge as a multiple of the longer side of a proposal's box
     :return: Number of samples written
     """
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    jobs = [(name, sources[name], records[name], offset, thresholds, size) for name in sorted(sources)]
+    jobs = [(name, sources[name], records[name], offsets, thresholds, size, context) for name in sorted(sources)]
     chunks, meta = [], []
     chunk_dir = output_dir / "chunks"
     chunk_dir.mkdir(exist_ok=True)
@@ -113,11 +117,11 @@ def _single_thread() -> None:
 def _collect_one(job):
     """
     The refiner samples of one observation.
-    :param job: Tuple of (file name, cache directories, annotations per record, offset, thresholds, size)
+    :param job: Tuple of (file name, cache directories, annotations per record, offsets, thresholds, size, context)
     :return: Tuple of (file name, ``(n, 3, S, S)`` uint8 inputs, ``(n, MAX_RECORDS, S, S)``
         uint8 targets, per sample a dict of descriptive fields)
     """
-    name, cache_dirs, annotations, offset, thresholds, size = job
+    name, cache_dirs, annotations, offsets, thresholds, size, context = job
     probabilities = load_probabilities(cache_dirs, name)
     image = load_image(observation_path(TRAIN_IMAGES, name)).numpy()[0]
     height, width = probabilities.shape
@@ -127,7 +131,7 @@ def _collect_one(job):
 
     taken: list[np.ndarray] = []
     inputs, targets, rows = [], [], []
-    for threshold in thresholds:
+    for offset, threshold in ((offset, threshold) for offset in offsets for threshold in thresholds):
         labels, n_labels = connected_components(apply_offset(probabilities >= threshold, offset))
         if not n_labels:
             continue
@@ -142,7 +146,7 @@ def _collect_one(job):
             if any(_flat_iou(flat, other) >= DUPLICATE_IOU for other in taken):
                 continue
             taken.append(flat)
-            window = component_window(box)
+            window = component_window(box, context)
             sample = refiner_inputs(image, probabilities, seed, window, size)
             target = np.zeros((MAX_RECORDS, size, size), dtype=np.uint8)
             earned = []
@@ -159,6 +163,7 @@ def _collect_one(job):
             rows.append(
                 {
                     "threshold": threshold,
+                    "offset": offset,
                     "area": int(areas[index + 1]),
                     "score": float(probabilities[seed].mean()),
                     "records": len(gt),
@@ -352,7 +357,7 @@ def train_refiner(
     return {"history": history}
 
 
-def refine_held_out(models, sources, folds, output_dir, device, threshold=0.375, offset=-1, tta=True) -> None:
+def refine_held_out(models, sources, folds, output_dir, device, threshold=0.375, offset=-1, tta=True, context=CONTEXT) -> None:
     """
     Refine every held-out observation with the refiner that did not train on its fold.
     :param models: Per fold, a :class:`Refiner` in eval mode
@@ -363,6 +368,7 @@ def refine_held_out(models, sources, folds, output_dir, device, threshold=0.375,
     :param threshold: Probability the proposals are cut at
     :param offset: Morphological step the proposals are cut with
     :param tta: Average the refiner over flips
+    :param context: Window edge as a multiple of the longer side of a proposal's box
     :return: None
     """
     output_dir = Path(output_dir)
@@ -374,7 +380,7 @@ def refine_held_out(models, sources, folds, output_dir, device, threshold=0.375,
         probabilities = load_probabilities(sources[name], name)
         image = load_image(observation_path(TRAIN_IMAGES, name)).numpy()[0]
         labels, n_labels = connected_components(apply_offset(probabilities >= threshold, offset))
-        refined = refine_components(models[folds[name]], image, probabilities, labels, n_labels, device, tta=tta)
+        refined = refine_components(models[folds[name]], image, probabilities, labels, n_labels, device, tta=tta, context=context)
         seeds = seed_instances(labels, n_labels, probabilities)
         with open(path, "wb") as handle:
             pickle.dump({"refined": refined, "seeds": seeds}, handle)

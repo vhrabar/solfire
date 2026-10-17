@@ -58,6 +58,7 @@ def main() -> int:
     parser.add_argument("--epochs", type=int, default=12)
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--lr", type=float, default=3e-4)
+    parser.add_argument("--seed", type=int, default=1, help="seed of the refiners' initialisation and sampling")
     parser.add_argument("--folds", type=int, nargs="+", default=[0, 1, 2, 3, 4])
     parser.add_argument("--workers", type=int, default=8)
     parser.add_argument("--crops", default="crops", help="sample directory under --output-dir")
@@ -97,7 +98,9 @@ def main() -> int:
         for fold in args.folds:
             path = run / f"fold{fold}.pt"
             if not path.is_file():
-                train_refiner(crops, fold, path, device, args.epochs, args.batch_size, args.lr, workers=args.workers)
+                train_refiner(
+                    crops, fold, path, device, args.epochs, args.batch_size, args.lr, workers=args.workers, seed=args.seed
+                )
     if "refine" in steps:
         models = {fold: load_refiner(run / f"fold{fold}.pt", device) for fold in sorted(set(folds.values()))}
         refine_held_out(models, sources, folds, run / "refined", device, threshold=threshold, offset=offset, context=args.context)

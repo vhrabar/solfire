@@ -58,6 +58,26 @@ def soft_dice_loss(logits: Tensor, targets: Tensor, eps: float = 1.0) -> Tensor:
     return 1.0 - dice.mean()
 
 
+def soft_tversky_loss(logits: Tensor, targets: Tensor, beta: float = 0.7, eps: float = 1.0) -> Tensor:
+    """
+    Soft Tversky loss: Dice with false negatives weighted ``beta`` and false positives
+    ``1 - beta``, so ``beta`` above one half pushes the prediction outward.
+
+    :param logits: ``(B, 1, H, W)`` raw predictions
+    :param targets: ``(B, 1, H, W)`` binary targets
+    :param beta: Weight of the false negatives
+    :param eps: Smoothing added to numerator and denominator
+    :return: Scalar loss in ``[0, 1]``
+    """
+    probabilities = torch.sigmoid(logits).flatten(1)
+    targets = targets.flatten(1)
+    true_positive = (probabilities * targets).sum(dim=1)
+    false_positive = probabilities.sum(dim=1) - true_positive
+    false_negative = targets.sum(dim=1) - true_positive
+    index = (true_positive + eps) / (true_positive + (1.0 - beta) * false_positive + beta * false_negative + eps)
+    return 1.0 - index.mean()
+
+
 def _lovasz_gradient(sorted_labels: Tensor, sorted_weights: Tensor | None = None) -> Tensor:
     """
     Gradient of the Lovász extension of the Jaccard loss at the sorted errors.
@@ -110,7 +130,9 @@ class BCEDiceLoss(nn.Module):
 
     pos_weight: Tensor | None
 
-    def __init__(self, bce_weight=0.5, dice_weight=0.5, pos_weight=None, lovasz_weight=0.0, pixel_weights=False):
+    def __init__(
+        self, bce_weight=0.5, dice_weight=0.5, pos_weight=None, lovasz_weight=0.0, pixel_weights=False, tversky_beta=0.5
+    ):
         """
         :param bce_weight: Weight of the cross entropy term
         :param dice_weight: Weight of the Dice term
@@ -118,12 +140,14 @@ class BCEDiceLoss(nn.Module):
         :param lovasz_weight: Weight of the Lovász hinge term; ``0`` leaves it out
         :param pixel_weights: The targets carry a second channel of per-pixel weights
             (:func:`~src.data.structure.thickness_weight`), applied to the BCE and Lovász terms
+        :param tversky_beta: Weight of the false negatives in the overlap term; ``0.5`` is Dice
         """
         super().__init__()
         self.bce_weight = bce_weight
         self.dice_weight = dice_weight
         self.lovasz_weight = float(lovasz_weight)
         self.pixel_weights = pixel_weights
+        self.tversky_beta = float(tversky_beta)
         if pos_weight is not None:
             pos_weight = torch.as_tensor(float(pos_weight))
         self.register_buffer("pos_weight", pos_weight)
@@ -139,7 +163,11 @@ class BCEDiceLoss(nn.Module):
         if self.pixel_weights:
             targets, weights = targets[:, :1], targets[:, 1:2]
         bce = nn.functional.binary_cross_entropy_with_logits(logits, targets, weight=weights, pos_weight=self.pos_weight)
-        loss = self.bce_weight * bce + self.dice_weight * soft_dice_loss(logits, targets)
+        if self.tversky_beta == 0.5:
+            overlap = soft_dice_loss(logits, targets)
+        else:
+            overlap = soft_tversky_loss(logits, targets, self.tversky_beta)
+        loss = self.bce_weight * bce + self.dice_weight * overlap
         if self.lovasz_weight:
             loss = loss + self.lovasz_weight * lovasz_hinge_loss(logits, targets, weights)
         return loss

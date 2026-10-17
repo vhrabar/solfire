@@ -113,3 +113,24 @@ def test_every_record_is_scored():
     # record one: 1 TP with IoU 1; record two: 1 FP + 1 FN -> 1 / (1 + 0.5 + 0.5)
     assert ours([first, second], labels, n_labels) == pytest.approx(0.5)
     assert theirs([first, second], labels, n_labels) == pytest.approx(0.5)
+
+
+def test_tversky_at_one_half_matches_dice_and_beta_favours_recall():
+    """
+    With ``beta`` one half the Tversky loss is Dice up to the smoothing; above it a
+    prediction missing 28 filament pixels costs more than one adding 36.
+    """
+    import torch
+
+    from src.training.losses import soft_dice_loss, soft_tversky_loss
+
+    targets = torch.zeros(1, 1, 16, 16)
+    targets[..., 4:12, 4:12] = 1
+    logits = (targets * 2 - 1) * 3
+    dice = soft_dice_loss(logits, targets, eps=1e-6)
+    assert torch.isclose(soft_tversky_loss(logits, targets, beta=0.5, eps=1e-6), dice, atol=1e-4)
+    shrunk = torch.full_like(targets, -6.0)
+    shrunk[..., 5:11, 5:11] = 6.0
+    grown = torch.full_like(targets, -6.0)
+    grown[..., 3:13, 3:13] = 6.0
+    assert soft_tversky_loss(shrunk, targets, beta=0.7) > soft_tversky_loss(grown, targets, beta=0.7)

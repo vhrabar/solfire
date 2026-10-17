@@ -179,6 +179,12 @@ def parse_args() -> argparse.Namespace:
     )
     train.add_argument("--lovasz-weight", type=float, default=0.0, help="weight of the Lovász hinge term; 0 leaves it out")
     train.add_argument(
+        "--tversky-beta",
+        type=float,
+        default=0.5,
+        help="weight of false negatives in the overlap term (Tversky); 0.5 is Dice, above it favours recall",
+    )
+    train.add_argument(
         "--thickness-weight-cap",
         type=float,
         default=0.0,
@@ -560,6 +566,8 @@ def run_training(args, device) -> None:
             raise SystemExit("the thin-structure targets cannot be combined with the morphology terms")
     if args.thin_head_weight > 0 and args.arch != "pretrained":
         raise SystemExit("--thin-head-weight needs --arch pretrained")
+    if not 0 < args.tversky_beta < 1:
+        raise SystemExit("--tversky-beta must lie strictly between 0 and 1")
     if args.thickness_weight_cap and args.thickness_weight_cap < 1:
         raise SystemExit("--thickness-weight-cap must be at least 1")
 
@@ -569,6 +577,7 @@ def run_training(args, device) -> None:
         pos_weight=pos_weight,
         lovasz_weight=args.lovasz_weight,
         pixel_weights=args.thickness_weight_cap > 0,
+        tversky_beta=args.tversky_beta,
     )
     criterion = build_criterion(base_criterion, args)
     if args.thin_head_weight > 0:
@@ -619,6 +628,7 @@ def run_training(args, device) -> None:
         "targets": args.targets,
         "preprocess": args.preprocess,
         "lovasz_weight": args.lovasz_weight,
+        "tversky_beta": args.tversky_beta,
         "category_head_weight": args.category_head_weight,
         "magnetic_head_weight": args.magnetic_head_weight,
         "magnetic_targets": args.magnetic_targets if args.magnetic_head_weight > 0 else None,

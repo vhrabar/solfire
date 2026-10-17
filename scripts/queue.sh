@@ -2,6 +2,7 @@
 # Run sweep specs one after another, skipping finished runs and resuming unfinished ones
 
 set -euo pipefail
+trap 'echo "=== stopped (exit $?) at line $LINENO $(date)"' ERR
 cd "$(dirname "$0")/.."
 name=$1
 shift

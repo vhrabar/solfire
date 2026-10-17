@@ -185,9 +185,11 @@ def submit_one(
     :param calibration_path: File holding ``calibration`` when it is not stored in the checkpoint
     :return: None
     """
-    description = f"{name} | val pq {calibration['pq']:.4f}"
+    # a calibration with crop refiners is judged by what the refined instances score
+    pq = calibration.get("refiner", calibration)["pq"]
+    description = f"{name} | val pq {pq:.4f}"
     submission = output_dir / "submission.csv"
-    print(f"\n{name}  (val pq {calibration['pq']:.4f})")
+    print(f"\n{name}  (val pq {pq:.4f})")
 
     newest_input = max(path.stat().st_mtime for path in [*checkpoints, *([calibration_path] if calibration_path else [])])
     fresh = submission.is_file() and submission.stat().st_mtime > newest_input

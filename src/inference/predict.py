@@ -33,7 +33,9 @@ def load_model(checkpoint_path, device) -> tuple[torch.nn.Module, dict]:
 
 
 @torch.no_grad()
-def observation_probabilities(models, images, device, tta=True, tile=None, overlap=DEFAULT_OVERLAP, tile_batch=8) -> torch.Tensor:
+def observation_probabilities(
+    models, images, device, tta=True, tile=None, overlap=DEFAULT_OVERLAP, tile_batch=8, scales=None
+) -> torch.Tensor:
     """
     Foreground probabilities for a batch of whole observations.
 
@@ -45,16 +47,20 @@ def observation_probabilities(models, images, device, tta=True, tile=None, overl
         the whole observation at once
     :param overlap: Fraction of a window shared with its neighbour
     :param tile_batch: Windows evaluated per forward pass
+    :param scales: Per model, the input scale it was trained at, or ``None`` for all native
     :return: ``(B, 1, H, W)`` probabilities on the cpu
     """
     models = models if isinstance(models, (list, tuple)) else [models]
+    scales = scales or [1.0] * len(models)
     total = None
-    for model in models:
+    for model, scale in zip(models, scales, strict=True):
         if tile is None:
+            if scale != 1.0:
+                raise ValueError("a model trained at another input scale needs tiled inference")
             probabilities = predict_probabilities(model, images.to(device), tta=tta).cpu()
         else:
             maps = [
-                predict_tiled(model, image, device, tile=tile, overlap=overlap, tta=tta, batch_size=tile_batch)
+                predict_tiled(model, image, device, tile=tile, overlap=overlap, tta=tta, batch_size=tile_batch, scale=scale)
                 for image in images
             ]
             probabilities = torch.stack(maps).unsqueeze(1)
@@ -82,6 +88,7 @@ def predict_dataset(
     tile_batch=8,
     refiners=None,
     refiner_settings=None,
+    scales=None,
 ) -> list[dict]:
     """
     Run the model over a loader of unlabelled observations.
@@ -106,6 +113,7 @@ def predict_dataset(
         ``None``; given, they replace ``threshold``, ``offset``, ``min_area``, ``min_score``
         and ``instance_filter`` with the cuts of ``refiner_settings``
     :param refiner_settings: The ``refiner`` block of a calibration
+    :param scales: Per model, the input scale it was trained at, or ``None`` for all native
     :return: List of COCO-style detection records
     """
     if save_masks_dir is not None:
@@ -115,7 +123,7 @@ def predict_dataset(
     detections = []
     for images, file_names in tqdm(loader, desc="predict", mininterval=2.0):
         probabilities = observation_probabilities(
-            models, images, device, tta=tta, tile=tile, overlap=overlap, tile_batch=tile_batch
+            models, images, device, tta=tta, tile=tile, overlap=overlap, tile_batch=tile_batch, scales=scales
         )
         if original_size is not None and probabilities.shape[-1] != original_size:
             probabilities = F.interpolate(

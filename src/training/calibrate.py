@@ -68,6 +68,7 @@ def observation_probabilities(
     limit=None,
     model_size=None,
     original_size=None,
+    scale=1.0,
 ):
     """
     Run inference over whole observations and hand back the submission's view of them.
@@ -85,6 +86,7 @@ def observation_probabilities(
         or ``None`` to feed it as the loader yields it
     :param original_size: Edge length the probabilities are resampled to before they
         are scored, or ``None`` to score them as the model produced them
+    :param scale: Input scale passed to :func:`predict_tiled`
     :return: Iterator of (``(H, W)`` probabilities, ``(H, W)`` boolean annotation)
     """
     model.eval()
@@ -95,7 +97,9 @@ def observation_probabilities(
             if model_size is not None:
                 image = resize(image, model_size)
             if tile:
-                tiled = predict_tiled(model, image, device, tile=tile, overlap=overlap, tta=tta, batch_size=batch_size)
+                tiled = predict_tiled(
+                    model, image, device, tile=tile, overlap=overlap, tta=tta, batch_size=batch_size, scale=scale
+                )
                 probabilities = tiled[None]
             else:
                 probabilities = predict_probabilities(model, image[None].to(device), tta=tta)[0].cpu()
@@ -345,6 +349,7 @@ def evaluate_tiled(
     tta=False,
     batch_size=8,
     limit=None,
+    scale=1.0,
 ) -> dict:
     """
     Validation on whole observations, in the shape :func:`training.engine.fit` expects.
@@ -360,6 +365,7 @@ def evaluate_tiled(
     :param tta: Average predictions over flips
     :param batch_size: Windows evaluated per forward pass
     :param limit: Score only this many observations, or ``None`` for all of them
+    :param scale: Input scale passed to :func:`predict_tiled`
     :return: Dict with ``thresholds``, per-threshold ``pq``, ``best_threshold``,
         ``best_pq``, ``overlaps`` of the best threshold and the mean ``loss``
     """
@@ -369,7 +375,7 @@ def evaluate_tiled(
     observations = 0
 
     for probabilities, target in observation_probabilities(
-        model, loader, device, tile=tile, overlap=overlap, tta=tta, batch_size=batch_size, limit=limit
+        model, loader, device, tile=tile, overlap=overlap, tta=tta, batch_size=batch_size, limit=limit, scale=scale
     ):
         clipped = np.clip(probabilities, 1e-6, 1.0 - 1e-6)
         truth = target.astype(np.float32)

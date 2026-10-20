@@ -90,6 +90,12 @@ def parse_args() -> argparse.Namespace:
     train.add_argument("--crops-per-image", type=int, default=4, help="crops drawn per observation and epoch")
     train.add_argument("--foreground-prob", type=float, default=0.7, help="fraction of crops drawn around an annotation")
     train.add_argument("--native-size", type=int, default=0, help="0 keeps the resolution the observations were annotated at")
+    train.add_argument(
+        "--input-scale",
+        type=float,
+        default=1.0,
+        help="train on observations enlarged by this factor; validation and inference enlarge them the same way",
+    )
     train.add_argument("--size", type=int, default=256, help="edge length observations are resized to when --crop is 0")
     train.add_argument("--arch", choices=sorted(ARCHITECTURES), default="unet")
     train.add_argument("--base-channels", type=int, default=32, help="unet/transunet only")
@@ -450,6 +456,7 @@ def build_datasets(args):
         magnetic=MagneticTargets(args.magnetic_targets) if args.magnetic_head_weight > 0 else None,
         thickness_cap=args.thickness_weight_cap,
         thin_head=args.thin_head_weight > 0,
+        input_scale=args.input_scale,
         **common,
     )
     valid_dataset = FilamentDataset(val_ids, size=native_size, **common)
@@ -616,6 +623,7 @@ def run_training(args, device) -> None:
     extra = {
         "crop": args.crop or None,
         "native_size": args.native_size or None,
+        "input_scale": args.input_scale,
         "tile": tile,
         "overlap": args.val_overlap,
         "offset": 0,
@@ -671,6 +679,7 @@ def run_training(args, device) -> None:
             tta=args.val_tta,
             batch_size=args.tile_batch,
             limit=args.val_limit or None,
+            scale=args.input_scale,
         )
 
     summary = fit(
@@ -786,6 +795,7 @@ def run_prediction(args, device) -> None:
         tile_batch=args.tile_batch,
         refiners=refiners,
         refiner_settings=refiner_settings,
+        scales=[found.get("input_scale") or 1.0 for _, found in loaded],
     )
 
     submission_path = output_dir / "submission.csv"
@@ -845,7 +855,7 @@ def held_out_maps(args, device) -> tuple[dict, dict, set, str]:
                 tile=tile,
                 overlap=settings["overlap"],
                 tta=settings["tta"],
-                scale=settings["scale"],
+                scale=settings["scale"] * (checkpoint.get("input_scale") or 1.0),
                 batch_size=args.tile_batch,
                 identity={"epoch": checkpoint.get("epoch")},
                 images_dir=require_images(preprocessed_dir(TRAIN_IMAGES, checkpoint.get("preprocess"))),

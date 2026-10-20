@@ -393,6 +393,7 @@ class FilamentCropDataset(Dataset):
         magnetic=None,
         thickness_cap=0.0,
         thin_head=False,
+        input_scale=1.0,
     ):
         """
         :param image_ids: Image ids to sample from, or ``None`` for all of them
@@ -421,6 +422,9 @@ class FilamentCropDataset(Dataset):
             (:func:`~src.data.structure.thickness_weight`)
         :param thin_head: Append the thin mask and the spine heatmap of the annotations as
             the last two channels, for an auxiliary head
+        :param input_scale: Without ``native_size``, decode the observation at this multiple of
+            its own size, so a crop covers ``crop / input_scale`` annotated pixels and a thin
+            filament spans more of the network's pixels
         """
         if targets not in TARGETS:
             raise ValueError(f"unknown targets {targets!r}, expected one of {TARGETS}")
@@ -431,6 +435,7 @@ class FilamentCropDataset(Dataset):
         self.crop = crop
         self.raster = raster
         self.native_size = native_size
+        self.input_scale = input_scale
         self.repeat = max(1, repeat)
         self.foreground_prob = foreground_prob
         self.category_ids = None if category_ids is None else set(category_ids)
@@ -519,7 +524,7 @@ class FilamentCropDataset(Dataset):
         """
         group = self.samples[index % len(self.samples)]
         record = self.records[group[0]]
-        size = self.native_size or record["width"]
+        size = self.native_size or round(record["width"] * self.input_scale)
         scale = size / record["width"]
 
         per_record = [self.selected(image_id) for image_id in group]
@@ -529,7 +534,9 @@ class FilamentCropDataset(Dataset):
             scale,
             self.hard_negatives.get(record["file_name"], ()),
         )
-        image = load_image_window(observation_path(self.images_dir, record["file_name"]), self.native_size, (x, y), self.crop)
+        image = load_image_window(
+            observation_path(self.images_dir, record["file_name"]), None if scale == 1 else size, (x, y), self.crop
+        )
 
         target = np.zeros((self.crop, self.crop), dtype=np.float32)
         categories = np.zeros((len(CATEGORY_CHANNELS), self.crop, self.crop), dtype=bool) if self.categories else None

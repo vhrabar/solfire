@@ -6,37 +6,68 @@ pseudo-labels**, only public GONG data and quantities computed from it.
 
 ## Contents
 
-| Path                 | Files       | What it is                                                                                                                                                                                                                                                                                                                                                                                  |
-|----------------------|-------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `halpha_2023_2025/`  | 1,735 JPEG  | Unlabelled 2048×2048 full-disk GONG H-alpha frames, 2023–2025, converted to JPEG like MAGFiLO (see Provenance), site letters A B C L T U Z (no M frames in this period). Fetched as bursts of 5 frames 2 min apart (offsets −4…+4 min) on randomly sampled days, after a disk-brightness and dark-patch check. Name: YYYYMMDDHHMMSS + site letter + `h.jpeg`, e.g. `20240118183542Ch.jpeg`. |
-| `halpha_bursts.json` | 1           | The burst groups and the reasons frames were rejected.                                                                                                                                                                                                                                                                                                                                      |
-| `bzi_fits/`          | 640 FITS.gz | GONG line-of-sight magnetograms (`bzi`, 860×860, gauss) each taken within 60 min of a MAGFiLO 1.0 training observation from the same site. **Renamed to the matching H-alpha frame** (YYYYMMDDHHMMSS + site letter + `h.fits.gz`); the true observation time is in the `DATE-OBS` header.                                                                                                   |
-| `bzi_matches.json`   | 1           | Match status for all 707 MAGFiLO training observations: time gap in minutes, plage correlation with the H-alpha frame, and `ok` / `too far` / `no frames`.                                                                                                                                                                                                                                  |
-| `bzi_targets/`       | 628 NPY     | `(3, 512, 512)` uint8 (value / 255), on the H-alpha frame grid (centre 1024, radius 900, north up): 0 = proximity to a polarity inversion line `exp(-d / 10 Mm)` after 12 Mm smoothing, 1 = strong flux `tanh(                                                                                                                                                                              |B| / 100 G)`, 2 = valid-disk mask. Only the 628 matches that passed QC. |
+Every FITS file is as served by NSO, only renamed after the H-alpha frame it belongs to
+(YYYYMMDDHHMMSS + site letter + `h`). The original archive name of every renamed file is in the
+matching JSON file, and the true observation time is in the `DATE-OBS` / `TIME-OBS` headers.
 
-Site letters: B Big Bear, C Cerro Tololo, L Learmonth, M Mauna Loa, T El Teide, U Udaipur. A and Z occur only in `halpha_2023_2025/` and are not in the MAGFiLO site mapping; check the FITS headers at the source before relying on their site.
+### Unlabelled H-alpha, 2023–2025
+
+| Path                         | Files         | What it is                                                                                                                                                                                                                                                                  |
+|------------------------------|---------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `halpha_2023_2025/`          | 1,300 JPEG    | Full-disk 2048×2048 GONG H-alpha frames converted to JPEG like MAGFiLO (see Provenance). 260 bursts of 5 frames 2 min apart (offsets −4…+4 min), one burst per randomly sampled day, every frame past a disk-brightness and dark-patch check. E.g. `20240118183542Ch.jpeg`. |
+| `halpha_fits_2023_2025/`     | 1,300 FITS.fz | The raw `haf` FITS behind each JPEG (`.fits.fz`, image in HDU 1).                                                                                                                                                                                                           |
+| `halpha_bursts.json`         | 1             | The 260 burst groups, and how many frames failed the checks (bursts with a failed frame are left out).                                                                                                                                                                      |
+| `halpha_bzi/`                | 211 FITS.gz   | Line-of-sight magnetogram (`bzi`, 860×860, gauss) from the same site closest in time to each burst's centre frame, within 60 min (median gap 0.2 min).                                                                                                                      |
+| `halpha_izi/`, `halpha_vzi/` | 211 each      | Continuum intensity (`izi`) and Doppler velocity (`vzi`) taken in the same minute as each `halpha_bzi` file.                                                                                                                                                                |
+| `halpha_bzi_matches.json`    | 1             | Match status for all 260 burst centres: archive name, time gap, plage correlation with the H-alpha frame, `ok` / `too far` / `no frames`.                                                                                                                                   |
+| `halpha_channels.json`       | 1             | Archive names of the `izi` / `vzi` files.                                                                                                                                                                                                                                   |
+
+### Matched to the MAGFiLO 1.0 training observations, 2011–2022
+
+| Path                     | Files       | What it is                                                                                                                                                                                                                                                                                                                           |
+|--------------------------|-------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `bzi_fits/`              | 640 FITS.gz | Same-site `bzi` magnetogram within 60 min of a MAGFiLO 1.0 training observation, named after that observation.                                                                                                                                                                                                                       |
+| `izi_fits/`, `vzi_fits/` | 640 each    | Continuum intensity and Doppler velocity taken in the same minute as each `bzi_fits` file.                                                                                                                                                                                                                                           |
+| `bzi_matches.json`       | 1           | Match status for all 707 MAGFiLO training observations: time gap, plage correlation, `ok` / `too far` / `no frames`.                                                                                                                                                                                                                 |
+| `bzi_channels.json`      | 1           | Archive names of the `bzi` / `izi` / `vzi` files.                                                                                                                                                                                                                                                                                    |
+| `bzi_targets/`           | 628 NPY     | `(3, 512, 512)` uint8 (value / 255) on the H-alpha grid (centre 1024, radius 900, north up): 0 = proximity to a polarity inversion line `exp(-d / 10 Mm)` after 12 Mm smoothing, 1 = strong flux `tanh(\|B\| / 100 G)`, 2 = valid-disk mask. Only the 628 matches that passed QC; QC and target settings in `bzi_targets/meta.json`. |
+
+### Synoptic magnetograms
+
+| Path                    | Files       | What it is                                                                                                                                                            |
+|-------------------------|-------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `synoptic_zqs/`         | 957 FITS.gz | Hourly zero-point-corrected synoptic magnetograms (`mrzqs`, 360×180 Carrington longitude × sine latitude, gauss), original archive names.                             |
+| `synoptic_matches.json` | 1           | The map closest in time to each of the 707 MAGFiLO training observations and 260 burst centres, within 6 h (median gap 20 min); some maps serve several observations. |
+
+Site letters: B Big Bear, C Cerro Tololo, L Learmonth, M Mauna Loa, T El Teide, U Udaipur.
+A and Z occur only in the 2023–2025 frames; their FITS headers give site codes `TC` and `TE`,
+which have no `bzi` / `izi` / `vzi` archive, so their bursts have no magnetogram (`no frames`).
 
 ## Registration notes
 
-The H-alpha JPEGs are centred at (1024, 1024) with disk radius 900 px, north up. The bzi images
-use the `FNDLMB*` header keys for centre and radius and are rotated 90° relative to the
-H-alpha frames, with no mirror (median plage correlation 0.67 after alignment).
+The H-alpha JPEGs are centred at (1024, 1024) with disk radius 900 px, north up. The site
+images (`bzi`, `izi`, `vzi`) use the `FNDLMB*` header keys for centre and radius and are rotated
+90° relative to the H-alpha frames, with no mirror. Median plage correlation after alignment:
+0.67 for the MAGFiLO matches, 0.44 for the 2023–2025 bursts (lowest 0.30).
 
 ## Sources
 
 - H-alpha: https://gong2.nso.edu/HA/haf/
-- Magnetograms: https://nispdata.nso.edu/ftp/vmb/archive/bzi/
+- Site magnetograms, intensity and velocity: https://nispdata.nso.edu/ftp/vmb/archive/ (`bzi`, `izi`, `vzi`)
+- Synoptic magnetograms: https://gong2.nso.edu/oQR/zqs/
+- H-alpha conversion: https://bitbucket.org/dataresearchlab/mleco-fits2jpegconvertor
+- Matching times: MAGFiLO 1.0 training observation times (Kaggle solar filament segmentation challenge 2026); no MAGFiLO images or annotations are included.
 
 ## Provenance
 
-- H-alpha frames: `.fits.fz` downloaded 2026 from https://gong2.nso.edu/HA/haf/ and converted the way the MAGFiLO JPEGs were made: the MLEcoFi FITS-to-JPEG convertor (https://bitbucket.org/dataresearchlab/mleco-fits2jpegconvertor, `wavelet` then `fits2ppmColorscale grey 640 5335`), saved as 8-bit greyscale JPEG at quality 92.
-- Magnetograms: downloaded 2026 from https://nispdata.nso.edu/ftp/vmb/archive/bzi/, FITS as served, renamed only.
+- H-alpha frames: `.fits.fz` downloaded 2026 from https://gong2.nso.edu/HA/haf/ and converted the way the MAGFiLO JPEGs were made: the MLEcoFi FITS-to-JPEG convertor (`wavelet` then `fits2ppmColorscale grey 640 5335`), saved as 8-bit greyscale JPEG at quality 92.
+- All other FITS files: downloaded 2026 from the archives above, as served, renamed only.
 - `bzi_targets`: computed from the magnetograms (resampled onto the H-alpha grid, 90° turn, PIL proximity, strong flux, valid mask).
 
 ## Coverage
 
-- Time: H-alpha 2023-01 to 2025-12; magnetograms 2011-01 to 2022-08 (dates of the MAGFiLO training observations).
-- Space: full solar disk as seen from Earth; GONG network sites worldwide.
+- Time: H-alpha and their site images 2023-01 to 2025-12; MAGFiLO-matched site images 2011-01 to 2022-08; synoptic maps for both.
+- Space: full solar disk as seen from Earth (synoptic maps: whole Sun in Carrington coordinates); GONG network sites worldwide.
 
 ## Citation
 

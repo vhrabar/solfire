@@ -11,15 +11,28 @@ REPO = Path(__file__).resolve().parent.parent
 EXTERNAL = REPO / "runs" / "external"
 SOURCE = REPO / "kaggle" / "gong-dataset"
 
-# Published name -> (source directory, glob) for folders, or source file for single files
+# Published name -> (source directory, glob, whether only frames of usable bursts go in) for folders,
+# or source file for single files
 FOLDERS = {
-    "halpha_2023_2025": (EXTERNAL / "gong" / "jpeg", "*.jpeg"),
-    "bzi_fits": (EXTERNAL / "gong_bzi" / "fits", "*.fits.gz"),
-    "bzi_targets": (EXTERNAL / "gong_bzi" / "targets", "*.npy"),
+    "halpha_2023_2025": (EXTERNAL / "gong" / "jpeg", "*.jpeg", True),
+    "halpha_fits_2023_2025": (EXTERNAL / "gong" / "fits", "*.fits.fz", True),
+    "halpha_bzi": (EXTERNAL / "gong_bursts" / "fits", "*.fits.gz", False),
+    "halpha_izi": (EXTERNAL / "gong_bursts" / "izi", "*.fits.gz", False),
+    "halpha_vzi": (EXTERNAL / "gong_bursts" / "vzi", "*.fits.gz", False),
+    "bzi_fits": (EXTERNAL / "gong_bzi" / "fits", "*.fits.gz", False),
+    "izi_fits": (EXTERNAL / "gong_bzi" / "izi", "*.fits.gz", False),
+    "vzi_fits": (EXTERNAL / "gong_bzi" / "vzi", "*.fits.gz", False),
+    "bzi_targets": (EXTERNAL / "gong_bzi" / "targets", "*.npy", False),
+    "synoptic_zqs": (EXTERNAL / "gong_synoptic" / "zqs", "*.fits.gz", False),
 }
 FILES = {
     "halpha_bursts.json": EXTERNAL / "gong" / "manifest.json",
+    "halpha_bzi_matches.json": EXTERNAL / "gong_bursts" / "manifest.json",
+    "halpha_channels.json": EXTERNAL / "gong_bursts" / "channels.json",
     "bzi_matches.json": EXTERNAL / "gong_bzi" / "manifest.json",
+    "bzi_channels.json": EXTERNAL / "gong_bzi" / "channels.json",
+    "bzi_targets/meta.json": EXTERNAL / "gong_bzi" / "targets" / "meta.json",
+    "synoptic_matches.json": EXTERNAL / "gong_synoptic" / "manifest.json",
 }
 
 
@@ -49,8 +62,13 @@ def main() -> int:
             shutil.rmtree(folder)
         folder.mkdir(parents=True)
 
-    for name, (source, pattern) in FOLDERS.items():
+    # frames fetched with a burst that lost a member to the quality check stay out
+    bursts = json.loads(FILES["halpha_bursts.json"].read_text(encoding="utf-8"))["bursts"]
+    usable = {frame for burst in bursts for frame in burst}
+    for name, (source, pattern, usable_only) in FOLDERS.items():
         files = sorted(source.glob(pattern))
+        if usable_only:
+            files = [file for file in files if file.name.split(".")[0] in usable]
         if not files:
             raise SystemExit(f"no {pattern} under {source}")
         (output / name).mkdir()

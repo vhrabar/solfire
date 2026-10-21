@@ -10,8 +10,8 @@
   ],
   "keywords": [
     "astronomy",
-    "image",
-    "computer vision"
+    "computer vision",
+    "image"
   ],
   "resources": [
     {
@@ -24,5 +24,5 @@
     }
   ],
   "expectedUpdateFrequency": "never",
-  "userSpecifiedSources": "GONG H-alpha full-disk frames (haf, FITS), NSO Integrated Synoptic Program: https://gong2.nso.edu/HA/haf/ ; converted with the MLEcoFi FITS-to-JPEG convertor: https://bitbucket.org/dataresearchlab/mleco-fits2jpegconvertor\nGONG line-of-sight magnetograms (bzi): https://nispdata.nso.edu/ftp/vmb/archive/bzi/\nMatching targets: MAGFiLO 1.0 training observation times (Kaggle solar filament segmentation challenge 2026); no MAGFiLO images or annotations included."
+  "userSpecifiedSources": "GONG H-alpha full-disk frames (haf, FITS), NSO Integrated Synoptic Program: https://gong2.nso.edu/HA/haf/"
 }

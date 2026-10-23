@@ -544,7 +544,11 @@ def run_training(args, device) -> None:
         "persistent_workers": args.workers > 0,
     }
     train_loader = DataLoader(train_data, batch_size=args.batch_size, shuffle=True, drop_last=True, **loader_kwargs)
-    val_loader = DataLoader(valid_dataset, batch_size=val_batch_size, shuffle=False, **loader_kwargs)
+    # --folds 0 --val-fraction 0 trains on every record and keeps the final epoch
+    held_out = len(valid_dataset) > 0
+    if not held_out and (args.swa_epochs or args.patience):
+        raise SystemExit("--swa-epochs and --patience need a validation split")
+    val_loader = DataLoader(valid_dataset, batch_size=val_batch_size, shuffle=False, **loader_kwargs) if held_out else None
 
     model_config = build_model_config(args)
     model = ARCHITECTURES[args.arch](**model_config).to(device)
@@ -698,11 +702,14 @@ def run_training(args, device) -> None:
         grad_clip=args.grad_clip,
         patience=args.patience,
         thresholds=thresholds,
-        evaluate_fn=validate_tiled if args.crop else None,
+        evaluate_fn=validate_tiled if args.crop and held_out else None,
         extra=extra,
         swa_epochs=args.swa_epochs,
         resume=args.resume,
     )
+    if not held_out:
+        print(f"trained on every record; epoch {summary['best_epoch']} -> {output_dir}/best.pt")
+        return
     print(
         f"best pq {summary['best_pq']:.4f} at epoch {summary['best_epoch']} "
         f"(threshold {summary['best_threshold']:.2f}) -> {output_dir}/best.pt"

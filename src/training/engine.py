@@ -369,7 +369,8 @@ def fit(
     validation loss, since that is what the segmentation is judged on.
     :param model: Model to train
     :param train_loader: Loader over the training split
-    :param val_loader: Loader over the validation split
+    :param val_loader: Loader over the validation split; ``None`` together with no
+        ``evaluate_fn`` trains on everything and keeps the final epoch as ``best.pt``
     :param criterion: Loss taking ``(logits, targets)``
     :param optimizer: Optimiser to step
     :param device: Device to run on
@@ -439,11 +440,14 @@ def fit(
             epoch=epoch,
             epochs=epochs,
         )
+        held_out = evaluate_fn is not None or val_loader is not None
         if evaluate_fn is not None:
             metrics = evaluate_fn(model)
-        else:
+        elif held_out:
             metrics = evaluate(model, val_loader, criterion, device, thresholds, amp=amp)
-        overlaps = metrics.pop("overlaps")
+        else:
+            metrics = {"loss": float("nan"), "best_pq": float("nan"), "best_threshold": best_threshold}
+        overlaps = metrics.pop("overlaps", None)
 
         entry = {
             "epoch": epoch + 1,
@@ -463,15 +467,18 @@ def fit(
         if averaged is not None and epoch >= swa_start:
             averaged.update_parameters(model)
 
-        improved = metrics["best_pq"] > best_pq
+        # with nothing held out there is nothing to select on: the final epoch is the model
+        improved = metrics["best_pq"] > best_pq if held_out else True
         if improved:
-            best_pq = metrics["best_pq"]
+            if held_out:
+                best_pq = metrics["best_pq"]
+                best_threshold = metrics["best_threshold"]
             best_epoch = epoch + 1
-            best_threshold = metrics["best_threshold"]
             epochs_without_improvement = 0
             save_checkpoint(output_dir / "best.pt", model, model_config, epoch + 1, metrics, image_size, extra=extra)
-            plot_evaluation(overlaps, output_dir / "evaluation.png")
-            print(f"  saved best.pt (pq {best_pq:.4f})")
+            if overlaps is not None:
+                plot_evaluation(overlaps, output_dir / "evaluation.png")
+                print(f"  saved best.pt (pq {best_pq:.4f})")
         else:
             epochs_without_improvement += 1
 

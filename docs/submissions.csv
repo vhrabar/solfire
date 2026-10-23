@@ -24,3 +24,4 @@ ref,date,description,models,val_pq,public,private,seconds_per_image,predict_seco
 56848890,2026-10-05 09:48:02,ensembles/cv15-hrnet-oof (15 models) | val pq 0.4564,15,0.4564,0.40,,13.55,2439.8,NVIDIA GeForce RTX 5070 Ti,COMPLETE,runs/ensembles/predictions_cv15-hrnet-oof
 56858672,2026-10-05 18:00:13,ensembles/cv15-hrnet-fine-oof (15 models) | val pq 0.4594,15,0.4594,0.40,,13.53,2435.8,NVIDIA GeForce RTX 5070 Ti,COMPLETE,runs/ensembles/predictions_cv15-hrnet-fine-oof
 57316029,2026-10-17 15:17:31,ensembles/cv15-hrnet-fine-oof-refined (15 models) | val pq 0.4637,15,0.4637,0.40,,13.62,2451.5,NVIDIA GeForce RTX 5070 Ti,COMPLETE,runs/ensembles/predictions_cv15-hrnet-fine-oof-refined
+57570143,2026-10-23 19:06:17,ensembles/b6-full-refined (3 models) | val pq 0.4637,3,0.4637,0.40,,2.97,534.7,NVIDIA GeForce RTX 5070 Ti,COMPLETE,runs/ensembles/predictions_b6-full-refined

@@ -44,3 +44,31 @@ def test_attempt_retries_until_success(tmp_path, monkeypatch):
     assert attempt([sys.executable, "-c", script], log, retries=1)
     assert log.is_file() and (tmp_path / "run.train.log.1").is_file()
     assert not attempt([sys.executable, "-c", "raise SystemExit(1)"], tmp_path / "bad.log", retries=0)
+
+
+def test_training_without_a_validation_split_keeps_the_final_epoch(tmp_path):
+    """
+    With nothing held out, every epoch is written and ``best.pt`` holds the last one.
+    """
+    from torch.utils.data import DataLoader, TensorDataset
+
+    from src.training.engine import fit
+
+    model = torch.nn.Conv2d(1, 1, 3, padding=1)
+    data = TensorDataset(torch.rand(4, 1, 8, 8), (torch.rand(4, 1, 8, 8) > 0.5).float())
+    optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
+    summary = fit(
+        model,
+        DataLoader(data, batch_size=2),
+        None,
+        torch.nn.BCEWithLogitsLoss(),
+        optimizer,
+        torch.device("cpu"),
+        3,
+        model_config={},
+        output_dir=tmp_path,
+        grad_clip=0,
+    )
+    assert summary["best_epoch"] == 3
+    assert torch.load(tmp_path / "best.pt", weights_only=False)["epoch"] == 3
+    assert len(summary["history"]) == 3

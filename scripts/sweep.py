@@ -192,10 +192,11 @@ def attempt(command: list[str], log_path: Path, retries: int) -> bool:
     return False
 
 
-def run_one(config: dict, seed: int, sweep_dir: Path, calibrate_args: list[str], device: list[str], args) -> dict:
+def run_one(config: dict, seed: int, sweep_dir: Path, calibrate_args: list[str] | None, device: list[str], args) -> dict:
     """
     Train + calibrate one config at one seed, or reuse an existing result.
-    :return: A results row (status is ``ok``, ``cached``, ``train-failed`` or ``calibrate-failed``)
+    :return: A results row (status is ``ok``, ``cached``, ``trained`` (no calibration asked for),
+        ``train-failed`` or ``calibrate-failed``)
     """
     run_dir = sweep_dir / f"{config['_tag']}_{config['_name']}_seed{seed}"
     row = {"config": config["_name"], "tag": config["_tag"], "seed": seed, "run_dir": run_dir.relative_to(REPO)}
@@ -236,7 +237,10 @@ def run_one(config: dict, seed: int, sweep_dir: Path, calibrate_args: list[str],
 
     if args.dry_run:
         print("  train:    " + " ".join(train_cmd))
-        print("  calibrate: " + " ".join([*calibrate_cmd_prefix, "--checkpoint", str(run_dir / "<best>.pt"), *calibrate_args]))
+        if calibrate_args is not None:
+            print(
+                "  calibrate: " + " ".join([*calibrate_cmd_prefix, "--checkpoint", str(run_dir / "<best>.pt"), *calibrate_args])
+            )
         return {**row, "status": "dry-run"}
 
     if not attempt(train_cmd, run_dir.with_suffix(".train.log"), args.retries):
@@ -245,6 +249,8 @@ def run_one(config: dict, seed: int, sweep_dir: Path, calibrate_args: list[str],
     if found is None:
         return {**row, "status": "train-failed"}
     checkpoint, train_pq = found
+    if calibrate_args is None:
+        return {**row, "checkpoint": checkpoint.relative_to(REPO), "train_pq": train_pq, "status": "trained"}
 
     calibrated = attempt(
         [*calibrate_cmd_prefix, "--checkpoint", str(checkpoint), *calibrate_args],
@@ -347,7 +353,9 @@ def main() -> None:
 
     seeds = [int(s) for s in args.seeds.split(",")] if args.seeds else spec.get("seeds", [1])
     sweep_name = args.name or spec.get("name", "sweep")
-    calibrate_args = render_args(spec.get("calibrate", {}))
+    # "calibrate": false trains only, for runs with nothing held out to calibrate on
+    calibrate_spec = spec.get("calibrate", {})
+    calibrate_args = None if calibrate_spec is False else render_args(calibrate_spec)
     device = ["--device", args.device] if args.device else []
 
     configs = expand_configs(spec)
@@ -381,7 +389,7 @@ def main() -> None:
         rows.append(row)
         if not args.dry_run:
             write_csv(results_csv, rows, keys)
-        if row["status"] not in ("ok", "cached", "dry-run"):
+        if row["status"] not in ("ok", "cached", "trained", "dry-run"):
             print(f"  {row['status']}")
             if not args.continue_on_error:
                 sys.exit(f"stopping: {config['_name']} seed {seed} {row['status']} (see {sweep_dir.relative_to(REPO)})")

@@ -1,0 +1,40 @@
+{
+  "name": "full_zoom",
+  "seeds": [
+    1
+  ],
+  "base": {
+    "arch": "pretrained",
+    "encoder_weights": "imagenet",
+    "encoder_lr_scale": 0.25,
+    "crop": 512,
+    "crops_per_image": 7,
+    "foreground_prob": 0.7,
+    "pos_weight": 5,
+    "batch_size": 8,
+    "amp": true,
+    "workers": 8,
+    "val_tile": 512,
+    "val_overlap": 0.0,
+    "tile_batch": 8,
+    "raster": "coco",
+    "targets": "mean",
+    "folds": 0,
+    "val_fraction": 0.0
+  },
+  "calibrate": false,
+  "configs": [
+    {
+      "name": "full-zoom-hrnet32",
+      "decoder": "unet",
+      "encoder": "tu-hrnet_w32",
+      "epochs": 12,
+      "lr": 0.0001,
+      "warmup_epochs": 1,
+      "swa_epochs": 0,
+      "lovasz_weight": 0.5,
+      "input_scale": 2.0,
+      "init_checkpoint": "runs/full/c05_full-hrnet32_seed1/best.pt"
+    }
+  ]
+}

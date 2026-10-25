@@ -232,7 +232,7 @@ def halpha_site(name) -> str | None:
     if name[14] not in SITES and path.is_file():
         try:
             return fits.getheader(path, 1)["SITE"].strip().upper()
-        except (OSError, KeyError, IndexError):
+        except OSError, KeyError, IndexError:
             pass
     return SITES.get(name[14])
 
@@ -440,9 +440,7 @@ def main() -> int:
     parser.add_argument("--delay", type=float, default=3.0, help="smallest pause between requests to one host, seconds")
     parser.add_argument("--give-up-hours", type=float, default=8.0, help="cool-down time before a host is left alone")
     parser.add_argument("--tolerance", type=float, default=60.0, help="largest accepted bzi time gap, minutes")
-    parser.add_argument(
-        "--synoptic-tolerance", type=float, default=360.0, help="largest accepted synoptic map gap, minutes"
-    )
+    parser.add_argument("--synoptic-tolerance", type=float, default=360.0, help="largest accepted synoptic map gap, minutes")
     parser.add_argument("--interface", default=None, help="network interface to send requests through")
     parser.add_argument("--limit", type=int, default=None, help="only the first N items per stage, for a dry run")
     args = parser.parse_args()

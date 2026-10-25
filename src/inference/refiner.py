@@ -246,6 +246,30 @@ def assemble(refined, height, width, threshold=0.5, min_score=0.0) -> tuple[np.n
     return labels, len(scores), np.asarray(scores, dtype=np.float32)
 
 
+def offset_labels(labels, n_labels, offset) -> tuple[np.ndarray, int]:
+    """
+    Grow or shrink every final instance by whole pixels.
+
+    Probes whether the test annotators draw filaments wider or narrower than the
+    training annotators. Growing lets the higher label win where two instances meet;
+    shrinking drops instances that vanish and renumbers the rest densely.
+    :param labels: ``(H, W)`` labels, ``0`` background
+    :param n_labels: Number of labels
+    :param offset: Pixels to grow by (positive) or shrink by (negative); ``0`` leaves them
+    :return: Tuple of (``(H, W)`` labels, number of labels)
+    """
+    if offset == 0 or n_labels == 0:
+        return labels, n_labels
+    if offset > 0:
+        grown = ndimage.grey_dilation(labels, size=(2 * offset + 1, 2 * offset + 1))
+        return np.where(labels > 0, labels, grown).astype(labels.dtype), n_labels
+    shrunk = labels * ndimage.binary_erosion(labels > 0, iterations=-offset)
+    kept = np.unique(shrunk[shrunk > 0])
+    lookup = np.zeros(n_labels + 1, dtype=labels.dtype)
+    lookup[kept] = np.arange(1, len(kept) + 1, dtype=labels.dtype)
+    return lookup[shrunk], len(kept)
+
+
 def load_refiner(path, device) -> Refiner:
     """
     :param path: Checkpoint written by :func:`training.refine.train_refiner`
@@ -267,7 +291,8 @@ def refine_observation(models, image, probabilities, settings, device, tta=True)
     :param settings: The ``refiner`` block of a calibration: ``proposal_threshold`` and
         ``proposal_offset`` cut the proposals, ``threshold`` the refined masks, and
         ``min_score`` the predicted earned IoU; ``context`` the window the refiners were
-        trained on, :data:`CONTEXT` when absent
+        trained on, :data:`CONTEXT` when absent; ``final_offset`` grows or shrinks the
+        final masks by whole pixels (:func:`offset_labels`), ``0`` when absent
     :param device: Device to run on
     :param tta: Average the refiner over flips
     :return: Tuple of (``(H, W)`` labels, number of labels)
@@ -278,7 +303,7 @@ def refine_observation(models, image, probabilities, settings, device, tta=True)
     refined = refine_components(models, image, probabilities, labels, n_labels, device, tta=tta, context=context)
     height, width = probabilities.shape
     labels, n_labels, _ = assemble(refined, height, width, threshold=settings["threshold"], min_score=settings["min_score"])
-    return labels, n_labels
+    return offset_labels(labels, n_labels, settings.get("final_offset", 0))
 
 
 def largest_component(mask) -> np.ndarray:

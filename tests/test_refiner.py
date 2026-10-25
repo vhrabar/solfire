@@ -14,6 +14,7 @@ from src.inference.refiner import (
     Window,
     assemble,
     component_window,
+    offset_labels,
     refine_observation,
     refiner_inputs,
     window_of,
@@ -143,3 +144,36 @@ def test_refine_observation_labels_every_kept_instance():
     assert labels.shape == (160, 160) and labels.max() == 1
     _, n_labels = refine_observation(models, image, probabilities, {**settings, "min_score": 1.1}, torch.device("cpu"), tta=False)
     assert n_labels == 0
+
+
+def test_offset_labels_grows_shrinks_and_drops_vanished_instances():
+    """
+    ``+1`` grows both instances, ``-1`` shrinks the large one and removes the 1-px line,
+    renumbering densely, and ``0`` is the identity.
+    """
+    labels = np.zeros((20, 20), dtype=np.int32)
+    labels[2, 2:10] = 1
+    labels[8:14, 8:14] = 2
+    same, n = offset_labels(labels, 2, 0)
+    assert n == 2 and same is labels
+    grown, n = offset_labels(labels, 2, 1)
+    assert n == 2
+    assert (grown == 1).sum() > (labels == 1).sum() and (grown == 2).sum() == 8 * 8
+    assert np.all(grown[labels > 0] == labels[labels > 0])
+    shrunk, n = offset_labels(labels, 2, -1)
+    assert n == 1 and set(np.unique(shrunk)) == {0, 1} and (shrunk == 1).sum() == 4 * 4
+
+
+def test_refine_observation_honours_final_offset():
+    """
+    The ``final_offset`` key of the settings grows the painted instance.
+    """
+    torch.manual_seed(0)
+    models = [Refiner(encoder_weights=None).eval()]
+    probabilities = np.zeros((160, 160), dtype=np.float32)
+    probabilities[40:52, 20:140] = 0.9
+    image = np.full((160, 160), 0.5, dtype=np.float32)
+    settings = {"proposal_threshold": 0.5, "proposal_offset": 0, "threshold": 0.0, "min_score": 0.0}
+    base, _ = refine_observation(models, image, probabilities, settings, torch.device("cpu"), tta=False)
+    grown, n = refine_observation(models, image, probabilities, {**settings, "final_offset": 1}, torch.device("cpu"), tta=False)
+    assert n == 1 and (grown > 0).sum() >= (base > 0).sum()

@@ -26,3 +26,8 @@ ref,date,description,models,val_pq,public,private,seconds_per_image,predict_seco
 57316029,2026-10-17 15:17:31,ensembles/cv15-hrnet-fine-oof-refined (15 models) | val pq 0.4637,15,0.4637,0.40,,13.62,2451.5,NVIDIA GeForce RTX 5070 Ti,COMPLETE,runs/ensembles/predictions_cv15-hrnet-fine-oof-refined
 57570143,2026-10-23 19:06:17,ensembles/b6-full-refined (3 models) | val pq 0.4637,3,0.4637,0.40,,2.97,534.7,NVIDIA GeForce RTX 5070 Ti,COMPLETE,runs/ensembles/predictions_b6-full-refined
 57573400,2026-10-23 22:16:36,ensembles/b6-zoom-refined (4 models) | val pq 0.4659,4,0.4659,0.40,,7.59,1365.8,NVIDIA GeForce RTX 5070 Ti,COMPLETE,runs/ensembles/predictions_b6-zoom-refined
+57623327,2026-10-25 08:38:01,ensembles/cv15-ssl-oof (15 models) | val pq 0.4604,15,0.4604,0.40,,13.6,2448.2,NVIDIA GeForce RTX 5070 Ti,COMPLETE,runs/ensembles/predictions_cv15-ssl-oof
+57630173,2026-10-25 12:38:59,ensembles/probe-fat1 (4 models) | val pq 0.4247,4,0.4247,0.36,,7.71,1387.5,NVIDIA GeForce RTX 5070 Ti,COMPLETE,runs/ensembles/predictions_probe-fat1
+57630930,2026-10-25 13:06:17,ensembles/probe-thin1 (4 models) | val pq 0.4298,4,0.4298,0.37,,7.62,1370.9,NVIDIA GeForce RTX 5070 Ti,COMPLETE,runs/ensembles/predictions_probe-thin1
+57631679,2026-10-25 13:33:42,ensembles/probe-liberal (4 models) | val pq 0.4496,4,0.4496,0.37,,7.65,1377.1,NVIDIA GeForce RTX 5070 Ti,COMPLETE,runs/ensembles/predictions_probe-liberal
+57632412,2026-10-25 14:01:37,ensembles/probe-strict (4 models) | val pq 0.4499,4,0.4499,0.40,,7.6,1367.9,NVIDIA GeForce RTX 5070 Ti,COMPLETE,runs/ensembles/predictions_probe-strict

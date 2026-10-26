@@ -31,3 +31,4 @@ ref,date,description,models,val_pq,public,private,seconds_per_image,predict_seco
 57630930,2026-10-25 13:06:17,ensembles/probe-thin1 (4 models) | val pq 0.4298,4,0.4298,0.37,,7.62,1370.9,NVIDIA GeForce RTX 5070 Ti,COMPLETE,runs/ensembles/predictions_probe-thin1
 57631679,2026-10-25 13:33:42,ensembles/probe-liberal (4 models) | val pq 0.4496,4,0.4496,0.37,,7.65,1377.1,NVIDIA GeForce RTX 5070 Ti,COMPLETE,runs/ensembles/predictions_probe-liberal
 57632412,2026-10-25 14:01:37,ensembles/probe-strict (4 models) | val pq 0.4499,4,0.4499,0.40,,7.6,1367.9,NVIDIA GeForce RTX 5070 Ti,COMPLETE,runs/ensembles/predictions_probe-strict
+57662211,2026-10-26 09:54:07,ensembles/probe-strict36 (4 models) | val pq 0.4634,4,0.4634,0.40,,7.62,1371.4,NVIDIA GeForce RTX 5070 Ti,COMPLETE,runs/ensembles/predictions_probe-strict36

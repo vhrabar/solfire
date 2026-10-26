@@ -73,13 +73,17 @@ def staged_name(path: Path) -> str:
     return f"{run}-{path.stem}" if run and path.parent != REPO else path.stem
 
 
-def stage(checkpoints: list[Path], stage_dir: Path, extras: list[Path] | None = None) -> set[str]:
+def stage(
+    checkpoints: list[Path], stage_dir: Path, extras: list[Path] | None = None, refiners: list[Path] | None = None
+) -> set[str]:
     """
     Copy the checkpoints and their calibration into a fresh ``stage_dir``, with a manifest.
     :param checkpoints: Checkpoint files to publish
     :param stage_dir: Directory to upload from; wiped first
     :param extras: Further files to publish as they are, e.g. an ensemble's calibration
         and learned filter
+    :param refiners: Crop refiner checkpoints, one per fold; staged as ``refiner-fold<k>.pt``
+        so the notebook finds them and does not mistake them for ensemble members
     :return: The recipe slugs of the staged checkpoints
     """
     if stage_dir.exists():
@@ -113,6 +117,27 @@ def stage(checkpoints: list[Path], stage_dir: Path, extras: list[Path] | None = 
         )
         pq_text = f"calibrated pq {pq:.4f}" if pq is not None else "uncalibrated"
         print(f"  staged {name}.pt  ({path.stat().st_size / 1e6:.1f} MB, {recipe_slug(checkpoint)}, {pq_text})")
+
+    folds = set()
+    for path in refiners or []:
+        checkpoint = torch.load(path, map_location="cpu", weights_only=False)
+        if "state_dict" not in checkpoint or "fold" not in checkpoint:
+            sys.exit(f"{path} has no state_dict and fold; is it a crop refiner checkpoint?")
+        fold = int(checkpoint["fold"])
+        if fold in folds:
+            sys.exit(f"two refiners of fold {fold}")
+        folds.add(fold)
+        name = f"refiner-fold{fold}.pt"
+        shutil.copy2(path, stage_dir / name)
+        manifest.append(
+            {
+                "file": name,
+                "source": str(path.relative_to(REPO) if path.is_relative_to(REPO) else path),
+                "refiner": True,
+                **{key: checkpoint.get(key) for key in ("fold", "epochs", "size")},
+            }
+        )
+        print(f"  staged {name}  ({path.stat().st_size / 1e6:.1f} MB, crop refiner)")
 
     for extra in extras or []:
         shutil.copy2(extra, stage_dir / extra.name)
@@ -255,6 +280,9 @@ def main() -> int:
     parser.add_argument(
         "--extra", nargs="*", type=Path, default=[], help="further files to publish, e.g. ensemble calibration and filter"
     )
+    parser.add_argument(
+        "--refiner", nargs="*", type=Path, default=[], help="crop refiner checkpoints, e.g. runs/refiner/zoom/fold*.pt"
+    )
     parser.add_argument("--stage", type=Path, default=REPO / "build" / "kaggle-model", help="staging dir to upload from")
     parser.add_argument("--dry-run", action="store_true", help="stage and report, upload nothing")
     args = parser.parse_args()
@@ -266,10 +294,11 @@ def main() -> int:
 
     stage_dir = args.stage.resolve()
     extras = [path.resolve() for path in args.extra]
-    missing_extras = [str(path) for path in extras if not path.is_file()]
+    refiners = [path.resolve() for path in args.refiner]
+    missing_extras = [str(path) for path in [*extras, *refiners] if not path.is_file()]
     if missing_extras:
         sys.exit(f"not found: {', '.join(missing_extras)}")
-    recipes = stage(checkpoints, stage_dir, extras)
+    recipes = stage(checkpoints, stage_dir, extras, refiners)
     if args.variation:
         variation = slugify(args.variation)
     elif len(recipes) == 1:

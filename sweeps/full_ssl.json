@@ -1,0 +1,49 @@
+{
+  "name": "full_ssl",
+  "seeds": [
+    1
+  ],
+  "base": {
+    "arch": "pretrained",
+    "encoder_weights": "imagenet",
+    "encoder_lr_scale": 0.25,
+    "crop": 512,
+    "crops_per_image": 7,
+    "foreground_prob": 0.7,
+    "pos_weight": 5,
+    "batch_size": 8,
+    "amp": true,
+    "workers": 8,
+    "val_tile": 512,
+    "val_overlap": 0.0,
+    "tile_batch": 8,
+    "raster": "coco",
+    "targets": "mean",
+    "folds": 0,
+    "val_fraction": 0.0
+  },
+  "configs": [
+    {
+      "name": "full-ssl-r34",
+      "decoder": "unetplusplus",
+      "encoder": "resnet34",
+      "epochs": 40,
+      "lr": 0.0004,
+      "warmup_epochs": 3,
+      "swa_epochs": 0,
+      "init_checkpoint": "runs/ssl/mim-unetpp-r34/encoder.pt"
+    },
+    {
+      "name": "full-lovasz-ssl-r34",
+      "decoder": "unetplusplus",
+      "encoder": "resnet34",
+      "epochs": 8,
+      "lr": 0.0001,
+      "warmup_epochs": 0,
+      "swa_epochs": 0,
+      "lovasz_weight": 0.5,
+      "init_checkpoint": "runs/full_ssl/c01_full-ssl-r34_seed1/best.pt"
+    }
+  ],
+  "calibrate": false
+}

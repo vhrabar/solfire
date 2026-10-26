@@ -19,7 +19,7 @@ from src.inference.refiner import (
     refiner_inputs,
     window_of,
 )
-from src.training.refine import MAX_RECORDS, _flat_iou, refiner_loss
+from src.training.refine import MAX_RECORDS, _flat_iou, record_weights, refiner_loss
 
 
 def test_window_is_square_centred_and_padded_past_the_edge():
@@ -88,6 +88,29 @@ def test_loss_rewards_the_matching_mask():
     _, _, confident = refiner_loss(good, torch.tensor([6.0]), targets, n_records)
     _, _, doubtful = refiner_loss(good, torch.tensor([-6.0]), targets, n_records)
     assert confident < doubtful
+
+
+def test_strict_score_target_follows_the_record_with_fewest_filaments():
+    """
+    Under the strict target a filament only the liberal record drew earns nothing, so a
+    confident score costs more than under the record average.
+    """
+    weights = record_weights({"a": [[1, 2, 3], [1]], "b": [[1], [2]]}, "strict")
+    assert weights["a"].tolist() == [0.0, 1.0, 0.0]
+    assert weights["b"].tolist() == [0.5, 0.5, 0.0]
+    assert record_weights({"a": [[1, 2, 3], [1]]})["a"].tolist() == [0.5, 0.5, 0.0]
+    with pytest.raises(ValueError):
+        record_weights({}, "loose")
+
+    targets = torch.zeros(1, MAX_RECORDS, 32, 32)
+    targets[0, 0, 8:24, 8:24] = 1
+    good = (targets[:, :1] * 2 - 1) * 8
+    n_records = torch.tensor([2])
+    confident = torch.tensor([4.0])
+    _, _, mean = refiner_loss(good, confident, targets, n_records)
+    _, _, liberal = refiner_loss(good, confident, targets, n_records, weights=torch.tensor([[1.0, 0.0, 0.0]]))
+    _, _, strict = refiner_loss(good, confident, targets, n_records, weights=torch.tensor([[0.0, 1.0, 0.0]]))
+    assert liberal < mean < strict
 
 
 def test_assemble_drops_a_second_copy_of_the_same_filament():

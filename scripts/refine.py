@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from src.data import load_annotations, validation_split
 from src.inference.refiner import CONTEXT, load_refiner
 from src.training.calibrate import cache_directory
-from src.training.refine import collect_crops, refine_held_out, score_refined, train_refiner
+from src.training.refine import SCORE_TARGETS, collect_crops, record_weights, refine_held_out, score_refined, train_refiner
 
 STEPS = ("collect", "train", "refine", "score")
 
@@ -61,6 +61,12 @@ def main() -> int:
     parser.add_argument("--seed", type=int, default=1, help="seed of the refiners' initialisation and sampling")
     parser.add_argument("--folds", type=int, nargs="+", default=[0, 1, 2, 3, 4])
     parser.add_argument("--workers", type=int, default=8)
+    parser.add_argument(
+        "--score-target",
+        choices=SCORE_TARGETS,
+        default="mean",
+        help="earned IoU the score head learns: averaged over records, or on the record with the fewest filaments",
+    )
     parser.add_argument("--crops", default="crops", help="sample directory under --output-dir")
     parser.add_argument("--context", type=float, default=CONTEXT, help="window edge per longer side of the proposal box")
     parser.add_argument(
@@ -99,7 +105,16 @@ def main() -> int:
             path = run / f"fold{fold}.pt"
             if not path.is_file():
                 train_refiner(
-                    crops, fold, path, device, args.epochs, args.batch_size, args.lr, workers=args.workers, seed=args.seed
+                    crops,
+                    fold,
+                    path,
+                    device,
+                    args.epochs,
+                    args.batch_size,
+                    args.lr,
+                    workers=args.workers,
+                    seed=args.seed,
+                    weights=record_weights(records, args.score_target),
                 )
     if "refine" in steps:
         models = {fold: load_refiner(run / f"fold{fold}.pt", device) for fold in sorted(set(folds.values()))}
@@ -118,6 +133,7 @@ def main() -> int:
             "proposal_threshold": threshold,
             "proposal_offset": offset,
             "context": args.context,
+            "score_target": args.score_target,
             "threshold": best["threshold"],
             "min_score": best["min_score"],
             "pq": best["pq"],

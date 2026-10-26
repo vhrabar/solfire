@@ -48,6 +48,28 @@ TRAIN_THRESHOLDS = (0.3, 0.375, 0.45)
 DUPLICATE_IOU = 0.85
 REFINE_THRESHOLDS = (0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6)
 REFINE_MIN_SCORES = tuple(round(value, 2) for value in np.arange(0.0, 0.62, 0.02))
+# what the score head learns: the earned IoU averaged over the records, or earned on the
+# record with the fewest filaments (the strictest annotator of the observation)
+SCORE_TARGETS = ("mean", "strict")
+
+
+def record_weights(records, score_target="mean") -> dict[str, np.ndarray]:
+    """
+    How much each record's earned IoU counts in the score target.
+    :param records: Per observation file, the annotations of each of its records
+    :param score_target: One of :data:`SCORE_TARGETS`
+    :return: Per observation file, ``(MAX_RECORDS,)`` weights summing to one
+    """
+    if score_target not in SCORE_TARGETS:
+        raise ValueError(f"unknown score target {score_target!r}; expected one of {SCORE_TARGETS}")
+    weights = {}
+    for name, annotations in records.items():
+        counts = np.array([len(record) for record in annotations])
+        chosen = counts == counts.min() if score_target == "strict" else np.ones(len(counts), dtype=bool)
+        row = np.zeros(MAX_RECORDS, dtype=np.float32)
+        row[: len(counts)] = chosen / chosen.sum()
+        weights[name] = row
+    return weights
 
 
 def collect_crops(
@@ -208,15 +230,18 @@ class RefinerCrops(Dataset):
     The samples written by :func:`collect_crops`, with flips, transposes and a brightness jitter.
     """
 
-    def __init__(self, directory, indices, augment=True):
+    def __init__(self, directory, indices, augment=True, weights=None):
         """
         :param directory: Directory written by :func:`collect_crops`
         :param indices: Samples to serve
         :param augment: Apply the random symmetries and jitter
+        :param weights: Per observation file, the record weights of the score target
+            (:func:`record_weights`); ``None`` weighs the records equally
         """
         self.directory = Path(directory)
         self.indices = np.asarray(indices)
         self.augment = augment
+        self.weights = weights
         with open(self.directory / "meta.pkl", "rb") as handle:
             self.meta = pickle.load(handle)
         self.inputs: np.ndarray | None = None
@@ -228,7 +253,8 @@ class RefinerCrops(Dataset):
     def __getitem__(self, item):
         """
         :param item: Position in ``indices``
-        :return: Tuple of (``(3, S, S)`` inputs, ``(MAX_RECORDS, S, S)`` targets, number of records)
+        :return: Tuple of (``(3, S, S)`` inputs, ``(MAX_RECORDS, S, S)`` targets, number of
+            records, ``(MAX_RECORDS,)`` record weights of the score target)
         """
         if self.inputs is None or self.targets is None:
             self.inputs = np.load(self.directory / "inputs.npy", mmap_mode="r")
@@ -246,10 +272,16 @@ class RefinerCrops(Dataset):
                 inputs, targets = inputs.transpose(-1, -2), targets.transpose(-1, -2)
             gain, gamma = 0.85 + 0.3 * gain, 0.8 + 0.45 * gamma
             inputs[0] = (inputs[0].clamp(0, 1) ** gamma * gain).clamp(0, 1)
-        return inputs, targets, self.meta[index]["records"]
+        row = self.meta[index]
+        if self.weights is None:
+            weights = np.zeros(MAX_RECORDS, dtype=np.float32)
+            weights[: row["records"]] = 1.0 / row["records"]
+        else:
+            weights = self.weights[row["file"]]
+        return inputs, targets, row["records"], torch.from_numpy(weights)
 
 
-def refiner_loss(masks, scores, targets, n_records, score_weight=0.5):
+def refiner_loss(masks, scores, targets, n_records, score_weight=0.5, weights=None):
     """
     Mask loss against the record average, plus the error of the predicted earned IoU.
 
@@ -260,6 +292,8 @@ def refiner_loss(masks, scores, targets, n_records, score_weight=0.5):
     :param targets: ``(B, MAX_RECORDS, S, S)`` per record soft targets
     :param n_records: ``(B,)`` records of each sample
     :param score_weight: Weight of the score term
+    :param weights: ``(B, MAX_RECORDS)`` weight of each record's earned IoU in the score
+        target; ``None`` averages the records
     :return: Tuple of (total loss, mask loss, score loss)
     """
     valid = (torch.arange(MAX_RECORDS, device=targets.device)[None] < n_records[:, None]).float()
@@ -276,14 +310,26 @@ def refiner_loss(masks, scores, targets, n_records, score_weight=0.5):
         shared = (predicted & truth).sum((2, 3)).float()
         union = (predicted | truth).sum((2, 3)).float()
         iou = torch.where(union > 0, shared / union.clamp(min=1), torch.zeros_like(union))
-        earned = (torch.where(iou > IOU_THRESHOLD, iou, torch.zeros_like(iou)) * valid).sum(1) / n_records.float()
+        if weights is None:
+            weights = valid / n_records[:, None].float()
+        earned = (torch.where(iou > IOU_THRESHOLD, iou, torch.zeros_like(iou)) * weights * valid).sum(1)
     score = F.binary_cross_entropy_with_logits(scores.float(), earned)
     mask_loss = bce + dice.mean()
     return mask_loss + score_weight * score, mask_loss, score
 
 
 def train_refiner(
-    directory, fold, output, device, epochs=12, batch_size=32, lr=3e-4, encoder_lr_scale=0.5, workers=8, seed=1
+    directory,
+    fold,
+    output,
+    device,
+    epochs=12,
+    batch_size=32,
+    lr=3e-4,
+    encoder_lr_scale=0.5,
+    workers=8,
+    seed=1,
+    weights=None,
 ) -> dict:
     """
     Train the refiner of one fold on the samples of every other fold.
@@ -297,6 +343,8 @@ def train_refiner(
     :param encoder_lr_scale: Learning rate of the encoder as a fraction of ``lr``
     :param workers: Loader processes
     :param seed: Seed of the initialisation and the sampling
+    :param weights: Per observation file, the record weights of the score target
+        (:func:`record_weights`); ``None`` weighs the records equally
     :return: Per epoch mean losses
     """
     torch.manual_seed(seed)
@@ -304,7 +352,7 @@ def train_refiner(
         meta = pickle.load(handle)
     indices = [index for index, row in enumerate(meta) if row["fold"] != fold]
     loader = DataLoader(
-        RefinerCrops(directory, indices),
+        RefinerCrops(directory, indices, weights=weights),
         batch_size=batch_size,
         shuffle=True,
         num_workers=workers,
@@ -329,11 +377,12 @@ def train_refiner(
         model.train()
         totals = np.zeros(3)
         progress = tqdm(loader, desc=f"fold {fold} epoch {epoch + 1}/{epochs}", leave=False, mininterval=2.0)
-        for inputs, targets, n_records in progress:
+        for inputs, targets, n_records, record_weight in progress:
             inputs, targets, n_records = inputs.to(device), targets.to(device), n_records.to(device)
+            record_weight = record_weight.to(device)
             with torch.autocast(device.type, dtype=torch.bfloat16, enabled=device.type == "cuda"):
                 masks, scores = model(inputs)
-            loss, mask_loss, score_loss = refiner_loss(masks, scores, targets, n_records)
+            loss, mask_loss, score_loss = refiner_loss(masks, scores, targets, n_records, weights=record_weight)
             optimizer.zero_grad(set_to_none=True)
             loss.backward()
             optimizer.step()

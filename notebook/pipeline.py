@@ -4,18 +4,26 @@
 # Segments solar filaments in GONG H-alpha observations (MAGFiLO 1.0) and writes the competition's
 # `submission.csv`, one compressed-RLE mask per filament.
 #
-# **Model.** An ensemble of 15 networks: 3 encoder-decoder families x 5 folds, all with ImageNet encoders.
+# **Model.** Three encoder-decoder families with ImageNet encoders, plus one HRNet that sees the observation
+# upsampled 2x (`zoom`), so thin filaments span more pixels. The submission uses one model per family trained on
+# all 707 observations (the final epoch, no held-out selection), followed by five crop refiners.
+# All numbers below are pooled out-of-fold PQ of the same recipe trained 5-fold, which is how the post-processing
+# was calibrated; the full-data models reuse that calibration.
 #
 # | Family | Decoder | Encoder | Pooled out-of-fold PQ |
 # |---|---|---|---|
 # | `unetpp-r34` | U-Net++ | ResNet-34 | 0.4503 |
 # | `unet-mitb2` | U-Net | MiT-B2 (SegFormer) | 0.4514 |
 # | `unet-hrnet32` | U-Net | HRNet-W32 | 0.4521 |
-# | ensemble | | | 0.4594 |
-# | **ensemble + crop refiner** | | | **0.4637** |
+# | `zoom-hrnet32` | U-Net | HRNet-W32 at 2x | 0.4403 |
+# | ensemble of the three families (15 models) | | | 0.4594 |
+# | + zoom (20 models) | | | 0.4599 |
+# | **+ crop refiner** | | | **0.4659** |
 #
-# The ensemble's post-processing is tuned on the same predictions it is scored on. Tuned on four folds and scored
-# on the fifth instead, it reaches 0.4564; that is the estimate to expect on unseen observations. Public LB: 0.40.
+# The refined post-processing is tuned on the same predictions it is scored on. Tuned on four folds and scored on
+# the fifth instead, it reaches 0.4653. Taking the final epoch instead of the best held-out one costs nothing
+# (control: 0.4602 vs 0.4593). Public LB: 0.40, 7.6 s per observation (`b6-full`: three families without zoom,
+# 0.4637 out-of-fold, LB 0.40, 3.0 s per observation).
 #
 # **Recipe**, per family and fold:
 # 1. 40 epochs from ImageNet on random 512 px windows at native resolution (filaments are ~11 px wide, so
@@ -33,7 +41,8 @@
 #
 # **Running it.**
 # - `TRAIN = False` (default): downloads the published checkpoints and their calibration, then predicts the test set.
-# - `TRAIN = True`: trains all 30 runs and the 5 refiners, calibrates, then predicts. That is about 20 GPU-hours on an RTX 5070 Ti,
+# - `TRAIN = True`: trains the 5-fold recipe of the three families (30 runs) and the 5 refiners, calibrates, then
+#   predicts with those 15 models (0.4637 out-of-fold); the zoom family and the full-data retrain are not repeated. That is about 20 GPU-hours on an RTX 5070 Ti,
 #   more than one Kaggle session. Finished runs are skipped, so the notebook can be rerun until it completes.
 #
 # Source: https://github.com/vhrabar/SolarFilamentSegmentationChallenge
@@ -56,8 +65,9 @@ TRAIN = False  # True: train every model from the competition data; False: fetch
 SEED = 1
 FOLDS = 5  # grouped by observation, the assignment is fixed (seed 0) whatever SEED is
 
-MODEL_HANDLE = "vhrabar/filament-segmentation-2026/pyTorch/cv15-hrnet/2"  # Kaggle Models: 15 checkpoints + calibration
-CALIBRATION_NAME = "cv15-hrnet-fine-oof.calibration.json"
+MODEL_HANDLE = "vhrabar/filament-segmentation-2026/pyTorch/b6-zoom/1"  # Kaggle Models: 4 checkpoints, 5 refiners
+CALIBRATION_NAME = "b6-zoom-refined.calibration.json"
+# the faster final: MODEL_HANDLE ".../pyTorch/b6-full/1" with CALIBRATION_NAME "b6-full-refined.calibration.json"
 WEIGHTS_DIR = None  # a local folder holding the checkpoints and the calibration; None downloads MODEL_HANDLE
 
 FAMILIES = {
@@ -425,7 +435,7 @@ def tile_offsets(size: int, tile: int, stride: int) -> list[int]:
 
 
 @torch.no_grad()
-def predict_tiled(model, image: Tensor, tile=TILE, overlap=OVERLAP, tta=True, batch_size=TILE_BATCH) -> Tensor:
+def predict_tiled(model, image: Tensor, tile=TILE, overlap=OVERLAP, tta=True, batch_size=TILE_BATCH, scale=1.0) -> Tensor:
     """
     Probabilities for one whole observation, assembled from overlapping windows.
     :param model: Model in eval mode
@@ -434,8 +444,16 @@ def predict_tiled(model, image: Tensor, tile=TILE, overlap=OVERLAP, tta=True, ba
     :param overlap: Fraction of a window shared with its neighbour
     :param tta: Average every window over the four flips
     :param batch_size: Windows per forward pass
+    :param scale: Resize the observation by this factor first and the probabilities back afterwards
+        (2 for the zoom family)
     :return: (H, W) probabilities on the cpu
     """
+    if scale != 1.0:
+        height, width = image.shape[-2:]
+        size = (round(height * scale), round(width * scale))
+        resized = F.interpolate(image[None].float(), size=size, mode="bilinear", align_corners=False, antialias=scale < 1.0)
+        probabilities = predict_tiled(model, resized[0], tile, overlap, tta, batch_size)
+        return F.interpolate(probabilities[None, None], size=(height, width), mode="bilinear", align_corners=False)[0, 0]
     image = image.unsqueeze(0)
     height, width = image.shape[-2:]
     stride = max(1, round(tile * (1.0 - overlap)))
@@ -1229,13 +1247,6 @@ def calibrate_refiner(refiner_paths, calibration: dict) -> dict:
 
 
 # %%
-def family_and_fold(path) -> tuple[int, int]:
-    """Order checkpoints like the calibration: family as in FAMILIES, then fold."""
-    checkpoint = torch.load(path, map_location="cpu", weights_only=False)
-    encoders = [family["encoder"] for family in FAMILIES.values()]
-    return encoders.index(checkpoint["model_config"]["encoder"]), checkpoint["fold"]
-
-
 if TRAIN:
     checkpoints = []
     for family in FAMILIES:
@@ -1255,10 +1266,15 @@ else:
         weights = Path(kagglehub.model_download(MODEL_HANDLE))
     else:
         weights = Path(WEIGHTS_DIR)
-    checkpoints = sorted((path for path in weights.glob("*.pt") if not path.name.startswith("refiner")), key=family_and_fold)
     calibration = json.loads((weights / CALIBRATION_NAME).read_text(encoding="utf-8"))
+    # published as <run>-<stem>.pt, in the order the calibration lists them
+    checkpoints = [weights / f"{Path(path).parent.name}-{Path(path).stem}.pt" for path in calibration["checkpoints"]]
+    missing = [path.name for path in checkpoints if not path.is_file()]
+    assert not missing, f"{weights} lacks {missing}"
     if "refiner" in calibration:  # the published refiners sit next to the ensemble
-        calibration["refiner"]["checkpoints"] = [str(path) for path in sorted(weights.glob("refiner-fold*.pt"))]
+        refiner_paths = sorted(weights.glob("refiner-fold*.pt"))
+        assert len(refiner_paths) == FOLDS, f"{len(refiner_paths)} refiners in {weights}, expected {FOLDS}"
+        calibration["refiner"]["checkpoints"] = [str(path) for path in refiner_paths]
 
 assert len(checkpoints) == len(calibration["checkpoints"]), (
     f"{len(checkpoints)} checkpoints, calibration made for {len(calibration['checkpoints'])}"
@@ -1287,13 +1303,16 @@ def encode_rle(mask: np.ndarray) -> str:
     return coco_mask.encode(np.asfortranarray(mask.astype(np.uint8)))["counts"].decode("ascii")
 
 
-models = [load_model(path)[0] for path in checkpoints]
+models = []
+for path in checkpoints:
+    model, meta = load_model(path)
+    models.append((model, meta.get("input_scale") or 1.0))  # the zoom family predicts at 2x
 refiners = [load_refiner(path) for path in refiner_settings["checkpoints"]] if REFINE else []
 started = time.time()
 rows = []
 for path in tqdm(TEST_FILES, desc="predict", mininterval=2.0):
     image = load_image(path)
-    probabilities = (sum(predict_tiled(model, image) for model in models) / len(models)).numpy()
+    probabilities = (sum(predict_tiled(model, image, scale=scale) for model, scale in models) / len(models)).numpy()
     if REFINE:
         labels, n_labels = refine_observation(refiners, image.numpy()[0], probabilities, refiner_settings)
     else:

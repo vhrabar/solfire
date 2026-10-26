@@ -1,11 +1,13 @@
 """
-The quantitative eval on hgeld-out samples
+The quantitative eval on held-out samples
 """
 
 import multiprocessing
+import pickle
 import random
 from collections import Counter
 from concurrent.futures import ProcessPoolExecutor
+from pathlib import Path
 
 import numpy as np
 from threadpoolctl import threadpool_limits
@@ -14,7 +16,8 @@ from tqdm import tqdm
 from ..data import TRAIN_IMAGES, load_image
 from ..data.preprocess import observation_path
 from ..inference.instance_filter import InstanceFilter, build_regressor
-from ..inference.postprocess import keep_labels, label_instances
+from ..inference.postprocess import SUBMISSION_SIZE, keep_labels, label_instances
+from ..inference.refiner import assemble, offset_labels
 from .calibrate import load_probabilities
 from .metrics import IOU_THRESHOLD, annotation_pixels, instance_iou, pq_from_counts
 
@@ -94,7 +97,9 @@ def summarise(results) -> dict:
     }
 
 
-def evaluate(sources, records, calibration, images_dir=TRAIN_IMAGES, instance_data=None, folds=5, seed=0, workers=8):
+def evaluate(
+    sources, records, calibration, images_dir=TRAIN_IMAGES, instance_data=None, folds=5, seed=0, workers=8, refined_dir=None
+):
     """
     Score a calibration's post-processing on held-out maps with every judged quantity.
 
@@ -108,8 +113,16 @@ def evaluate(sources, records, calibration, images_dir=TRAIN_IMAGES, instance_da
     :param folds: Groups the filter is cross-validated over
     :param seed: Seed of the grouping and the regressor
     :param workers: Processes working in parallel
+    :param refined_dir: Refined out-of-fold instances (``scripts/refine.py refine``); the
+        instances are then assembled with the calibration's ``refiner`` block instead of
+        cut from the probabilities
     :return: Tuple of (summary from :func:`summarise`, per-observation ``(iou, dice)`` matrices)
     """
+    if refined_dir is not None:
+        if "refiner" not in calibration:
+            raise ValueError("refined instances need a calibration with a refiner block")
+        if calibration.get("filter"):
+            raise ValueError("a learned filter and the refiner are alternatives; the calibration has both")
     names = sorted(sources)
     group_of: dict[str, int] = {}
     filters: dict[int, InstanceFilter] = {}
@@ -127,6 +140,14 @@ def evaluate(sources, records, calibration, images_dir=TRAIN_IMAGES, instance_da
             filters[group] = InstanceFilter(model=model, cut=cut, threshold=calibration["threshold"])
 
     settings = {key: calibration.get(key, 0) for key in ("threshold", "offset", "min_area", "min_score")}
+    if refined_dir is not None:
+        refiner = calibration["refiner"]
+        settings = {
+            "refined_dir": Path(refined_dir),
+            "threshold": refiner["threshold"],
+            "min_score": refiner["min_score"],
+            "final_offset": refiner.get("final_offset", 0),
+        }
     filtered = bool(filters)
     jobs = [
         (name, sources[name], records[name], settings, group_of.get(name, 0) if filtered else None, images_dir) for name in names
@@ -160,6 +181,14 @@ def _evaluate_one(job) -> dict:
     :return: Result of :func:`evaluate_observation`
     """
     name, cache_dirs, annotations, settings, group, images_dir = job
+    if "refined_dir" in settings:
+        with open(settings["refined_dir"] / f"{Path(name).stem}.pkl", "rb") as handle:
+            stored = pickle.load(handle)
+        labels, n_labels, _ = assemble(
+            stored["refined"], SUBMISSION_SIZE, SUBMISSION_SIZE, threshold=settings["threshold"], min_score=settings["min_score"]
+        )
+        labels, n_labels = offset_labels(labels, n_labels, settings["final_offset"])
+        return evaluate_observation(labels, n_labels, [annotation_pixels(record) for record in annotations])
     probabilities = load_probabilities(cache_dirs, name)
     labels, n_labels = label_instances(
         probabilities, settings["threshold"], settings["offset"], settings["min_area"], settings["min_score"]

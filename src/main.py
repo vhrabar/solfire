@@ -331,6 +331,12 @@ def parse_args() -> argparse.Namespace:
     evaluation.add_argument("--workers", type=int, default=8)
     evaluation.add_argument("--output", default=None, help="JSON to write the summaries to")
     evaluation.add_argument("--plots", default=None, help="directory to write the distribution plots to")
+    evaluation.add_argument(
+        "--refined-dir",
+        default=None,
+        help="refined out-of-fold instances (scripts/refine.py refine); calibrations with a refiner block are "
+        "scored on them, the others on the probabilities",
+    )
 
     fitting = subparsers.add_parser(
         "fit-filter", help="learn which predicted instances to submit, on the held-out maps of the checkpoints"
@@ -1003,7 +1009,8 @@ def run_evaluation(args, device) -> None:
     for path in args.calibration:
         calibration = json.loads(Path(path).read_text())
         instance_data = None
-        if calibration.get("filter"):
+        refined_dir = args.refined_dir if "refiner" in calibration else None
+        if calibration.get("filter") and refined_dir is None:
             if images_dir is None:
                 raise SystemExit("the checkpoints were trained on different preprocessing; the filter reads one kind of image")
             cut_at = (float(calibration["threshold"]), int(calibration.get("offset", 0)))
@@ -1019,6 +1026,7 @@ def run_evaluation(args, device) -> None:
             images_dir=images_dir or TRAIN_IMAGES,
             instance_data=instance_data,
             workers=args.workers,
+            refined_dir=refined_dir,
         )
         summaries[str(path)] = summary
         if args.plots:

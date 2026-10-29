@@ -21,7 +21,7 @@ from scripts.pick_checkpoint import best_checkpoint
 REPO = Path(__file__).resolve().parent.parent
 BOOL_OPTIONAL = {"bilinear", "tta"}
 CALIBRATION_FIELDS = ("pq", "threshold", "offset", "min_area")
-DEFAULT_LAUNCHER = "uv run --group cuda-132 python"
+DEFAULT_LAUNCHER = "uv run --group cuda-134 python"
 
 
 def parse_scalar(text: str):

@@ -13,6 +13,7 @@ from torch import Tensor, nn
 
 from ..networks.pretrained import IMAGENET_MEAN, IMAGENET_STD
 from .postprocess import apply_offset, connected_components
+from .tiling import PRECISIONS
 
 CROP_SIZE = 256
 # window edge as a multiple of the longer side of the component's box
@@ -161,7 +162,17 @@ class RefinedInstance:
 
 @torch.no_grad()
 def refine_components(
-    models, image, probabilities, labels, n_labels, device, size=CROP_SIZE, batch_size=32, tta=True, context=CONTEXT
+    models,
+    image,
+    probabilities,
+    labels,
+    n_labels,
+    device,
+    size=CROP_SIZE,
+    batch_size=32,
+    tta=True,
+    context=CONTEXT,
+    precision=None,
 ):
     """
     Run the refiner over every component of an observation.
@@ -175,6 +186,7 @@ def refine_components(
     :param batch_size: Components per forward pass
     :param tta: Average over horizontal and vertical flips
     :param context: Window edge as a multiple of the longer side of a component's box
+    :param precision: ``"fp16"`` or ``"bf16"`` to run the refiners under autocast, ``None`` for float32
     :return: List of :class:`RefinedInstance`, one per component of at least
         :data:`MIN_PIXELS` pixels
     """
@@ -187,7 +199,9 @@ def refine_components(
     for start in range(0, len(jobs), batch_size):
         chunk = jobs[start : start + batch_size]
         inputs = torch.stack([refiner_inputs(image, probabilities, labels == k, window, size) for k, window in chunk])
-        masks, scores = predict_refiner(models, inputs.to(device), tta=tta)
+        with torch.autocast(device.type, dtype=PRECISIONS[precision] if precision else None, enabled=precision is not None):
+            masks, scores = predict_refiner(models, inputs.to(device), tta=tta)
+        masks, scores = masks.float(), scores.float()
         for (_, window), mask, score in zip(chunk, masks, scores):
             native = resample(mask[None].float(), window.side)[0, 0]
             refined.append(RefinedInstance(window, (native * 255).round().byte().cpu().numpy(), float(score)))
@@ -282,7 +296,7 @@ def load_refiner(path, device) -> Refiner:
     return model.to(device).eval()
 
 
-def refine_observation(models, image, probabilities, settings, device, tta=True) -> tuple[np.ndarray, int]:
+def refine_observation(models, image, probabilities, settings, device, tta=True, precision=None) -> tuple[np.ndarray, int]:
     """
     Instances of one observation the way the refined submission is written.
     :param models: :class:`Refiner` models whose outputs are averaged
@@ -295,12 +309,15 @@ def refine_observation(models, image, probabilities, settings, device, tta=True)
         final masks by whole pixels (:func:`offset_labels`), ``0`` when absent
     :param device: Device to run on
     :param tta: Average the refiner over flips
+    :param precision: Autocast precision of the refiners, see :func:`refine_components`
     :return: Tuple of (``(H, W)`` labels, number of labels)
     """
     mask = apply_offset(probabilities >= settings["proposal_threshold"], settings["proposal_offset"])
     labels, n_labels = connected_components(mask)
     context = settings.get("context", CONTEXT)
-    refined = refine_components(models, image, probabilities, labels, n_labels, device, tta=tta, context=context)
+    refined = refine_components(
+        models, image, probabilities, labels, n_labels, device, tta=tta, context=context, precision=precision
+    )
     height, width = probabilities.shape
     labels, n_labels, _ = assemble(refined, height, width, threshold=settings["threshold"], min_score=settings["min_score"])
     return offset_labels(labels, n_labels, settings.get("final_offset", 0))

@@ -271,6 +271,18 @@ def parse_args() -> argparse.Namespace:
     predict.add_argument("--tile", type=int, default=0, help="inference window; 0 follows the checkpoint")
     predict.add_argument("--overlap", type=float, default=DEFAULT_OVERLAP, help="overlap between the inference windows")
     predict.add_argument("--tile-batch", type=int, default=8, help="inference windows evaluated per forward pass")
+    predict.add_argument(
+        "--precision",
+        choices=("fp32", "fp16", "bf16"),
+        default=None,
+        help="autocast precision of the models and refiners; default: the calibration's, else fp32",
+    )
+    predict.add_argument(
+        "--skip-dark",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="leave inference windows off the solar disk out; default: the calibration's, else off",
+    )
     predict.add_argument("--offset", type=int, default=None, help="default: the value tuned on validation")
     predict.add_argument("--min-area", type=int, default=None, help="drop predicted instances smaller than this many pixels")
     predict.add_argument("--min-score", type=float, default=None, help="drop predicted instances with a lower mean probability")
@@ -763,12 +775,18 @@ def run_prediction(args, device) -> None:
     min_area = checkpoint_setting(settings, "min_area", args.min_area, MIN_AREA)
     min_score = checkpoint_setting(settings, "min_score", args.min_score, 0.0)
     instance_filter = InstanceFilter.load(settings["filter"]) if settings.get("filter") else None
+    precision = args.precision or settings.get("precision") or "fp32"
+    skip_dark = settings.get("skip_dark", False) if args.skip_dark is None else args.skip_dark
+    variant_names = settings.get("variants") or ["base"]
+    variants = [parse_variant(name, tta=args.tta, overlap=args.overlap) for name in variant_names]
     refiner_settings = settings.get("refiner") if args.refine else None
     refiners = [load_refiner(path, device) for path in refiner_settings["checkpoints"]] if refiner_settings else None
     print(
         f"{len(models)} model(s), checkpoint epoch {checkpoint.get('epoch')}, size {size or 'native'}, "
         f"tile {tile or 'whole observation'}, threshold {threshold:.2f}, offset {offset:+d}, "
-        f"min_area {min_area}, min_score {min_score:.2f}"
+        f"min_area {min_area}, min_score {min_score:.2f}, {precision}"
+        + (", dark windows skipped" if skip_dark else "")
+        + (f", variants {' '.join(variant_names)}" if variant_names != ["base"] else "")
         + (f", learned filter cut {instance_filter.cut:.2f}" if instance_filter else "")
     )
     if refiner_settings and refiners:
@@ -809,6 +827,9 @@ def run_prediction(args, device) -> None:
         refiners=refiners,
         refiner_settings=refiner_settings,
         scales=[found.get("input_scale") or 1.0 for _, found in loaded],
+        variants=variants,
+        precision=None if precision == "fp32" else precision,
+        skip_dark=skip_dark,
     )
 
     submission_path = output_dir / "submission.csv"

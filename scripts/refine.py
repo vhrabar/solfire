@@ -19,9 +19,10 @@ from src.training.refine import SCORE_TARGETS, collect_crops, record_weights, re
 STEPS = ("collect", "train", "refine", "score")
 
 
-def held_out(checkpoints) -> tuple[dict, dict, dict]:
+def held_out(checkpoints, variants=("base",)) -> tuple[dict, dict, dict]:
     """
     :param checkpoints: Fold checkpoints whose cached held-out maps are used
+    :param variants: Inference variants of every checkpoint averaged into the map, as the calibration lists them
     :return: Tuple of (per file the cache directories, per file the annotations of each
         record, per file its fold)
     """
@@ -38,8 +39,9 @@ def held_out(checkpoints) -> tuple[dict, dict, dict]:
         )
         for image_id in val_ids:
             name = file_names[image_id]
-            if cache_directory(checkpoint) not in sources.setdefault(name, []):
-                sources[name].append(cache_directory(checkpoint))
+            for variant in variants:
+                if cache_directory(checkpoint, variant) not in sources.setdefault(name, []):
+                    sources[name].append(cache_directory(checkpoint, variant))
             records.setdefault(name, {})[image_id] = by_image[image_id]
             if folds.setdefault(name, fold) != fold:
                 raise SystemExit(f"{name} is held out by more than one fold")
@@ -83,7 +85,7 @@ def main() -> int:
 
     calibration = json.loads(args.calibration.read_text())
     threshold, offset = calibration["threshold"], calibration["offset"]
-    sources, records, folds = held_out(calibration["checkpoints"])
+    sources, records, folds = held_out(calibration["checkpoints"], calibration.get("variants") or ["base"])
     crops = args.output_dir / args.crops
     crop_settings = {"context": args.context, "offsets": args.train_offsets or [offset]}
     run = args.output_dir / args.name

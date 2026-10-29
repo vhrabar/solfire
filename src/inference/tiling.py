@@ -4,10 +4,12 @@ from torch import Tensor
 
 DEFAULT_TILE = 512
 DEFAULT_OVERLAP = 0.25
+DARK_LEVEL = 10 / 255
+PRECISIONS = {"fp16": torch.float16, "bf16": torch.bfloat16}
 
 
 @torch.no_grad()
-def predict_probabilities(model, images, tta=True) -> Tensor:
+def predict_probabilities(model, images, tta=True, precision=None) -> Tensor:
     """
     Foreground probabilities for a batch, optionally averaged over symmetries.
 
@@ -16,8 +18,12 @@ def predict_probabilities(model, images, tta=True) -> Tensor:
     :param tta: ``False`` for none, ``True`` or ``"flips"`` for the four flips, ``"d4"``
         for all eight flips and quarter turns of the square, ``"turned"`` for the four flips
         of the quarter-turned square only (the half of ``"d4"`` that ``"flips"`` leaves out)
+    :param precision: ``"fp16"`` or ``"bf16"`` to run the model under autocast, ``None`` for float32
     :return: ``(B, 1, H, W)`` probabilities in ``[0, 1]``
     """
+    if precision is not None:
+        with torch.autocast(images.device.type, dtype=PRECISIONS[precision]):
+            return predict_probabilities(model, images, tta=tta)
     if not tta:
         return torch.sigmoid(model(images).float())
 
@@ -72,7 +78,18 @@ def blend_window(tile, device, floor=0.05) -> Tensor:
 
 
 @torch.no_grad()
-def predict_tiled(model, image, device, tile=DEFAULT_TILE, overlap=DEFAULT_OVERLAP, tta=True, batch_size=8, scale=1.0) -> Tensor:
+def predict_tiled(
+    model,
+    image,
+    device,
+    tile=DEFAULT_TILE,
+    overlap=DEFAULT_OVERLAP,
+    tta=True,
+    batch_size=8,
+    scale=1.0,
+    precision=None,
+    skip_dark=False,
+) -> Tensor:
     """
     Probabilities for one whole observation, assembled from overlapping windows.
 
@@ -85,6 +102,9 @@ def predict_tiled(model, image, device, tile=DEFAULT_TILE, overlap=DEFAULT_OVERL
     :param batch_size: Windows evaluated per forward pass
     :param scale: Resize the observation by this factor before tiling and the probabilities
         back afterwards; above 1 a thin filament spans more pixels than in training
+    :param precision: Autocast precision of the model, see :func:`predict_probabilities`
+    :param skip_dark: Give windows with no pixel above :data:`DARK_LEVEL` (off the disk)
+        probability 0 instead of running the model on them
     :return: ``(H, W)`` probabilities on the cpu
     """
     if image.dim() == 3:
@@ -93,7 +113,7 @@ def predict_tiled(model, image, device, tile=DEFAULT_TILE, overlap=DEFAULT_OVERL
         height, width = image.shape[-2:]
         size = (round(height * scale), round(width * scale))
         resized = F.interpolate(image.float(), size=size, mode="bilinear", align_corners=False, antialias=scale < 1.0)
-        probabilities = predict_tiled(model, resized, device, tile, overlap, tta, batch_size)
+        probabilities = predict_tiled(model, resized, device, tile, overlap, tta, batch_size, 1.0, precision, skip_dark)
         return F.interpolate(probabilities[None, None], size=(height, width), mode="bilinear", align_corners=False)[0, 0]
     height, width = image.shape[-2:]
 
@@ -112,10 +132,15 @@ def predict_tiled(model, image, device, tile=DEFAULT_TILE, overlap=DEFAULT_OVERL
     counts = torch.zeros_like(total)
 
     corners = [(y, x) for y in ys for x in xs]
+    if skip_dark:
+        lit = [(y, x) for y, x in corners if padded[..., y : y + tile, x : x + tile].max() > DARK_LEVEL]
+        for y, x in set(corners) - set(lit):
+            counts[..., y : y + tile, x : x + tile] += weights
+        corners = lit
     for start in range(0, len(corners), batch_size):
         chunk = corners[start : start + batch_size]
         batch = torch.cat([padded[..., y : y + tile, x : x + tile] for y, x in chunk]).to(device, non_blocking=True)
-        probabilities = predict_probabilities(model, batch, tta=tta)
+        probabilities = predict_probabilities(model, batch, tta=tta, precision=precision)
         for (y, x), probability in zip(chunk, probabilities):
             total[..., y : y + tile, x : x + tile] += probability[None] * weights
             counts[..., y : y + tile, x : x + tile] += weights

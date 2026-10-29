@@ -5,6 +5,7 @@ Losses, the auxiliary-head model and tiled inference with test-time augmentation
 import pytest
 import torch
 
+from src.inference.predict import observation_probabilities
 from src.inference.tiling import predict_probabilities, predict_tiled
 from src.main import load_matching
 from src.networks import ARCHITECTURES
@@ -134,3 +135,49 @@ def test_scaled_tiling_returns_the_native_size():
     for scale in (0.8, 1.25):
         tiled = predict_tiled(model, image, torch.device("cpu"), tile=32, overlap=0.25, tta=False, scale=scale)
         assert tiled.shape == (64, 64) and tiled.min() >= 0 and tiled.max() <= 1
+
+
+def test_dark_windows_are_skipped_and_left_at_zero():
+    """
+    Windows with nothing brighter than the off-disk black never reach the model and come back as 0;
+    lit windows are predicted as without skipping.
+    """
+    calls = []
+
+    class Counting(torch.nn.Conv2d):
+        def forward(self, x):
+            calls.append(x.shape[0])
+            return super().forward(x)
+
+    model = Counting(1, 1, 1).eval()
+    image = torch.zeros(1, 96, 96)
+    image[:, :32, :32] = torch.rand(32, 32) * 0.5 + 0.5
+    whole = predict_tiled(model, image, torch.device("cpu"), tile=32, overlap=0.0, tta=False)
+    calls.clear()
+    skipped = predict_tiled(model, image, torch.device("cpu"), tile=32, overlap=0.0, tta=False, skip_dark=True)
+    assert sum(calls) == 1
+    assert torch.allclose(skipped[:32, :32], whole[:32, :32]) and skipped[32:, 32:].abs().max() == 0
+
+
+def test_reduced_precision_stays_close_to_float32():
+    """
+    Autocast inference returns float32 probabilities within a small tolerance of the float32 pass.
+    """
+    torch.manual_seed(0)
+    model = small_model().eval()
+    image = torch.rand(1, 1, 64, 64)
+    reduced = predict_probabilities(model, image, tta=True, precision="bf16")
+    assert reduced.dtype == torch.float32
+    assert (reduced - predict_probabilities(model, image, tta=True)).abs().max() < 0.02
+
+
+def test_variants_average_per_model():
+    """
+    Averaging the ``flips`` and ``turned`` variants of one model gives its D4 prediction.
+    """
+    torch.manual_seed(0)
+    model = small_model().eval()
+    images = torch.rand(1, 1, 64, 64)
+    variants = [{"tta": True, "overlap": 0.25, "scale": 1.0}, {"tta": "turned", "overlap": 0.25, "scale": 1.0}]
+    averaged = observation_probabilities([model], images, torch.device("cpu"), variants=variants)
+    assert torch.allclose(averaged, predict_probabilities(model, images, tta="d4"), atol=1e-6)

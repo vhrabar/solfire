@@ -34,7 +34,17 @@ def load_model(checkpoint_path, device) -> tuple[torch.nn.Module, dict]:
 
 @torch.no_grad()
 def observation_probabilities(
-    models, images, device, tta=True, tile=None, overlap=DEFAULT_OVERLAP, tile_batch=8, scales=None
+    models,
+    images,
+    device,
+    tta=True,
+    tile=None,
+    overlap=DEFAULT_OVERLAP,
+    tile_batch=8,
+    scales=None,
+    variants=None,
+    precision=None,
+    skip_dark=False,
 ) -> torch.Tensor:
     """
     Foreground probabilities for a batch of whole observations.
@@ -48,25 +58,43 @@ def observation_probabilities(
     :param overlap: Fraction of a window shared with its neighbour
     :param tile_batch: Windows evaluated per forward pass
     :param scales: Per model, the input scale it was trained at, or ``None`` for all native
+    :param variants: Inference settings ``{"tta", "overlap", "scale"}`` (``training.parse_variant``)
+        averaged per model, the scale relative to the model's own; ``None`` for one run at
+        ``tta`` and ``overlap``
+    :param precision: Autocast precision of the models, see :func:`predict_probabilities`
+    :param skip_dark: Leave the windows off the disk out, see :func:`predict_tiled`
     :return: ``(B, 1, H, W)`` probabilities on the cpu
     """
     models = models if isinstance(models, (list, tuple)) else [models]
     scales = scales or [1.0] * len(models)
+    variants = variants or [{"tta": tta, "overlap": overlap, "scale": 1.0}]
     total = None
     for model, scale in zip(models, scales, strict=True):
-        if tile is None:
-            if scale != 1.0:
-                raise ValueError("a model trained at another input scale needs tiled inference")
-            probabilities = predict_probabilities(model, images.to(device), tta=tta).cpu()
-        else:
-            maps = [
-                predict_tiled(model, image, device, tile=tile, overlap=overlap, tta=tta, batch_size=tile_batch, scale=scale)
-                for image in images
-            ]
-            probabilities = torch.stack(maps).unsqueeze(1)
-        total = probabilities if total is None else total + probabilities
+        for variant in variants:
+            if tile is None:
+                if scale * variant["scale"] != 1.0:
+                    raise ValueError("a model trained at another input scale needs tiled inference")
+                probabilities = predict_probabilities(model, images.to(device), tta=variant["tta"], precision=precision).cpu()
+            else:
+                maps = [
+                    predict_tiled(
+                        model,
+                        image,
+                        device,
+                        tile=tile,
+                        overlap=variant["overlap"],
+                        tta=variant["tta"],
+                        batch_size=tile_batch,
+                        scale=scale * variant["scale"],
+                        precision=precision,
+                        skip_dark=skip_dark,
+                    )
+                    for image in images
+                ]
+                probabilities = torch.stack(maps).unsqueeze(1)
+            total = probabilities if total is None else total + probabilities
     assert total is not None
-    return total / len(models)
+    return total / (len(models) * len(variants))
 
 
 @torch.no_grad()
@@ -89,6 +117,9 @@ def predict_dataset(
     refiners=None,
     refiner_settings=None,
     scales=None,
+    variants=None,
+    precision=None,
+    skip_dark=False,
 ) -> list[dict]:
     """
     Run the model over a loader of unlabelled observations.
@@ -114,6 +145,9 @@ def predict_dataset(
         and ``instance_filter`` with the cuts of ``refiner_settings``
     :param refiner_settings: The ``refiner`` block of a calibration
     :param scales: Per model, the input scale it was trained at, or ``None`` for all native
+    :param variants: Inference settings averaged per model, see :func:`observation_probabilities`
+    :param precision: Autocast precision of the models and refiners, ``None`` for float32
+    :param skip_dark: Leave the windows off the disk out, see :func:`predict_tiled`
     :return: List of COCO-style detection records
     """
     if save_masks_dir is not None:
@@ -123,7 +157,17 @@ def predict_dataset(
     detections = []
     for images, file_names in tqdm(loader, desc="predict", mininterval=2.0):
         probabilities = observation_probabilities(
-            models, images, device, tta=tta, tile=tile, overlap=overlap, tile_batch=tile_batch, scales=scales
+            models,
+            images,
+            device,
+            tta=tta,
+            tile=tile,
+            overlap=overlap,
+            tile_batch=tile_batch,
+            scales=scales,
+            variants=variants,
+            precision=precision,
+            skip_dark=skip_dark,
         )
         if original_size is not None and probabilities.shape[-1] != original_size:
             probabilities = F.interpolate(
@@ -138,7 +182,9 @@ def predict_dataset(
             if refiners:
                 if image.shape != probability.shape:
                     raise ValueError("the refiner needs the observation at the resolution of the probabilities")
-                labels, n_labels = refine_observation(refiners, image, probability, refiner_settings, device, tta=tta)
+                labels, n_labels = refine_observation(
+                    refiners, image, probability, refiner_settings, device, tta=tta, precision=precision
+                )
             else:
                 labels, n_labels = label_instances(probability, threshold, offset=offset, min_area=min_area, min_score=min_score)
             if instance_filter is not None and not refiners:

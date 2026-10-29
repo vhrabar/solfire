@@ -15,7 +15,7 @@ from kaggle.api.kaggle_api_extended import KaggleApi
 REPO = Path(__file__).resolve().parent.parent
 COMPETITION = "filament-segmentation-2026"
 TEST_OBSERVATIONS = 180
-PYTHON = ["uv", "run", "--group", "cuda-132", "python"]
+PYTHON = ["uv", "run", "--group", "cuda-134", "python"]
 
 
 def calibration_of(checkpoint: Path) -> dict | None:

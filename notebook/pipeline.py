@@ -4,26 +4,28 @@
 # Segments solar filaments in GONG H-alpha observations (MAGFiLO 1.0) and writes the competition's
 # `submission.csv`, one compressed-RLE mask per filament.
 #
-# **Model.** Three encoder-decoder families with ImageNet encoders, plus one HRNet that sees the observation
-# upsampled 2x (`zoom`), so thin filaments span more pixels. The submission uses one model per family trained on
-# all 707 observations (the final epoch, no held-out selection), followed by five crop refiners.
+# **Model.** Three encoder-decoder families, plus one HRNet that sees the observation upsampled 2x (`zoom`), so
+# thin filaments span more pixels. The ResNet-34 starts from masked-image pretraining on 1,300 unlabelled GONG
+# H-alpha frames (2023-2025, `scripts/pretrain_mim.py` in the repository); the others from ImageNet. The
+# submission uses one model per family trained on all 707 observations (the final epoch, no held-out selection),
+# followed by five crop refiners.
 # All numbers below are pooled out-of-fold PQ of the same recipe trained 5-fold, which is how the post-processing
 # was calibrated; the full-data models reuse that calibration.
 #
 # | Family | Decoder | Encoder | Pooled out-of-fold PQ |
 # |---|---|---|---|
-# | `unetpp-r34` | U-Net++ | ResNet-34 | 0.4503 |
+# | `unetpp-r34` | U-Net++ | ResNet-34, GONG pretraining | 0.4516 (ImageNet only: 0.4503) |
 # | `unet-mitb2` | U-Net | MiT-B2 (SegFormer) | 0.4514 |
 # | `unet-hrnet32` | U-Net | HRNet-W32 | 0.4521 |
 # | `zoom-hrnet32` | U-Net | HRNet-W32 at 2x | 0.4403 |
 # | ensemble of the three families (15 models) | | | 0.4594 |
-# | + zoom (20 models) | | | 0.4599 |
-# | **+ crop refiner** | | | **0.4659** |
+# | + zoom (20 models) | | | 0.4600 |
+# | **+ crop refiner** | | | **0.4664** |
 #
 # The refined post-processing is tuned on the same predictions it is scored on. Tuned on four folds and scored on
-# the fifth instead, it reaches 0.4653. Taking the final epoch instead of the best held-out one costs nothing
-# (control: 0.4602 vs 0.4593). Public LB: 0.40, 7.6 s per observation (`b6-full`: three families without zoom,
-# 0.4637 out-of-fold, LB 0.40, 3.0 s per observation).
+# the fifth instead, it reaches 0.4655. Taking the final epoch instead of the best held-out one costs nothing
+# (control: 0.4602 vs 0.4593). Public LB: 0.40, 7.6 s per observation (`b6-full`: three ImageNet families without
+# zoom, 0.4637 out-of-fold, LB 0.40, 3.0 s per observation).
 #
 # **Recipe**, per family and fold:
 # 1. 40 epochs from ImageNet on random 512 px windows at native resolution (filaments are ~11 px wide, so
@@ -41,9 +43,10 @@
 #
 # **Running it.**
 # - `TRAIN = False` (default): downloads the published checkpoints and their calibration, then predicts the test set.
-# - `TRAIN = True`: trains the 5-fold recipe of the three families (30 runs) and the 5 refiners, calibrates, then
-#   predicts with those 15 models (0.4637 out-of-fold); the zoom family and the full-data retrain are not repeated. That is about 20 GPU-hours on an RTX 5070 Ti,
-#   more than one Kaggle session. Finished runs are skipped, so the notebook can be rerun until it completes.
+# - `TRAIN = True`: trains the 5-fold ImageNet recipe of the three families (30 runs) and the 5 refiners,
+#   calibrates, then predicts with those 15 models (0.4637 out-of-fold); the GONG pretraining, the zoom family and
+#   the full-data retrain are not repeated. That is about 20 GPU-hours on an RTX 5070 Ti, more than one Kaggle
+#   session. Finished runs are skipped, so the notebook can be rerun until it completes.
 #
 # Source: https://github.com/vhrabar/SolarFilamentSegmentationChallenge
 # (this notebook is generated from `notebook/pipeline.py`).
@@ -65,8 +68,8 @@ TRAIN = False  # True: train every model from the competition data; False: fetch
 SEED = 1
 FOLDS = 5  # grouped by observation, the assignment is fixed (seed 0) whatever SEED is
 
-MODEL_HANDLE = "vhrabar/filament-segmentation-2026/pyTorch/b6-zoom/1"  # Kaggle Models: 4 checkpoints, 5 refiners
-CALIBRATION_NAME = "b6-zoom-refined.calibration.json"
+MODEL_HANDLE = "vhrabar/filament-segmentation-2026/pyTorch/b6-zoom-ssl/1"  # Kaggle Models: 4 checkpoints, 5 refiners
+CALIBRATION_NAME = "b6-zoom-ssl-refined.calibration.json"
 # the faster final: MODEL_HANDLE ".../pyTorch/b6-full/1" with CALIBRATION_NAME "b6-full-refined.calibration.json"
 WEIGHTS_DIR = None  # a local folder holding the checkpoints and the calibration; None downloads MODEL_HANDLE
 

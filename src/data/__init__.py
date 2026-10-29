@@ -1,6 +1,5 @@
 """Data loading for the MAGFiLO solar filament segmentation challenge."""
 
-from .preprocess import PREPROCESSING, build_cache, preprocessed_dir
 from .dataset import (
     CATEGORY_NAMES,
     DATA_ROOT,
@@ -22,13 +21,12 @@ from .dataset import (
     train_val_split,
     validation_split,
 )
+from .preprocess import PREPROCESSING, build_cache, preprocessed_dir
 
 __all__ = [
-    "PREPROCESSING",
-    "build_cache",
-    "preprocessed_dir",
     "CATEGORY_NAMES",
     "DATA_ROOT",
+    "PREPROCESSING",
     "RASTERS",
     "TARGETS",
     "TEST_IMAGES",
@@ -38,12 +36,14 @@ __all__ = [
     "FilamentDataset",
     "PseudoLabelledCropDataset",
     "TestImageDataset",
+    "build_cache",
     "kfold_split",
     "load_annotations",
     "load_image",
     "load_image_window",
     "polygon_bounds",
     "polygon_to_mask",
+    "preprocessed_dir",
     "train_val_split",
     "validation_split",
 ]

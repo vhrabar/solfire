@@ -101,7 +101,7 @@ def collect_crops(
         for name, inputs, targets, rows in tqdm(
             pool.map(_collect_one, jobs), total=len(jobs), desc="proposals", leave=False, mininterval=2.0
         ):
-            if not len(rows):
+            if inputs is None or targets is None or not rows:
                 continue
             path = chunk_dir / f"{Path(name).stem}.npz"
             np.savez(path, inputs=inputs, targets=targets)
@@ -250,18 +250,18 @@ class RefinerCrops(Dataset):
     def __len__(self) -> int:
         return len(self.indices)
 
-    def __getitem__(self, item):
+    def __getitem__(self, index):
         """
-        :param item: Position in ``indices``
+        :param index: Position in ``indices``
         :return: Tuple of (``(3, S, S)`` inputs, ``(MAX_RECORDS, S, S)`` targets, number of
             records, ``(MAX_RECORDS,)`` record weights of the score target)
         """
         if self.inputs is None or self.targets is None:
             self.inputs = np.load(self.directory / "inputs.npy", mmap_mode="r")
             self.targets = np.load(self.directory / "targets.npy", mmap_mode="r")
-        index = int(self.indices[item])
-        inputs = torch.from_numpy(np.array(self.inputs[index], dtype=np.float32) / 255.0)
-        targets = torch.from_numpy(np.array(self.targets[index], dtype=np.float32) / 255.0)
+        sample = int(self.indices[index])
+        inputs = torch.from_numpy(np.array(self.inputs[sample], dtype=np.float32) / 255.0)
+        targets = torch.from_numpy(np.array(self.targets[sample], dtype=np.float32) / 255.0)
         if self.augment:
             flip_x, flip_y, transpose, gain, gamma = torch.rand(5).tolist()
             if flip_x < 0.5:
@@ -272,7 +272,7 @@ class RefinerCrops(Dataset):
                 inputs, targets = inputs.transpose(-1, -2), targets.transpose(-1, -2)
             gain, gamma = 0.85 + 0.3 * gain, 0.8 + 0.45 * gamma
             inputs[0] = (inputs[0].clamp(0, 1) ** gamma * gain).clamp(0, 1)
-        row = self.meta[index]
+        row = self.meta[sample]
         if self.weights is None:
             weights = np.zeros(MAX_RECORDS, dtype=np.float32)
             weights[: row["records"]] = 1.0 / row["records"]

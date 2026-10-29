@@ -6,7 +6,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from torch.utils.data import ConcatDataset, DataLoader, Dataset
+from torch.utils.data import ConcatDataset, DataLoader
 
 from .data import (
     DATA_ROOT,
@@ -426,7 +426,7 @@ def build_model_config(args) -> dict:
     }
 
 
-def build_datasets(args):
+def build_datasets(args) -> tuple[FilamentDataset | FilamentCropDataset | ConcatDataset, FilamentDataset, int]:
     """
     Build the training and validation datasets for the requested resolution mode.
 
@@ -445,7 +445,7 @@ def build_datasets(args):
     common = {"category_ids": categories, "raster": args.raster, "images_dir": images_dir}
 
     if not args.crop:
-        train_dataset: Dataset = FilamentDataset(train_ids, size=args.size, **common)
+        train_dataset = FilamentDataset(train_ids, size=args.size, **common)
         valid_dataset = FilamentDataset(val_ids, size=args.size, **common)
         return train_dataset, valid_dataset, args.batch_size
 

@@ -1,0 +1,76 @@
+exclude: ^(Final pipeline\.ipynb|external/|kaggle/.*\.png)$
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-added-large-files
+        args: [--maxkb=1024]
+      - id: check-json
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: detect-private-key
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: mixed-line-ending
+        args: [--fix=lf]
+
+  - repo: https://github.com/astral-sh/uv-pre-commit
+    rev: 0.13.6
+    hooks:
+      - id: uv-lock
+      - id: uv-export
+        args: [--quiet, --frozen, --format=requirements.txt, --group=cuda-134, --output-file=requirements.txt]
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check
+        entry: uv run --no-sync ruff check --fix --force-exclude
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
+      - id: ruff-format
+        name: ruff format
+        entry: uv run --no-sync ruff format --force-exclude
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
+      - id: no-weights
+        name: block model checkpoints
+        entry: model weights belong on Kaggle/HF, not in git
+        language: fail
+        files: \.(pt|pth|ckpt|safetensors|onnx|npz)$
+      - id: no-credentials
+        name: block credential files
+        entry: credential file staged
+        language: fail
+        files: (^|/)(kaggle\.json|\.env(\..*)?)$
+      - id: build-notebook
+        name: rebuild notebook from notebook/pipeline.py
+        entry: python3 scripts/build_notebook.py
+        language: system
+        pass_filenames: false
+        files: ^(notebook/pipeline\.py|scripts/build_notebook\.py)$
+      - id: pyrefly
+        name: pyrefly
+        entry: uv run --no-sync pyrefly check
+        language: system
+        pass_filenames: false
+        types: [python]
+        stages: [pre-push]
+      - id: pytest
+        name: pytest
+        entry: uv run --no-sync pytest -q
+        language: system
+        pass_filenames: false
+        types: [python]
+        stages: [pre-push]

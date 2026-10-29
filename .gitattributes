@@ -1,0 +1,10 @@
+* text=auto eol=lf
+
+# Binary artefacts
+*.png    binary
+*.jpg    binary
+
+# Generated files
+uv.lock              linguist-generated=true
+requirements.txt     linguist-generated=true
+"Final pipeline.ipynb" linguist-generated=true

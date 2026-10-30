@@ -33,6 +33,7 @@ from .inference import (
     write_detections,
     write_submission,
 )
+from .inference.barbs import DEFAULT_BARBS
 from .inference.instance_filter import InstanceFilter
 from .inference.refiner import load_refiner
 from .networks import ARCHITECTURES, DECODERS
@@ -282,6 +283,12 @@ def parse_args() -> argparse.Namespace:
         action=argparse.BooleanOptionalAction,
         default=None,
         help="leave inference windows off the solar disk out; default: the calibration's, else off",
+    )
+    predict.add_argument(
+        "--barbs",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="grow the visible barbs into every instance (src/inference/barbs.py); default: the calibration's, else off",
     )
     predict.add_argument("--offset", type=int, default=None, help="default: the value tuned on validation")
     predict.add_argument("--min-area", type=int, default=None, help="drop predicted instances smaller than this many pixels")
@@ -779,6 +786,10 @@ def run_prediction(args, device) -> None:
     skip_dark = settings.get("skip_dark", False) if args.skip_dark is None else args.skip_dark
     variant_names = settings.get("variants") or ["base"]
     variants = [parse_variant(name, tta=args.tta, overlap=args.overlap) for name in variant_names]
+    # a calibration's "barbs" block overrides DEFAULT_BARBS; --barbs / --no-barbs switch it on or off
+    barbs = settings.get("barbs")
+    if args.barbs is not None:
+        barbs = (barbs or {}) if args.barbs else None
     refiner_settings = settings.get("refiner") if args.refine else None
     refiners = [load_refiner(path, device) for path in refiner_settings["checkpoints"]] if refiner_settings else None
     print(
@@ -788,6 +799,7 @@ def run_prediction(args, device) -> None:
         + (", dark windows skipped" if skip_dark else "")
         + (f", variants {' '.join(variant_names)}" if variant_names != ["base"] else "")
         + (f", learned filter cut {instance_filter.cut:.2f}" if instance_filter else "")
+        + (f", barbs grown ({', '.join(f'{k} {v}' for k, v in {**DEFAULT_BARBS, **barbs}.items())})" if barbs is not None else "")
     )
     if refiner_settings and refiners:
         print(
@@ -830,6 +842,7 @@ def run_prediction(args, device) -> None:
         variants=variants,
         precision=None if precision == "fp32" else precision,
         skip_dark=skip_dark,
+        barbs=barbs,
     )
 
     submission_path = output_dir / "submission.csv"

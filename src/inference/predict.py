@@ -10,6 +10,7 @@ from PIL import Image
 from tqdm import tqdm
 
 from ..networks import ARCHITECTURES
+from .barbs import grow_barbs
 from .postprocess import encode_rle, instances_from_labels, keep_labels, label_instances
 from .refiner import refine_observation
 from .tiling import DEFAULT_OVERLAP, predict_probabilities, predict_tiled
@@ -120,6 +121,7 @@ def predict_dataset(
     variants=None,
     precision=None,
     skip_dark=False,
+    barbs=None,
 ) -> list[dict]:
     """
     Run the model over a loader of unlabelled observations.
@@ -148,6 +150,7 @@ def predict_dataset(
     :param variants: Inference settings averaged per model, see :func:`observation_probabilities`
     :param precision: Autocast precision of the models and refiners, ``None`` for float32
     :param skip_dark: Leave the windows off the disk out, see :func:`predict_tiled`
+    :param barbs: Settings of :func:`grow_barbs` to add the visible barbs to every instance, or ``None``
     :return: List of COCO-style detection records
     """
     if save_masks_dir is not None:
@@ -191,6 +194,10 @@ def predict_dataset(
                 if image.shape != probability.shape:
                     raise ValueError("the instance filter needs the observation at the resolution of the probabilities")
                 labels, n_labels = keep_labels(labels, n_labels, instance_filter.keep(labels, n_labels, probability, image))
+            if barbs is not None:
+                if image.shape != probability.shape:
+                    raise ValueError("barbs are grown on the observation at the resolution of the probabilities")
+                labels = grow_barbs(labels, n_labels, image, barbs)
             if save_masks_dir is not None:
                 Image.fromarray(((labels > 0) * 255).astype("uint8")).save(save_masks_dir / f"{image_id}.png")
             for number, instance in enumerate(instances_from_labels(labels, n_labels, probability), start=1):

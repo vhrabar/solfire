@@ -394,6 +394,9 @@ class FilamentCropDataset(Dataset):
         thickness_cap=0.0,
         thin_head=False,
         input_scale=1.0,
+        barb_targets=None,
+        barb_level=1.0,
+        barb_records=None,
     ):
         """
         :param image_ids: Image ids to sample from, or ``None`` for all of them
@@ -425,13 +428,25 @@ class FilamentCropDataset(Dataset):
         :param input_scale: Without ``native_size``, decode the observation at this multiple of
             its own size, so a crop covers ``crop / input_scale`` annotated pixels and a thin
             filament spans more of the network's pixels
+        :param barb_targets: Directory of 0/255 PNGs, one per observation, marking barbs grown
+            from the image outside the annotations (scripts/barb_targets.py), or ``None``
+        :param barb_level: Target value at those barb pixels
+        :param barb_records: Image ids of the records that draw barbs (scripts/barb_drawers.py), or
+            ``None``; when given, two channels follow the filament target for a barb head: the
+            thin mask of those records alone, and 1 where it is valid, i.e. over the whole crop
+            when the sample holds at least one of them and 0 otherwise
         """
         if targets not in TARGETS:
             raise ValueError(f"unknown targets {targets!r}, expected one of {TARGETS}")
-        if sum((bool(categories), magnetic is not None, bool(thickness_cap) or thin_head)) > 1:
-            raise ValueError("the category, magnetic and thin-structure targets cannot be combined")
+        heads = (bool(categories), magnetic is not None, bool(thickness_cap) or thin_head, barb_records is not None)
+        if sum(heads) > 1:
+            raise ValueError("the category, magnetic, thin-structure and barb targets cannot be combined")
+        if barb_targets is not None and (native_size or input_scale != 1):
+            raise ValueError("barb targets are drawn at the annotated resolution only")
         images, by_image = load_annotations(annotations_path)
         self.images_dir = Path(images_dir)
+        self.barb_targets = None if barb_targets is None else Path(barb_targets)
+        self.barb_level = float(barb_level)
         self.crop = crop
         self.raster = raster
         self.native_size = native_size
@@ -451,6 +466,7 @@ class FilamentCropDataset(Dataset):
         self.magnetic = magnetic
         self.thickness_cap = float(thickness_cap)
         self.thin_head = thin_head
+        self.barb_records = None if barb_records is None else set(barb_records)
 
         # each sample is the list of records whose masks are averaged into its target
         if targets == "mean":
@@ -543,7 +559,9 @@ class FilamentCropDataset(Dataset):
         union = np.zeros((self.crop, self.crop), dtype=bool)
         thin = np.zeros((self.crop, self.crop), dtype=np.float32) if self.thin_head else None
         spine = np.zeros((self.crop, self.crop), dtype=np.float32) if self.thin_head else None
-        for annotations in per_record:
+        barb = np.zeros((self.crop, self.crop), dtype=np.float32)
+        drawers = 0
+        for image_id, annotations in zip(group, per_record):
             mask = np.zeros((self.crop, self.crop), dtype=bool)
             spines = []
             for ann in annotations:
@@ -561,7 +579,14 @@ class FilamentCropDataset(Dataset):
             if self.thin_head:
                 thin += thin_mask(mask)
                 spine += spine_heatmap(spines, self.crop, self.crop, scale, origin=(x, y))
+            if self.barb_records is not None and image_id in self.barb_records:
+                barb += thin_mask(mask)
+                drawers += 1
         target /= len(per_record)
+        if self.barb_targets is not None:
+            with Image.open(self.barb_targets / f"{Path(record['file_name']).stem}.png") as handle:
+                barbs = np.asarray(handle.crop((x, y, x + self.crop, y + self.crop))) > 0
+            target[barbs] = np.maximum(target[barbs], self.barb_level)
 
         if self.thickness_cap or self.thin_head:
             channels = [target]
@@ -570,6 +595,10 @@ class FilamentCropDataset(Dataset):
             if self.thin_head:
                 channels += [thin / len(per_record), spine / len(per_record)]
             return image, torch.from_numpy(np.stack(channels))
+
+        if self.barb_records is not None:
+            valid = np.full((self.crop, self.crop), float(drawers > 0), dtype=np.float32)
+            return image, torch.from_numpy(np.stack([target, barb / max(drawers, 1), valid]))
 
         if self.magnetic is not None:
             extra = self.magnetic.window(record["file_name"], x, y, self.crop, size)

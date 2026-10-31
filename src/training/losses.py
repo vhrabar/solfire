@@ -485,6 +485,50 @@ class ThinHeadLoss(nn.Module):
         return loss + self.weight * head
 
 
+class BarbHeadLoss(nn.Module):
+    """
+    The segmentation objective plus a head that predicts barbs the way the annotators who draw
+    them do.
+    """
+
+    def __init__(self, base: nn.Module, weight: float, pos_weight: float = 10.0) -> None:
+        """
+        :param base: Objective for the filament channel; receives every target channel before the last two
+        :param weight: Weight of the head
+        :param pos_weight: Weight of positive pixels in the head's cross entropy
+        """
+        super().__init__()
+        self.base = base
+        self.weight = float(weight)
+        self.register_buffer("pos_weight", torch.as_tensor(float(pos_weight)))
+
+    def set_epoch(self, epoch: int) -> None:
+        """
+        Pass the epoch on to a base objective that ramps its terms in.
+        :param epoch: Zero-based epoch index
+        :return: None
+        """
+        set_epoch = getattr(self.base, "set_epoch", None)
+        if callable(set_epoch):
+            set_epoch(epoch)
+
+    def forward(self, logits: Tensor, targets: Tensor) -> Tensor:
+        """
+        :param logits: ``(B, 2, H, W)``: the filament logit, then the barb logit
+        :param targets: ``(B, K + 2, H, W)``: the ``K`` channels of the base objective, then the
+            barb mask in ``[0, 1]`` and its validity
+        :return: Scalar loss
+        """
+        loss = cast(Tensor, self.base(logits[:, :1], targets[:, :-2]))
+        with torch.autocast(device_type=logits.device.type, enabled=False):
+            valid = targets[:, -1].float()
+            head = nn.functional.binary_cross_entropy_with_logits(
+                logits[:, 1].float(), targets[:, -2].float(), pos_weight=self.pos_weight, reduction="none"
+            )
+            head = (head * valid).sum() / valid.sum().clamp_min(1.0)
+        return loss + self.weight * head
+
+
 def build_criterion(base: nn.Module, args) -> nn.Module:
     """
     Wrap ``base`` in :class:`MorphologyLoss` when any morphology weight is set.

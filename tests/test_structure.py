@@ -7,7 +7,7 @@ import pytest
 import torch
 
 from src.data.structure import REFERENCE_HALF_WIDTH, spine_heatmap, thickness_weight, thin_mask
-from src.training.losses import BCEDiceLoss, ThinHeadLoss, lovasz_hinge_loss
+from src.training.losses import BarbHeadLoss, BCEDiceLoss, ThinHeadLoss, lovasz_hinge_loss
 
 
 def body_with_barb():
@@ -97,3 +97,18 @@ def test_thin_head_loss_trains_the_head_and_passes_weights_to_the_base():
     criterion = ThinHeadLoss(BCEDiceLoss(0.5, 0.5, 5.0, lovasz_weight=0.5, pixel_weights=True), 0.3)
     criterion(logits, target).backward()
     assert logits.grad[:, 1:].abs().sum() > 0 and torch.isfinite(logits.grad).all()
+
+
+def test_barb_head_loss_ignores_samples_without_a_barb_label():
+    """
+    The head gets gradients from valid samples only; the filament channel always does.
+    """
+    logits = torch.randn(2, 2, 32, 32, requires_grad=True)
+    target = torch.zeros(2, 3, 32, 32)
+    target[:, 0, 10:20, 5:25] = 1
+    target[0, 1, 8:10, 12:14] = 1
+    target[0, 2] = 1
+    criterion = BarbHeadLoss(BCEDiceLoss(0.5, 0.5, 5.0, lovasz_weight=0.5), 0.3)
+    criterion(logits, target).backward()
+    assert logits.grad[0, 1].abs().sum() > 0 and logits.grad[1, 1].abs().sum() == 0
+    assert logits.grad[1, 0].abs().sum() > 0

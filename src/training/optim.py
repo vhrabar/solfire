@@ -6,7 +6,7 @@ import torch
 from torch import nn
 
 
-def build_optimizer(model, lr=3e-4, weight_decay=1e-2, encoder_lr_scale=1.0) -> torch.optim.Optimizer:
+def build_optimizer(model, lr=3e-4, weight_decay=1e-2, encoder_lr_scale=1.0, head_lr_scale=1.0) -> torch.optim.Optimizer:
     """
     Build AdamW with decay applied only to weight matrices.
 
@@ -15,29 +15,29 @@ def build_optimizer(model, lr=3e-4, weight_decay=1e-2, encoder_lr_scale=1.0) -> 
     :param weight_decay: Decay applied to the convolution and projection weights
     :param encoder_lr_scale: Learning rate of ``model.encoder`` as a fraction of ``lr``;
         ignored at ``1``
+    :param head_lr_scale: Learning rate of ``model.net.segmentation_head`` as a multiple of
+        ``lr``, so a freshly added output channel can be learnt in a short fine-tune; ignored at ``1``
     :return: Configured optimiser
     """
-    encoder_ids = set()
+    scales: dict[int, float] = {}
     if encoder_lr_scale != 1.0:
-        encoder_ids = {id(param) for param in model.encoder.parameters()}
+        scales |= {id(param): encoder_lr_scale for param in model.encoder.parameters()}
+    if head_lr_scale != 1.0:
+        scales |= {id(param): head_lr_scale for param in model.net.segmentation_head.parameters()}
 
-    groups: dict[tuple[bool, bool], list[nn.Parameter]] = {}
+    groups: dict[tuple[bool, float], list[nn.Parameter]] = {}
     norms = nn.modules.batchnorm._BatchNorm | nn.LayerNorm | nn.GroupNorm
     for module in model.modules():
         for name, param in module.named_parameters(recurse=False):
             if not param.requires_grad:
                 continue
             decays = not (name == "bias" or isinstance(module, norms))
-            groups.setdefault((decays, id(param) in encoder_ids), []).append(param)
+            groups.setdefault((decays, scales.get(id(param), 1.0)), []).append(param)
 
     return torch.optim.AdamW(
         [
-            {
-                "params": params,
-                "weight_decay": weight_decay if decays else 0.0,
-                "lr": lr * encoder_lr_scale if in_encoder else lr,
-            }
-            for (decays, in_encoder), params in groups.items()
+            {"params": params, "weight_decay": weight_decay if decays else 0.0, "lr": lr * scale}
+            for (decays, scale), params in groups.items()
         ],
         lr=lr,
         betas=(0.9, 0.999),

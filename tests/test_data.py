@@ -5,6 +5,7 @@ Rasterisation of the annotations and the grouped folds.
 import json
 
 import numpy as np
+import pytest
 from PIL import Image
 from pycocotools import mask as coco_mask
 from synthetic import filament_polygon
@@ -99,3 +100,63 @@ def test_input_scale_enlarges_image_and_target(tmp_path):
     assert image.shape == (1, 128, 128) and abs(float(image.mean()) - 200 / 255) < 1e-3
     assert native.sum() == 48 * 48
     assert zoomed.sum() == 96 * 96
+
+
+def test_barb_targets_raise_the_target_outside_the_annotation(tmp_path):
+    """
+    Barb pixels grown from the image join the target at the barb level; annotated pixels keep theirs.
+    """
+    Image.fromarray(np.full((64, 64), 200, dtype=np.uint8)).save(tmp_path / "a.png")
+    square = [8.0, 8.0, 56.0, 8.0, 56.0, 56.0, 8.0, 56.0]
+    annotations = {
+        "images": [{"id": 1, "file_name": "a.png", "width": 64, "height": 64}],
+        "annotations": [{"image_id": 1, "segmentation": [square], "category_id": 1}],
+    }
+    (tmp_path / "annotations.json").write_text(json.dumps(annotations))
+    barbs = np.zeros((64, 64), dtype=np.uint8)
+    barbs[2:8, 30] = 255
+    (tmp_path / "barbs").mkdir()
+    Image.fromarray(barbs).save(tmp_path / "barbs" / "a.png")
+    common = {"images_dir": tmp_path, "annotations_path": tmp_path / "annotations.json", "raster": "coco"}
+
+    _, target = FilamentCropDataset(crop=64, barb_targets=tmp_path / "barbs", barb_level=0.5, **common)[0]
+
+    assert target.sum() == 48 * 48 + 6 * 0.5
+    assert float(target[4, 30]) == 0.5 and float(target[20, 20]) == 1.0
+    with pytest.raises(ValueError):
+        FilamentCropDataset(crop=128, input_scale=2.0, barb_targets=tmp_path / "barbs", **common)
+
+
+def test_barb_head_learns_only_from_the_records_that_draw_barbs(tmp_path):
+    """
+    The barb channel is the thin part of the barb-drawing record's mask, averaged over those records
+    alone; a sample without such a record is marked invalid instead of taught that there are no barbs.
+    """
+    Image.fromarray(np.full((64, 64), 200, dtype=np.uint8)).save(tmp_path / "a.png")
+    Image.fromarray(np.full((64, 64), 200, dtype=np.uint8)).save(tmp_path / "b.png")
+    body = [16.0, 16.0, 48.0, 16.0, 48.0, 48.0, 16.0, 48.0]
+    barb = [30.0, 4.0, 32.0, 4.0, 32.0, 16.0, 30.0, 16.0]
+    annotations = {
+        "images": [
+            {"id": 1, "file_name": "a.png", "width": 64, "height": 64},
+            {"id": 2, "file_name": "a.png", "width": 64, "height": 64},
+            {"id": 3, "file_name": "b.png", "width": 64, "height": 64},
+        ],
+        "annotations": [
+            {"image_id": 1, "segmentation": [body], "category_id": 1},
+            {"image_id": 1, "segmentation": [barb], "category_id": 1},
+            {"image_id": 2, "segmentation": [body], "category_id": 1},
+            {"image_id": 3, "segmentation": [body], "category_id": 1},
+        ],
+    }
+    (tmp_path / "annotations.json").write_text(json.dumps(annotations))
+    common = {"images_dir": tmp_path, "annotations_path": tmp_path / "annotations.json", "raster": "coco", "targets": "mean"}
+    dataset = FilamentCropDataset(crop=64, barb_records=[1], **common)
+
+    _, drawn = dataset[0]
+    _, undrawn = dataset[1]
+
+    assert drawn.shape == (3, 64, 64)
+    assert float(drawn[1, 10, 31]) == 1.0 and float(drawn[1, 32, 32]) == 0.0
+    assert float(drawn[2].min()) == 1.0
+    assert float(undrawn[1].max()) == 0.0 and float(undrawn[2].max()) == 0.0

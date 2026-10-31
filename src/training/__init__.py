@@ -16,6 +16,7 @@ from .calibrate import (
 from .engine import evaluate, fit, save_checkpoint, train_one_epoch
 from .losses import (
     KERNEL_SHAPES,
+    BarbHeadLoss,
     BCEDiceLoss,
     CategoryHeadLoss,
     MagneticHeadLoss,
@@ -42,6 +43,7 @@ __all__ = [
     "KERNEL_SHAPES",
     "AugmentedDataset",
     "BCEDiceLoss",
+    "BarbHeadLoss",
     "CategoryHeadLoss",
     "MagneticHeadLoss",
     "MorphologyLoss",

@@ -55,6 +55,7 @@ class Pretrained(nn.Module):
         )
         self.out_channels = out_channels
         self.aux_channels = aux_channels
+        self.inference_channels = slice(0, out_channels)
         self.divisor = 2**encoder_depth
 
     @property
@@ -77,5 +78,5 @@ class Pretrained(nn.Module):
         x = pad_to_multiple((x - IMAGENET_MEAN) / IMAGENET_STD, self.divisor)
         logits: Tensor = self.net(x)[..., :height, :width]
         if self.aux_channels and not self.training:
-            return logits[:, : self.out_channels]
+            return logits[:, self.inference_channels]
         return logits

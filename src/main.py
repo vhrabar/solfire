@@ -44,6 +44,7 @@ from .training import (
     DEFAULT_OFFSETS,
     KERNEL_SHAPES,
     AugmentedDataset,
+    BarbHeadLoss,
     BCEDiceLoss,
     CategoryHeadLoss,
     MagneticHeadLoss,
@@ -65,6 +66,8 @@ from .training import (
 )
 from .training.evaluate import evaluate
 from .training.filter_fit import collect_instances, filter_path, fit_instance_filter
+
+BARB_PRIOR_LOGIT = -4.0
 
 
 def parse_args() -> argparse.Namespace:
@@ -199,11 +202,37 @@ def parse_args() -> argparse.Namespace:
         "so barbs and thin ends count as much as the body; needs --crop; 0 disables it",
     )
     train.add_argument(
+        "--barb-targets",
+        default=None,
+        help="directory of barb PNGs grown from the images outside the annotations (scripts/barb_targets.py); "
+        "the target is raised to --barb-level there; needs --crop at the annotated resolution",
+    )
+    train.add_argument("--barb-level", type=float, default=1.0, help="target value at the --barb-targets pixels")
+    train.add_argument(
         "--thin-head-weight",
         type=float,
         default=0.0,
         help="pretrained only: weight of a training-only head predicting the thin part of the annotation "
         "(opening residual, r=2) and the spine heatmap; 0 disables it",
+    )
+    train.add_argument(
+        "--barb-head-weight",
+        type=float,
+        default=0.0,
+        help="pretrained only: weight of a head predicting the thin part of the annotation of the records "
+        "that draw barbs (--barb-records), kept in the checkpoint for scripts/barb_head.py; 0 disables it",
+    )
+    train.add_argument(
+        "--head-lr-scale",
+        type=float,
+        default=1.0,
+        help="pretrained only: learning rate of the output layer as a multiple of --lr, e.g. so a new barb head "
+        "channel is learnt within a fine-tune",
+    )
+    train.add_argument(
+        "--barb-records",
+        default="runs/barb_drawers.json",
+        help="JSON list of the image ids of the records that draw barbs (scripts/barb_drawers.py)",
     )
     train.add_argument(
         "--init-checkpoint", default=None, help="start from this checkpoint's weights (same architecture), e.g. to fine-tune"
@@ -428,6 +457,8 @@ def build_model_config(args) -> dict:
             if args.category_head_weight > 0
             else 2
             if args.magnetic_head_weight > 0 or args.thin_head_weight > 0
+            else 1
+            if args.barb_head_weight > 0
             else 0,
         }
 
@@ -482,6 +513,9 @@ def build_datasets(args) -> tuple[FilamentDataset | FilamentCropDataset | Concat
         thickness_cap=args.thickness_weight_cap,
         thin_head=args.thin_head_weight > 0,
         input_scale=args.input_scale,
+        barb_targets=args.barb_targets,
+        barb_level=args.barb_level,
+        barb_records=json.loads(Path(args.barb_records).read_text()) if args.barb_head_weight > 0 else None,
         **common,
     )
     valid_dataset = FilamentDataset(val_ids, size=native_size, **common)
@@ -581,6 +615,14 @@ def run_training(args, device) -> None:
         start = torch.load(args.init_checkpoint, map_location=device, weights_only=False)
         load_matching(model, start["model_state"])
         print(f"starting from {args.init_checkpoint} (epoch {start.get('epoch')})")
+    if args.barb_head_weight > 0:
+        # barbs cover well under one percent of a crop; a fresh channel at logit 0 says 0.5 everywhere
+        # and a fine-tune learning rate takes far longer than 8 epochs to pull it down
+        head = model.get_submodule("net.segmentation_head.0")
+        assert isinstance(head, torch.nn.Conv2d) and head.bias is not None
+        with torch.no_grad():
+            head.weight[1:].mul_(0.1)
+            head.bias[1:] = BARB_PRIOR_LOGIT
     n_params = sum(p.numel() for p in model.parameters())
     print(f"{type(model).__name__}: {n_params / 1e6:.2f}M parameters")
     encoder_lr_scale = 1.0
@@ -590,6 +632,8 @@ def run_training(args, device) -> None:
         # the state dict carries the trained weights, so rebuilding must not fetch the pretrained ones again
         model_config = model_config | {"encoder_weights": None}
 
+    if args.barb_targets and not args.crop:
+        raise SystemExit("--barb-targets needs --crop")
     thin_structure = args.thickness_weight_cap > 0 or args.thin_head_weight > 0
     if thin_structure:
         if not args.crop:
@@ -600,6 +644,15 @@ def run_training(args, device) -> None:
             raise SystemExit("the thin-structure targets cannot be combined with the category or magnetic head")
         if max(args.morph_open_weight, args.morph_close_weight, args.morph_cldice_weight) > 0:
             raise SystemExit("the thin-structure targets cannot be combined with the morphology terms")
+    if args.barb_head_weight > 0:
+        if args.arch != "pretrained" or not args.crop:
+            raise SystemExit("--barb-head-weight needs --arch pretrained and --crop")
+        if thin_structure or args.pseudo_labels or args.category_head_weight > 0 or args.magnetic_head_weight > 0:
+            raise SystemExit("--barb-head-weight cannot be combined with the other heads, pixel weights or pseudo-labels")
+        if max(args.morph_open_weight, args.morph_close_weight, args.morph_cldice_weight) > 0:
+            raise SystemExit("--barb-head-weight cannot be combined with the morphology terms")
+    if args.head_lr_scale != 1.0 and args.arch != "pretrained":
+        raise SystemExit("--head-lr-scale needs --arch pretrained")
     if args.thin_head_weight > 0 and args.arch != "pretrained":
         raise SystemExit("--thin-head-weight needs --arch pretrained")
     if not 0 < args.tversky_beta < 1:
@@ -618,6 +671,8 @@ def run_training(args, device) -> None:
     criterion = build_criterion(base_criterion, args)
     if args.thin_head_weight > 0:
         criterion = ThinHeadLoss(criterion, args.thin_head_weight)
+    if args.barb_head_weight > 0:
+        criterion = BarbHeadLoss(criterion, args.barb_head_weight)
     if args.category_head_weight > 0:
         if args.arch != "pretrained":
             raise SystemExit("--category-head-weight needs --arch pretrained")
@@ -645,7 +700,9 @@ def run_training(args, device) -> None:
         ]
         warmup = f", warmup {args.morph_warmup_epochs} epochs" if args.morph_warmup_epochs else ""
         print(f"morphology loss (serron, {args.morph_kernel} {args.morph_kernel_size}px): {', '.join(terms)}{warmup}")
-    optimizer = build_optimizer(model, lr=args.lr, weight_decay=args.weight_decay, encoder_lr_scale=encoder_lr_scale)
+    optimizer = build_optimizer(
+        model, lr=args.lr, weight_decay=args.weight_decay, encoder_lr_scale=encoder_lr_scale, head_lr_scale=args.head_lr_scale
+    )
     scheduler = build_scheduler(optimizer, args.epochs, max(1, len(train_loader)), warmup_epochs=args.warmup_epochs)
 
     tile = args.val_tile or args.crop or None
@@ -671,6 +728,11 @@ def run_training(args, device) -> None:
         "magnetic_targets": args.magnetic_targets if args.magnetic_head_weight > 0 else None,
         "thickness_weight_cap": args.thickness_weight_cap,
         "thin_head_weight": args.thin_head_weight,
+        "barb_targets": args.barb_targets,
+        "barb_level": args.barb_level,
+        "barb_head_weight": args.barb_head_weight,
+        "head_lr_scale": args.head_lr_scale,
+        "barb_records": args.barb_records if args.barb_head_weight > 0 else None,
         "init_checkpoint": args.init_checkpoint,
         "hard_negatives": args.hard_negatives,
         "hard_negative_prob": args.hard_negative_prob if args.hard_negatives else 0.0,

@@ -1,0 +1,29 @@
+version: 2
+
+registries:
+  pytorch-cpu:
+    type: python-index
+    url: https://download.pytorch.org/whl/cpu
+  pytorch-cu134:
+    type: python-index
+    url: https://download.pytorch.org/whl/cu134
+  pytorch-rocm100:
+    type: python-index
+    url: https://download.pytorch.org/whl/rocm10.0
+  amd-rocm:
+    type: python-index
+    url: https://stable.repo.amd.com/rocm/core/whl-next
+
+updates:
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: weekly
+    registries: "*"
+    open-pull-requests-limit: 0
+    allow:
+      - dependency-type: all
+    ignore:
+      - dependency-name: torch
+      - dependency-name: torchvision
+      - dependency-name: "rocm*"

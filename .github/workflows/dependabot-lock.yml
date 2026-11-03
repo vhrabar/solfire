@@ -1,0 +1,44 @@
+name: Dependabot lock sync
+
+on:
+  pull_request:
+    branches: [main, dev]
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  sync:
+    if: github.actor == 'dependabot[bot]' && startsWith(github.head_ref, 'dependabot/uv/')
+    runs-on: ubuntu-latest
+    steps:
+      - id: meta
+        uses: dependabot/fetch-metadata@v2
+
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.head_ref }}
+          token: ${{ secrets.LOCK_SYNC_TOKEN || github.token }}
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Re-lock the bumped packages and re-export requirements.txt
+        env:
+          PACKAGES: ${{ steps.meta.outputs.dependency-names }}
+        run: |
+          args=()
+          for package in ${PACKAGES//,/ }; do args+=(--upgrade-package "$package"); done
+          uv lock "${args[@]}"
+          uv export --quiet --frozen --format=requirements.txt --group=cuda-134 --output-file=requirements.txt
+
+      - name: Push the fix to the PR branch
+        run: |
+          if git diff --quiet -- uv.lock requirements.txt; then
+            echo "uv.lock and requirements.txt already agree"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git commit -m "build(deps): sync uv.lock and requirements.txt with the bump" -- uv.lock requirements.txt
+          git push

@@ -8,3 +8,6 @@
 uv.lock              linguist-generated=true
 requirements.txt     linguist-generated=true
 "Final pipeline.ipynb" linguist-generated=true
+
+# Final model weights live in the repo through Git LFS
+weights/final/*.pt filter=lfs diff=lfs merge=lfs -text

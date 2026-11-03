@@ -345,6 +345,8 @@ def train_refiner(
     seed=1,
     weights=None,
     lovasz_weight=0.0,
+    encoder="resnet34",
+    encoder_init=None,
 ) -> dict:
     """
     Train the refiner of one fold on the samples of every other fold.
@@ -361,6 +363,8 @@ def train_refiner(
     :param weights: Per observation file, the record weights of the score target
         (:func:`record_weights`); ``None`` weighs the records equally
     :param lovasz_weight: Weight of the per-record Lovász term of :func:`refiner_loss`
+    :param encoder: Encoder of the refiner's U-Net, as smp spells it (ImageNet weights)
+    :param encoder_init: Checkpoint the encoder starts from instead (:meth:`Refiner.load_encoder`), or ``None``
     :return: Per epoch mean losses
     """
     torch.manual_seed(seed)
@@ -375,7 +379,10 @@ def train_refiner(
         drop_last=True,
         persistent_workers=workers > 0,
     )
-    model = Refiner().to(device)
+    model = Refiner(encoder=encoder)
+    if encoder_init:
+        print(f"fold {fold}: {model.load_encoder(encoder_init)} encoder tensors from {encoder_init}")
+    model = model.to(device)
     optimizer = build_optimizer(model, lr=lr, encoder_lr_scale=encoder_lr_scale)
     scheduler = build_scheduler(optimizer, epochs, len(loader), warmup_epochs=1)
     history = []
@@ -419,7 +426,17 @@ def train_refiner(
             },
             last,
         )
-    atomic_save({"state_dict": model.state_dict(), "fold": fold, "epochs": epochs, "size": CROP_SIZE, "history": history}, output)
+    atomic_save(
+        {
+            "state_dict": model.state_dict(),
+            "fold": fold,
+            "epochs": epochs,
+            "size": CROP_SIZE,
+            "encoder": encoder,
+            "history": history,
+        },
+        output,
+    )
     last.unlink(missing_ok=True)
     return {"history": history}
 

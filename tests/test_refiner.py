@@ -218,3 +218,17 @@ def test_per_record_lovasz_is_free_for_a_confident_match_and_costs_otherwise():
     plain, _, _ = refiner_loss(good, score, targets, torch.tensor([2]))
     with_term, _, _ = refiner_loss(good, score, targets, torch.tensor([2]), lovasz_weight=0.5)
     assert with_term > plain
+
+
+def test_load_encoder_fills_the_observation_channel_and_keeps_the_others(tmp_path):
+    refiner = Refiner(encoder="resnet18", encoder_weights=None)
+    state = {key: torch.full_like(value, 0.5) for key, value in refiner.state_dict().items() if key.startswith("net.encoder.")}
+    state["net.encoder.conv1.weight"] = torch.ones(64, 1, 7, 7)
+    state["net.segmentation_head.0.weight"] = torch.zeros(1)  # not the encoder's: ignored
+    torch.save({"model_state": state}, tmp_path / "encoder.pt")
+    before = refiner.state_dict()["net.encoder.conv1.weight"].clone()
+    assert refiner.load_encoder(tmp_path / "encoder.pt") == len(state) - 1
+    conv = refiner.state_dict()["net.encoder.conv1.weight"]
+    assert torch.equal(conv[:, :1], torch.ones(64, 1, 7, 7))
+    assert torch.equal(conv[:, 1:], before[:, 1:])
+    assert (refiner.state_dict()["net.encoder.layer1.0.conv1.weight"] == 0.5).all()

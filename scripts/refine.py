@@ -88,7 +88,16 @@ def main() -> int:
         "thresholded ensemble map, i.e. refine a second time",
     )
     parser.add_argument("--seed-cut", type=float, default=0.45, help="probability the --seed-from masks are cut at")
-    parser.add_argument("--refiners", default=None, help="run whose fold refiners are used; default: --name")
+    parser.add_argument(
+        "--refiners",
+        nargs="+",
+        default=None,
+        help="runs whose fold refiners are used, averaged when there are several; default: --name",
+    )
+    parser.add_argument("--encoder", default="resnet34", help="encoder of the refiner's U-Net, as smp spells it")
+    parser.add_argument(
+        "--encoder-init", type=Path, default=None, help="checkpoint the encoder starts from, e.g. a pretrain_mim encoder.pt"
+    )
     parser.add_argument(
         "--output", type=Path, default=None, help="refined calibration JSON; default: <calibration>-refined next to it"
     )
@@ -100,7 +109,7 @@ def main() -> int:
     crops = args.output_dir / args.crops
     crop_settings = {"context": args.context, "offsets": args.train_offsets or [offset]}
     run = args.output_dir / args.name
-    refiners = args.output_dir / (args.refiners or args.name)
+    refiners = [args.output_dir / name for name in (args.refiners or [args.name])]
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     steps = STEPS if args.step == "all" else (args.step,)
 
@@ -130,9 +139,14 @@ def main() -> int:
                     seed=args.seed,
                     weights=record_weights(records, args.score_target),
                     lovasz_weight=args.lovasz_weight,
+                    encoder=args.encoder,
+                    encoder_init=args.encoder_init,
                 )
     if "refine" in steps:
-        models = {fold: load_refiner(refiners / f"fold{fold}.pt", device) for fold in sorted(set(folds.values()))}
+        models = {
+            fold: [load_refiner(directory / f"fold{fold}.pt", device) for directory in refiners]
+            for fold in sorted(set(folds.values()))
+        }
         refine_held_out(
             models,
             sources,
@@ -155,7 +169,7 @@ def main() -> int:
         (run / "score.json").write_text(json.dumps(report, indent=2))
         best = report["refined"]
         calibration["refiner"] = {
-            "checkpoints": [str(refiners / f"fold{fold}.pt") for fold in sorted(set(folds.values()))],
+            "checkpoints": [str(directory / f"fold{fold}.pt") for directory in refiners for fold in sorted(set(folds.values()))],
             "proposal_threshold": threshold,
             "proposal_offset": offset,
             "context": args.context,

@@ -139,6 +139,31 @@ class Refiner(nn.Module):
         encoder: nn.Module = self.net.encoder
         return encoder
 
+    def load_encoder(self, path) -> int:
+        """
+        Start the encoder from a segmentation checkpoint with the same encoder, e.g. ``encoder.pt`` of
+        ``scripts/pretrain_mim.py``. A one-channel first convolution fills the observation channel only;
+        the probability and seed channels keep their ImageNet weights.
+        :param path: Checkpoint whose ``model_state`` holds ``net.encoder.*`` weights
+        :return: Number of tensors loaded
+        """
+        source = torch.load(path, map_location="cpu", weights_only=False)["model_state"]
+        state = self.state_dict()
+        loaded = 0
+        for key, value in source.items():
+            if not key.startswith("net.encoder.") or key not in state:
+                continue
+            if value.shape == state[key].shape:
+                state[key] = value
+            elif value.dim() == 4 and value.shape[1] == 1 and value.shape[0] == state[key].shape[0]:
+                state[key] = state[key].clone()
+                state[key][:, :1] = value
+            else:
+                raise ValueError(f"{key}: {tuple(value.shape)} does not fit {tuple(state[key].shape)}")
+            loaded += 1
+        self.load_state_dict(state)
+        return loaded
+
     def forward(self, x) -> tuple[Tensor, Tensor]:
         """
         :param x: ``(B, 3, S, S)`` inputs from :func:`refiner_inputs`, ``S`` divisible by 32
@@ -291,7 +316,7 @@ def load_refiner(path, device) -> Refiner:
     :return: The refiner in eval mode
     """
     checkpoint = torch.load(path, map_location="cpu", weights_only=False)
-    model = Refiner(encoder_weights=None)
+    model = Refiner(encoder=checkpoint.get("encoder", "resnet34"), encoder_weights=None)
     model.load_state_dict(checkpoint["state_dict"])
     return model.to(device).eval()
 

@@ -200,3 +200,21 @@ def test_refine_observation_honours_final_offset():
     base, _ = refine_observation(models, image, probabilities, settings, torch.device("cpu"), tta=False)
     grown, n = refine_observation(models, image, probabilities, {**settings, "final_offset": 1}, torch.device("cpu"), tta=False)
     assert n == 1 and (grown > 0).sum() >= (base > 0).sum()
+
+
+def test_per_record_lovasz_is_free_for_a_confident_match_and_costs_otherwise():
+    """
+    The Lovász term adds nothing when the mask matches every record with a margin, and adds
+    loss when the records disagree, since no single mask then matches each of them.
+    """
+    targets = torch.zeros(1, MAX_RECORDS, 32, 32)
+    targets[0, 0, 8:24, 8:24] = 1
+    good = (targets[:, :1] * 2 - 1) * 8
+    score = torch.tensor([4.0])
+    plain, _, _ = refiner_loss(good, score, targets, torch.tensor([1]))
+    with_term, _, _ = refiner_loss(good, score, targets, torch.tensor([1]), lovasz_weight=0.5)
+    assert torch.isclose(plain, with_term)
+    targets[0, 1, 8:24, 8:16] = 1
+    plain, _, _ = refiner_loss(good, score, targets, torch.tensor([2]))
+    with_term, _, _ = refiner_loss(good, score, targets, torch.tensor([2]), lovasz_weight=0.5)
+    assert with_term > plain

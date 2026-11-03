@@ -36,3 +36,4 @@ ref,date,description,models,val_pq,public,private,seconds_per_image,predict_seco
 57783843,2026-10-29 22:13:28,ensembles/b6-full-fp16-refined (3 models) | val pq 0.4637,3,0.4637,0.40,,1.84,331.2,NVIDIA GeForce RTX 5070 Ti,COMPLETE,runs/ensembles/predictions_b6-full-fp16-refined
 57783908,2026-10-29 22:17:55,ensembles/b6-zoom-ssl-tta-refined (4 models) | val pq 0.4700,4,0.4700,0.40,,12.11,2178.9,NVIDIA GeForce RTX 5070 Ti,COMPLETE,runs/ensembles/predictions_b6-zoom-ssl-tta-refined
 57784797,2026-10-29 23:20:56,ensembles/b6-zoom-ssl-tta32-refined (4 models) | val pq 0.4692,4,0.4692,0.40,,12.09,2177.0,NVIDIA GeForce RTX 5070 Ti,COMPLETE,runs/ensembles/predictions_b6-zoom-ssl-tta32-refined
+57851962,2026-10-31 22:21:02,ensembles/b6-zoom-ssl-tta32-barbs (4 models) | val pq 0.4668,4,0.4668,0.40,,12.72,2289.2,NVIDIA GeForce RTX 5070 Ti,COMPLETE,runs/ensembles/predictions_b6-zoom-ssl-tta32-barbs

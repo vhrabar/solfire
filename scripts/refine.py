@@ -61,6 +61,9 @@ def main() -> int:
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--lr", type=float, default=3e-4)
     parser.add_argument("--seed", type=int, default=1, help="seed of the refiners' initialisation and sampling")
+    parser.add_argument(
+        "--lovasz-weight", type=float, default=0.0, help="weight of a per-record Lovász hinge in the refiner's mask loss"
+    )
     parser.add_argument("--folds", type=int, nargs="+", default=[0, 1, 2, 3, 4])
     parser.add_argument("--workers", type=int, default=8)
     parser.add_argument(
@@ -79,6 +82,14 @@ def main() -> int:
         help="offsets the training proposals are cut with; default: the calibration's",
     )
     parser.add_argument(
+        "--seed-from",
+        default=None,
+        help="refine step: start from the refined instances of this run under --output-dir instead of the "
+        "thresholded ensemble map, i.e. refine a second time",
+    )
+    parser.add_argument("--seed-cut", type=float, default=0.45, help="probability the --seed-from masks are cut at")
+    parser.add_argument("--refiners", default=None, help="run whose fold refiners are used; default: --name")
+    parser.add_argument(
         "--output", type=Path, default=None, help="refined calibration JSON; default: <calibration>-refined next to it"
     )
     args = parser.parse_args()
@@ -89,6 +100,7 @@ def main() -> int:
     crops = args.output_dir / args.crops
     crop_settings = {"context": args.context, "offsets": args.train_offsets or [offset]}
     run = args.output_dir / args.name
+    refiners = args.output_dir / (args.refiners or args.name)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     steps = STEPS if args.step == "all" else (args.step,)
 
@@ -117,10 +129,22 @@ def main() -> int:
                     workers=args.workers,
                     seed=args.seed,
                     weights=record_weights(records, args.score_target),
+                    lovasz_weight=args.lovasz_weight,
                 )
     if "refine" in steps:
-        models = {fold: load_refiner(run / f"fold{fold}.pt", device) for fold in sorted(set(folds.values()))}
-        refine_held_out(models, sources, folds, run / "refined", device, threshold=threshold, offset=offset, context=args.context)
+        models = {fold: load_refiner(refiners / f"fold{fold}.pt", device) for fold in sorted(set(folds.values()))}
+        refine_held_out(
+            models,
+            sources,
+            folds,
+            run / "refined",
+            device,
+            threshold=threshold,
+            offset=offset,
+            context=args.context,
+            seed_dir=args.output_dir / args.seed_from / "refined" if args.seed_from else None,
+            seed_cut=args.seed_cut,
+        )
     if "score" in steps:
         report = score_refined(run / "refined", records, folds, workers=args.workers)
         for reading, best in report.items():
@@ -131,15 +155,17 @@ def main() -> int:
         (run / "score.json").write_text(json.dumps(report, indent=2))
         best = report["refined"]
         calibration["refiner"] = {
-            "checkpoints": [str(run / f"fold{fold}.pt") for fold in sorted(set(folds.values()))],
+            "checkpoints": [str(refiners / f"fold{fold}.pt") for fold in sorted(set(folds.values()))],
             "proposal_threshold": threshold,
             "proposal_offset": offset,
             "context": args.context,
             "score_target": args.score_target,
+            **({"lovasz_weight": args.lovasz_weight} if args.lovasz_weight else {}),
             "threshold": best["threshold"],
             "min_score": best["min_score"],
             "pq": best["pq"],
             "nested_pq": best["nested"]["pq"],
+            **({"iterations": 2, "seed_cut": args.seed_cut} if args.seed_from else {}),
         }
         output = args.output or args.calibration.with_name(
             args.calibration.name.removesuffix(".calibration.json") + "-refined.calibration.json"

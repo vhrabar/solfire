@@ -38,6 +38,7 @@ from ..inference.refiner import (
 )
 from .calibrate import load_probabilities
 from .engine import atomic_save
+from .losses import lovasz_hinge_loss
 from .metrics import IOU_THRESHOLD, annotation_pixels, instance_iou, pq_counts, pq_from_counts
 from .optim import build_optimizer, build_scheduler
 
@@ -281,7 +282,7 @@ class RefinerCrops(Dataset):
         return inputs, targets, row["records"], torch.from_numpy(weights)
 
 
-def refiner_loss(masks, scores, targets, n_records, score_weight=0.5, weights=None):
+def refiner_loss(masks, scores, targets, n_records, score_weight=0.5, weights=None, lovasz_weight=0.0):
     """
     Mask loss against the record average, plus the error of the predicted earned IoU.
 
@@ -294,6 +295,9 @@ def refiner_loss(masks, scores, targets, n_records, score_weight=0.5, weights=No
     :param score_weight: Weight of the score term
     :param weights: ``(B, MAX_RECORDS)`` weight of each record's earned IoU in the score
         target; ``None`` averages the records
+    :param lovasz_weight: Weight of a Lovász hinge against each record's own mask, averaged over
+        the records of a sample: Panoptic Quality matches every record separately, so the mask is
+        pushed towards a high IoU with each of them rather than towards their soft average
     :return: Tuple of (total loss, mask loss, score loss)
     """
     valid = (torch.arange(MAX_RECORDS, device=targets.device)[None] < n_records[:, None]).float()
@@ -315,6 +319,16 @@ def refiner_loss(masks, scores, targets, n_records, score_weight=0.5, weights=No
         earned = (torch.where(iou > IOU_THRESHOLD, iou, torch.zeros_like(iou)) * weights * valid).sum(1)
     score = F.binary_cross_entropy_with_logits(scores.float(), earned)
     mask_loss = bce + dice.mean()
+    if lovasz_weight > 0:
+        sample, record = torch.nonzero(valid, as_tuple=True)
+        pairs = torch.stack(
+            [
+                lovasz_hinge_loss(logits[i : i + 1], targets[i : i + 1, r : r + 1])
+                for i, r in zip(sample.tolist(), record.tolist())
+            ]
+        )
+        per_sample = torch.zeros(len(logits), device=logits.device).index_add(0, sample, pairs) / n_records.float()
+        mask_loss = mask_loss + lovasz_weight * per_sample.mean()
     return mask_loss + score_weight * score, mask_loss, score
 
 
@@ -330,6 +344,7 @@ def train_refiner(
     workers=8,
     seed=1,
     weights=None,
+    lovasz_weight=0.0,
 ) -> dict:
     """
     Train the refiner of one fold on the samples of every other fold.
@@ -345,6 +360,7 @@ def train_refiner(
     :param seed: Seed of the initialisation and the sampling
     :param weights: Per observation file, the record weights of the score target
         (:func:`record_weights`); ``None`` weighs the records equally
+    :param lovasz_weight: Weight of the per-record Lovász term of :func:`refiner_loss`
     :return: Per epoch mean losses
     """
     torch.manual_seed(seed)
@@ -382,7 +398,9 @@ def train_refiner(
             record_weight = record_weight.to(device)
             with torch.autocast(device.type, dtype=torch.bfloat16, enabled=device.type == "cuda"):
                 masks, scores = model(inputs)
-            loss, mask_loss, score_loss = refiner_loss(masks, scores, targets, n_records, weights=record_weight)
+            loss, mask_loss, score_loss = refiner_loss(
+                masks, scores, targets, n_records, weights=record_weight, lovasz_weight=lovasz_weight
+            )
             optimizer.zero_grad(set_to_none=True)
             loss.backward()
             optimizer.step()
@@ -406,7 +424,19 @@ def train_refiner(
     return {"history": history}
 
 
-def refine_held_out(models, sources, folds, output_dir, device, threshold=0.375, offset=-1, tta=True, context=CONTEXT) -> None:
+def refine_held_out(
+    models,
+    sources,
+    folds,
+    output_dir,
+    device,
+    threshold=0.375,
+    offset=-1,
+    tta=True,
+    context=CONTEXT,
+    seed_dir=None,
+    seed_cut=0.5,
+) -> None:
     """
     Refine every held-out observation with the refiner that did not train on its fold.
     :param models: Per fold, a :class:`Refiner` in eval mode
@@ -418,6 +448,10 @@ def refine_held_out(models, sources, folds, output_dir, device, threshold=0.375,
     :param offset: Morphological step the proposals are cut with
     :param tta: Average the refiner over flips
     :param context: Window edge as a multiple of the longer side of a proposal's box
+    :param seed_dir: Directory an earlier call wrote, or ``None``; given, the proposals are its
+        refined instances, assembled at ``seed_cut`` without a score cut, so the refiner redraws
+        its own masks once more instead of the thresholded ensemble map
+    :param seed_cut: Probability the earlier refined masks are cut at
     :return: None
     """
     output_dir = Path(output_dir)
@@ -428,7 +462,12 @@ def refine_held_out(models, sources, folds, output_dir, device, threshold=0.375,
             continue
         probabilities = load_probabilities(sources[name], name)
         image = load_image(observation_path(TRAIN_IMAGES, name)).numpy()[0]
-        labels, n_labels = connected_components(apply_offset(probabilities >= threshold, offset))
+        if seed_dir is None:
+            labels, n_labels = connected_components(apply_offset(probabilities >= threshold, offset))
+        else:
+            with open(Path(seed_dir) / f"{Path(name).stem}.pkl", "rb") as handle:
+                earlier = pickle.load(handle)["refined"]
+            labels, n_labels, _ = assemble(earlier, *probabilities.shape, threshold=seed_cut)
         refined = refine_components(models[folds[name]], image, probabilities, labels, n_labels, device, tta=tta, context=context)
         seeds = seed_instances(labels, n_labels, probabilities)
         with open(path, "wb") as handle:

@@ -16,15 +16,15 @@ from scipy import ndimage
 from skimage.morphology import disk
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from src.data import load_annotations
-from src.data.dataset import validation_split
-from src.data.structure import thin_mask
-from src.inference.barbs import thin_pieces
-from src.inference.postprocess import EIGHT_CONNECTED
-from src.inference.predict import load_model
-from src.inference.refiner import assemble
-from src.training.calibrate import cache_probabilities, load_probabilities
-from src.training.metrics import annotation_pixels, instance_iou, pq_counts, pq_from_counts
+from solfire.data import load_annotations
+from solfire.data.dataset import validation_split
+from solfire.data.structure import thin_mask
+from solfire.inference.barbs import thin_pieces
+from solfire.inference.postprocess import EIGHT_CONNECTED
+from solfire.inference.predict import load_model
+from solfire.inference.refiner import assemble
+from solfire.training.calibrate import cache_probabilities, load_probabilities
+from solfire.training.metrics import annotation_pixels, instance_iou, pq_counts, pq_from_counts
 
 SIZE = 2048
 THRESHOLDS = (0.1, 0.12, 0.13, 0.15, 0.17, 0.2, 0.3)
@@ -83,7 +83,7 @@ def grow(labels, n_labels, head, threshold, thin) -> np.ndarray:
     :param n_labels: Number of instances
     :param head: ``(H, W)`` barb probabilities
     :param threshold: Barb probability a pixel needs
-    :param thin: Keep only long, narrow pieces (:func:`~src.inference.barbs.thin_pieces`)
+    :param thin: Keep only long, narrow pieces (:func:`~solfire.inference.barbs.thin_pieces`)
     :return: Labels with the barb pieces that touch an instance added to it
     """
     grown = labels.copy()

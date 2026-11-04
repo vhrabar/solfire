@@ -12,9 +12,9 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from src.data import load_annotations
-from src.data.structure import thin_mask
-from src.training.metrics import annotation_pixels
+from solfire.data import load_annotations
+from solfire.data.structure import thin_mask
+from solfire.training.metrics import annotation_pixels
 
 
 def spine_length(annotation) -> float:

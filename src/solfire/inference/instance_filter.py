@@ -168,10 +168,21 @@ class InstanceFilter:
         :return: The filter
         """
         with open(path, "rb") as handle:
-            loaded = pickle.load(handle)
+            loaded = _RenamedPackageUnpickler(handle).load()
         if not isinstance(loaded, InstanceFilter):
             raise TypeError(f"{path} does not hold an InstanceFilter")
         return loaded
+
+
+class _RenamedPackageUnpickler(pickle.Unpickler):
+    """
+    Reads filters pickled before the package moved from ``src`` to ``solfire``.
+    """
+
+    def find_class(self, module, name):
+        if module == "src" or module.startswith("src."):
+            module = "solfire" + module.removeprefix("src")
+        return super().find_class(module, name)
 
 
 def build_regressor(seed=0) -> Any:

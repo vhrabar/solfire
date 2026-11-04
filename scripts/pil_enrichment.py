@@ -13,8 +13,8 @@ from scipy import ndimage
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.data import load_annotations
-from src.data.magnetogram import (
+from solfire.data import load_annotations
+from solfire.data.magnetogram import (
     HA_SIZE,
     magnetogram_on_grid,
     magnetogram_path,

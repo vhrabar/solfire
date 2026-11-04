@@ -13,10 +13,10 @@ from scipy import ndimage
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.data import load_annotations, validation_split
-from src.inference.postprocess import connected_components, instance_scores
-from src.training.calibrate import cache_directory, load_probabilities
-from src.training.metrics import annotation_pixels
+from solfire.data import load_annotations, validation_split
+from solfire.inference.postprocess import connected_components, instance_scores
+from solfire.training.calibrate import cache_directory, load_probabilities
+from solfire.training.metrics import annotation_pixels
 
 
 def main() -> int:

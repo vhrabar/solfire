@@ -10,8 +10,10 @@ import numpy as np
 from PIL import Image
 from skimage import exposure
 
+from .. import PROJECT_ROOT
+
 PREPROCESSING = ("none", "clahe")
-CACHE_ROOT = Path(__file__).resolve().parents[2] / "runs" / "preprocessed"
+CACHE_ROOT = PROJECT_ROOT / "runs" / "preprocessed"
 CLAHE_KERNEL = 256
 CLAHE_CLIP = 0.01
 IMAGE_SUFFIXES = {".jpeg", ".jpg", ".png"}

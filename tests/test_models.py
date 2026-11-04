@@ -5,11 +5,11 @@ Losses, the auxiliary-head model and tiled inference with test-time augmentation
 import pytest
 import torch
 
-from src.inference.predict import observation_probabilities
-from src.inference.tiling import predict_probabilities, predict_tiled
-from src.main import load_matching
-from src.networks import ARCHITECTURES
-from src.training.losses import BCEDiceLoss, CategoryHeadLoss, lovasz_hinge_loss
+from solfire.inference.predict import observation_probabilities
+from solfire.inference.tiling import predict_probabilities, predict_tiled
+from solfire.main import load_matching
+from solfire.networks import ARCHITECTURES
+from solfire.training.losses import BCEDiceLoss, CategoryHeadLoss, lovasz_hinge_loss
 
 
 def stripe_target():

@@ -7,7 +7,7 @@ import torch
 from astropy.io import fits
 from test_models import small_model
 
-from src.data.magnetogram import (
+from solfire.data.magnetogram import (
     HA_CENTRE,
     HA_RADIUS,
     MagneticTargets,
@@ -15,7 +15,7 @@ from src.data.magnetogram import (
     magnetogram_on_grid,
     pil_map,
 )
-from src.training.losses import BCEDiceLoss, MagneticHeadLoss
+from solfire.training.losses import BCEDiceLoss, MagneticHeadLoss
 
 BZI_SIZE = 200
 

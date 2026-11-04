@@ -14,11 +14,12 @@ from PIL import Image, ImageDraw
 from pycocotools import mask as coco_mask
 from torch.utils.data import Dataset
 
+from .. import PROJECT_ROOT
 from .preprocess import IMAGE_SUFFIXES, observation_path
 from .structure import spine_heatmap, thickness_weight, thin_mask
 
 ANNOTATIONS_NAME = "MAGFiLO_1.0_Annotations_kaggle2026_train.json"
-REPO_DATA = Path(__file__).resolve().parents[2] / "data"
+REPO_DATA = PROJECT_ROOT / "data"
 KAGGLE_INPUT = Path("/kaggle/input")
 
 CATEGORY_NAMES = {1: "Left", 2: "Right", 3: "Unidentifiable", 4: "Ambiguous"}
@@ -418,11 +419,11 @@ class FilamentCropDataset(Dataset):
             from the uniformly placed crops
         :param categories: Also return one indicator channel per category of
             :data:`CATEGORY_CHANNELS` after the filament target, for an auxiliary head
-        :param magnetic: :class:`~src.data.magnetogram.MagneticTargets` whose PIL proximity,
+        :param magnetic: :class:`~solfire.data.magnetogram.MagneticTargets` whose PIL proximity,
             strong-flux and valid channels follow the filament target, or ``None``
         :param thickness_cap: Above ``0``, a per-pixel loss weight channel follows the filament
             target, growing as the annotated structure gets thinner, up to this value
-            (:func:`~src.data.structure.thickness_weight`)
+            (:func:`~solfire.data.structure.thickness_weight`)
         :param thin_head: Append the thin mask and the spine heatmap of the annotations as
             the last two channels, for an auxiliary head
         :param input_scale: Without ``native_size``, decode the observation at this multiple of

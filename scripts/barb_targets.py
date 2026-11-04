@@ -12,12 +12,12 @@ import numpy as np
 from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from src.data import load_annotations
-from src.data.dataset import TRAIN_IMAGES, load_image
-from src.data.preprocess import observation_path
-from src.inference.barbs import grow_barbs
-from src.inference.postprocess import connected_components
-from src.training.metrics import annotation_pixels
+from solfire.data import load_annotations
+from solfire.data.dataset import TRAIN_IMAGES, load_image
+from solfire.data.preprocess import observation_path
+from solfire.inference.barbs import grow_barbs
+from solfire.inference.postprocess import connected_components
+from solfire.training.metrics import annotation_pixels
 
 
 def job(args) -> tuple[str, int, int]:

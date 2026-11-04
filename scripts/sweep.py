@@ -1,5 +1,5 @@
 """
-Parameter sweep over ``src.main train`` + ``calibrate``
+Parameter sweep over ``solfire.main train`` + ``calibrate``
 """
 
 import argparse
@@ -59,7 +59,7 @@ def load_spec(path: Path) -> dict:
 
 def render_args(params: dict) -> list[str]:
     """
-    Turn a ``{snake_key: value}`` config into a ``src.main`` argument list.
+    Turn a ``{snake_key: value}`` config into a ``solfire.main`` argument list.
     :param params: Config parameters; ``None`` values are dropped
     :return: Flat list of ``--kebab-key`` / value tokens
     """
@@ -223,7 +223,7 @@ def run_one(config: dict, seed: int, sweep_dir: Path, calibrate_args: list[str] 
     train_cmd = [
         *launcher,
         "-m",
-        "src.main",
+        "solfire.main",
         "--seed",
         str(seed),
         *device,
@@ -233,7 +233,7 @@ def run_one(config: dict, seed: int, sweep_dir: Path, calibrate_args: list[str] 
         str(run_dir),
         "--resume",
     ]
-    calibrate_cmd_prefix = [*launcher, "-m", "src.main", *device, "calibrate"]
+    calibrate_cmd_prefix = [*launcher, "-m", "solfire.main", *device, "calibrate"]
 
     if args.dry_run:
         print("  train:    " + " ".join(train_cmd))
@@ -329,7 +329,7 @@ def main() -> None:
     parser.add_argument("--grid", action="append", default=[], metavar="KEY=V1,V2", help="add/override a swept arg")
     parser.add_argument("--seeds", help="comma-separated, overrides the spec")
     parser.add_argument("--name", help="sweep name -> runs/<name>/, overrides the spec")
-    parser.add_argument("--device", help="passed through to src.main")
+    parser.add_argument("--device", help="passed through to solfire.main")
     parser.add_argument(
         "--launcher",
         default=DEFAULT_LAUNCHER,

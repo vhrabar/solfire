@@ -25,8 +25,8 @@ from torch.utils.data import DataLoader, Dataset
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.networks.pretrained import Pretrained  # noqa: E402
-from src.training.engine import atomic_save  # noqa: E402
+from solfire.networks.pretrained import Pretrained  # noqa: E402
+from solfire.training.engine import atomic_save  # noqa: E402
 
 GONG = ROOT / "runs" / "external" / "gong"
 

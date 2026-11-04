@@ -4,7 +4,7 @@ Barbs grown into predicted instances from the observation.
 
 import numpy as np
 
-from src.inference.barbs import grow_barbs, local_contrast
+from solfire.inference.barbs import grow_barbs, local_contrast
 
 
 def filament_with_barb() -> tuple[np.ndarray, np.ndarray]:

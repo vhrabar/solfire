@@ -317,7 +317,7 @@ def parse_args() -> argparse.Namespace:
         "--barbs",
         action=argparse.BooleanOptionalAction,
         default=None,
-        help="grow the visible barbs into every instance (src/inference/barbs.py); default: the calibration's, else off",
+        help="grow the visible barbs into every instance (src/solfire/inference/barbs.py); default: the calibration's, else off",
     )
     predict.add_argument("--offset", type=int, default=None, help="default: the value tuned on validation")
     predict.add_argument("--min-area", type=int, default=None, help="drop predicted instances smaller than this many pixels")
@@ -806,7 +806,7 @@ def run_training(args, device) -> None:
         name = "swa.pt" if summary["swa_pq"] > summary["best_pq"] else "best.pt"
         print(f"averaged {summary['swa_epochs']} epochs: pq {summary['swa_pq']:.4f}")
     if args.crop:
-        print(f"now tune the post-processing: python -m src.main calibrate --checkpoint {output_dir}/{name}")
+        print(f"now tune the post-processing: python -m solfire.main calibrate --checkpoint {output_dir}/{name}")
 
 
 def checkpoint_setting(checkpoint, name, override, default=None):

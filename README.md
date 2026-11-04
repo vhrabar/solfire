@@ -72,11 +72,24 @@ training, and further post-processing.
 
 ## Setup
 
-Requires Python 3.14 and [uv](https://docs.astral.sh/uv/). Pick the dependency group that matches your hardware:
+The code is the installable Python package `solfire` (**SOL**ar **FI**lament **R**efined **E**nsemble; source in
+`src/solfire/`). It requires Python 3.15.
+
+With [uv](https://docs.astral.sh/uv/) (recommended), pick the dependency group that matches your hardware; this
+installs the package in editable mode together with the pinned torch stack:
 
 ```bash
-uv sync --group cuda-132   # or rocm-714 (AMD, x86_64), cpu
+uv sync --group cuda-134   # or rocm-100 (AMD, x86_64), cpu
 ```
+or via pip
+```bash
+pip install -r requirements.txt
+```
+
+`uv build` produces a wheel and sdist in `dist/`. Installing the package adds the `solfire` command
+(the same CLI as `python -m solfire.main`). `data/` and `runs/` are resolved against the source checkout
+when the package is imported from one, otherwise against the working directory; set `FILAMENT_PROJECT_ROOT` to
+override, or `FILAMENT_DATA_ROOT` to point at the data alone.
 
 Place the competition data under `data/`:
 
@@ -92,19 +105,19 @@ data/
 
 ```bash
 # train one fold
-uv run --group cuda-132 python -m src.main train --arch pretrained --decoder unetplusplus --encoder resnet34 --fold 0 ...
+uv run --group cuda-134 solfire train --arch pretrained --decoder unetplusplus --encoder resnet34 --fold 0 ...
 
 # run a sweep spec (train + calibrate every config)
-uv run --group cuda-132 python scripts/sweep.py sweeps/cv5.json --only fold
+uv run --group cuda-134 python scripts/sweep.py sweeps/cv5.json --only fold
 
 # calibrate post-processing on the pooled out-of-fold maps of several checkpoints
-uv run --group cuda-132 python -m src.main calibrate --checkpoint runs/<sweep>/*/best.pt --output runs/ensembles/<name>.calibration.json
+uv run --group cuda-134 solfire calibrate --checkpoint runs/<sweep>/*/best.pt --output runs/ensembles/<name>.calibration.json
 
 # final-rubric metrics
-uv run --group cuda-132 python -m src.main evaluate --checkpoint ...
+uv run --group cuda-134 solfire evaluate --checkpoint ...
 
 # predict the test set (and submit)
-uv run --group cuda-132 python scripts/submit.py <checkpoints> --calibration runs/ensembles/<name>.calibration.json --no-submit
+uv run --group cuda-134 python scripts/submit.py <checkpoints> --calibration runs/ensembles/<name>.calibration.json --no-submit
 ```
 
 <!-- TODO: exact commands to reproduce the final submission from scratch+ notebook for it-->
@@ -112,8 +125,8 @@ uv run --group cuda-132 python scripts/submit.py <checkpoints> --calibration run
 ## Repository layout
 
 ```
-src/
-  main.py            CLI: train, predict, calibrate, evaluate, fit-filter
+src/solfire/ the package
+  main.py            CLI (`solfire`): train, predict, calibrate, evaluate, fit-filter
   data/              dataset, crop sampling, target rasterisation, preprocessing
   networks/          smp wrappers (pretrained encoders), TransUNet baseline
   training/          losses, engine, calibration, evaluation, metrics, instance filter
@@ -126,7 +139,7 @@ tests/               unit tests
 ## Tests
 
 ```bash
-uv run --group cuda-132 pytest
+uv run --group cuda-134 pytest
 ```
 
 <!-- TODO: list of tests ??? -->

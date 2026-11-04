@@ -15,8 +15,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import fetch_gong
 
-from src.data import TRAIN_IMAGES
-from src.data.magnetogram import magnetogram_path, plage_correlation, read_magnetogram
+from solfire.data import TRAIN_IMAGES
+from solfire.data.magnetogram import magnetogram_path, plage_correlation, read_magnetogram
 
 ARCHIVE = "https://nispdata.nso.edu/ftp/vmb/archive/bzi"
 OUTPUT = fetch_gong.REPO / "runs" / "external" / "gong_bzi"

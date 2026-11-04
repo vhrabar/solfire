@@ -7,7 +7,7 @@ import csv
 import numpy as np
 from pycocotools import mask as coco_mask
 
-from src.inference.postprocess import (
+from solfire.inference.postprocess import (
     SUBMISSION_SIZE,
     apply_offset,
     connected_components,

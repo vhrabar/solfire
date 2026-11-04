@@ -6,10 +6,16 @@ import numpy as np
 import pytest
 from synthetic import SIZE, filament_polygon
 
-from src.inference.instance_filter import FEATURES, MIN_PIXELS, InstanceFilter, instance_features, matched_iou_per_record
-from src.inference.postprocess import connected_components
-from src.training.filter_fit import pq_of
-from src.training.metrics import annotation_pixels, instance_iou, pq_counts, pq_from_counts
+from solfire.inference.instance_filter import (
+    FEATURES,
+    MIN_PIXELS,
+    InstanceFilter,
+    instance_features,
+    matched_iou_per_record,
+)
+from solfire.inference.postprocess import connected_components
+from solfire.training.filter_fit import pq_of
+from solfire.training.metrics import annotation_pixels, instance_iou, pq_counts, pq_from_counts
 
 
 def scene(rng):

@@ -9,8 +9,8 @@ from organizer_reference import get_overlap_matrices, get_pq_score
 from pycocotools import mask as coco_mask
 from synthetic import SIZE, filament_polygon
 
-from src.inference.postprocess import connected_components
-from src.training.metrics import annotation_pixels, instance_iou, pq_counts, pq_from_counts
+from solfire.inference.postprocess import connected_components
+from solfire.training.metrics import annotation_pixels, instance_iou, pq_counts, pq_from_counts
 
 
 def gt_layers(record, size=SIZE) -> torch.Tensor:
@@ -122,7 +122,7 @@ def test_tversky_at_one_half_matches_dice_and_beta_favours_recall():
     """
     import torch
 
-    from src.training.losses import soft_dice_loss, soft_tversky_loss
+    from solfire.training.losses import soft_dice_loss, soft_tversky_loss
 
     targets = torch.zeros(1, 1, 16, 16)
     targets[..., 4:12, 4:12] = 1

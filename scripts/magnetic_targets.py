@@ -13,7 +13,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.data.magnetogram import TARGET_GRID, magnetic_targets, magnetogram_path, read_magnetogram
+from solfire.data.magnetogram import TARGET_GRID, magnetic_targets, magnetogram_path, read_magnetogram
 
 BZI = Path(__file__).resolve().parent.parent / "runs" / "external" / "gong_bzi"
 

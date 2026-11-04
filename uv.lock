@@ -2,20 +2,20 @@ version = 1
 revision = 5
 requires-python = "==3.15.*"
 resolution-markers = [
-    "extra != 'group-34-solarfilamentsegmentationchallenge-cpu' and extra != 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100'",
-    "extra != 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra != 'group-34-solarfilamentsegmentationchallenge-rocm-100'",
-    "sys_platform != 'darwin' and extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra != 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra != 'group-34-solarfilamentsegmentationchallenge-rocm-100'",
-    "sys_platform == 'darwin' and extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra != 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra != 'group-34-solarfilamentsegmentationchallenge-rocm-100'",
-    "extra != 'group-34-solarfilamentsegmentationchallenge-cpu' and extra != 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra != 'group-34-solarfilamentsegmentationchallenge-rocm-100'",
+    "extra != 'group-7-solfire-cpu' and extra != 'group-7-solfire-cuda-134' and extra == 'group-7-solfire-rocm-100'",
+    "extra != 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134' and extra != 'group-7-solfire-rocm-100'",
+    "sys_platform != 'darwin' and extra == 'group-7-solfire-cpu' and extra != 'group-7-solfire-cuda-134' and extra != 'group-7-solfire-rocm-100'",
+    "sys_platform == 'darwin' and extra == 'group-7-solfire-cpu' and extra != 'group-7-solfire-cuda-134' and extra != 'group-7-solfire-rocm-100'",
+    "extra != 'group-7-solfire-cpu' and extra != 'group-7-solfire-cuda-134' and extra != 'group-7-solfire-rocm-100'",
 ]
 required-markers = [
     "platform_machine == 'x86_64' and sys_platform == 'linux'",
     "platform_machine == 'aarch64' and sys_platform == 'linux'",
 ]
 conflicts = [[
-    { package = "solarfilamentsegmentationchallenge", group = "cpu" },
-    { package = "solarfilamentsegmentationchallenge", group = "cuda-134" },
-    { package = "solarfilamentsegmentationchallenge", group = "rocm-100" },
+    { package = "solfire", group = "cpu" },
+    { package = "solfire", group = "cuda-134" },
+    { package = "solfire", group = "rocm-100" },
 ]]
 
 [[package]]
@@ -219,30 +219,30 @@ wheels = [
 
 [package.optional-dependencies]
 cudart = [
-    { name = "nvidia-cuda-runtime", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (platform_machine == 'AMD64' and sys_platform == 'win32' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (platform_machine == 'ARM64' and sys_platform == 'win32' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
+    { name = "nvidia-cuda-runtime", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'group-7-solfire-cuda-134') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'group-7-solfire-cuda-134') or (platform_machine == 'AMD64' and sys_platform == 'win32' and extra == 'group-7-solfire-cuda-134') or (platform_machine == 'ARM64' and sys_platform == 'win32' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cuda-134' and extra == 'group-7-solfire-rocm-100')" },
 ]
 cufft = [
-    { name = "nvidia-cufft", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (platform_machine == 'AMD64' and sys_platform == 'win32' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (platform_machine == 'ARM64' and sys_platform == 'win32' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
-    { name = "nvidia-nvjitlink", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (platform_machine == 'AMD64' and sys_platform == 'win32' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (platform_machine == 'ARM64' and sys_platform == 'win32' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
+    { name = "nvidia-cufft", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'group-7-solfire-cuda-134') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'group-7-solfire-cuda-134') or (platform_machine == 'AMD64' and sys_platform == 'win32' and extra == 'group-7-solfire-cuda-134') or (platform_machine == 'ARM64' and sys_platform == 'win32' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cuda-134' and extra == 'group-7-solfire-rocm-100')" },
+    { name = "nvidia-nvjitlink", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'group-7-solfire-cuda-134') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'group-7-solfire-cuda-134') or (platform_machine == 'AMD64' and sys_platform == 'win32' and extra == 'group-7-solfire-cuda-134') or (platform_machine == 'ARM64' and sys_platform == 'win32' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cuda-134' and extra == 'group-7-solfire-rocm-100')" },
 ]
 cufile = [
-    { name = "nvidia-cufile", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
+    { name = "nvidia-cufile", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'group-7-solfire-cuda-134') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cuda-134' and extra == 'group-7-solfire-rocm-100')" },
 ]
 cupti = [
-    { name = "nvidia-cuda-cupti", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (platform_machine == 'AMD64' and sys_platform == 'win32' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (platform_machine == 'ARM64' and sys_platform == 'win32' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
+    { name = "nvidia-cuda-cupti", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'group-7-solfire-cuda-134') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'group-7-solfire-cuda-134') or (platform_machine == 'AMD64' and sys_platform == 'win32' and extra == 'group-7-solfire-cuda-134') or (platform_machine == 'ARM64' and sys_platform == 'win32' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cuda-134' and extra == 'group-7-solfire-rocm-100')" },
 ]
 cusparse = [
-    { name = "nvidia-cusparse", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (platform_machine == 'AMD64' and sys_platform == 'win32' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (platform_machine == 'ARM64' and sys_platform == 'win32' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
-    { name = "nvidia-nvjitlink", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (platform_machine == 'AMD64' and sys_platform == 'win32' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (platform_machine == 'ARM64' and sys_platform == 'win32' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
+    { name = "nvidia-cusparse", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'group-7-solfire-cuda-134') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'group-7-solfire-cuda-134') or (platform_machine == 'AMD64' and sys_platform == 'win32' and extra == 'group-7-solfire-cuda-134') or (platform_machine == 'ARM64' and sys_platform == 'win32' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cuda-134' and extra == 'group-7-solfire-rocm-100')" },
+    { name = "nvidia-nvjitlink", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'group-7-solfire-cuda-134') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'group-7-solfire-cuda-134') or (platform_machine == 'AMD64' and sys_platform == 'win32' and extra == 'group-7-solfire-cuda-134') or (platform_machine == 'ARM64' and sys_platform == 'win32' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cuda-134' and extra == 'group-7-solfire-rocm-100')" },
 ]
 nvjitlink = [
-    { name = "nvidia-nvjitlink", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (platform_machine == 'AMD64' and sys_platform == 'win32' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (platform_machine == 'ARM64' and sys_platform == 'win32' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
+    { name = "nvidia-nvjitlink", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'group-7-solfire-cuda-134') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'group-7-solfire-cuda-134') or (platform_machine == 'AMD64' and sys_platform == 'win32' and extra == 'group-7-solfire-cuda-134') or (platform_machine == 'ARM64' and sys_platform == 'win32' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cuda-134' and extra == 'group-7-solfire-rocm-100')" },
 ]
 nvrtc = [
-    { name = "nvidia-cuda-nvrtc", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (platform_machine == 'AMD64' and sys_platform == 'win32' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (platform_machine == 'ARM64' and sys_platform == 'win32' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
+    { name = "nvidia-cuda-nvrtc", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'group-7-solfire-cuda-134') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'group-7-solfire-cuda-134') or (platform_machine == 'AMD64' and sys_platform == 'win32' and extra == 'group-7-solfire-cuda-134') or (platform_machine == 'ARM64' and sys_platform == 'win32' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cuda-134' and extra == 'group-7-solfire-rocm-100')" },
 ]
 nvtx = [
-    { name = "nvidia-nvtx", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (platform_machine == 'AMD64' and sys_platform == 'win32' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (platform_machine == 'ARM64' and sys_platform == 'win32' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
+    { name = "nvidia-nvtx", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'group-7-solfire-cuda-134') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'group-7-solfire-cuda-134') or (platform_machine == 'AMD64' and sys_platform == 'win32' and extra == 'group-7-solfire-cuda-134') or (platform_machine == 'ARM64' and sys_platform == 'win32' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cuda-134' and extra == 'group-7-solfire-rocm-100')" },
 ]
 
 [[package]]
@@ -801,7 +801,7 @@ name = "nvidia-cublas"
 version = "13.8.1.7"
 source = { registry = "https://download.pytorch.org/whl/rocm10.0" }
 dependencies = [
-    { name = "nvidia-cuda-nvrtc", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
+    { name = "nvidia-cuda-nvrtc", marker = "extra == 'group-7-solfire-cuda-134' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100')" },
 ]
 wheels = [
     { url = "https://pypi.nvidia.com/nvidia-cublas/nvidia_cublas-13.8.1.7-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:803b9974cd7164a481d0b11c25826498d383d0ef0c372573bc6577a344ddf74e" },
@@ -857,7 +857,7 @@ name = "nvidia-cudnn-cu13"
 version = "9.26.0.51"
 source = { registry = "https://download.pytorch.org/whl/rocm10.0" }
 dependencies = [
-    { name = "nvidia-cublas", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
+    { name = "nvidia-cublas", marker = "extra == 'group-7-solfire-cuda-134' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100')" },
 ]
 wheels = [
     { url = "https://pypi.nvidia.com/nvidia-cudnn-cu13/nvidia_cudnn_cu13-9.26.0.51-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:8e5b4f5eccff721416f70ecf4353172fc4d5cdd8ca869fe6f983a4a5b0147b20" },
@@ -870,7 +870,7 @@ name = "nvidia-cufft"
 version = "12.4.0.34"
 source = { registry = "https://download.pytorch.org/whl/rocm10.0" }
 dependencies = [
-    { name = "nvidia-nvjitlink", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
+    { name = "nvidia-nvjitlink", marker = "extra == 'group-7-solfire-cuda-134' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100')" },
 ]
 wheels = [
     { url = "https://pypi.nvidia.com/nvidia-cufft/nvidia_cufft-12.4.0.34-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:faf25c648f0999f14a5ce31cafd98aa166ebaeee993370b0ef60b86863f99119" },
@@ -893,9 +893,9 @@ name = "nvidia-cusolver"
 version = "12.3.2.15"
 source = { registry = "https://download.pytorch.org/whl/rocm10.0" }
 dependencies = [
-    { name = "nvidia-cublas", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
-    { name = "nvidia-cusparse", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
-    { name = "nvidia-nvjitlink", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
+    { name = "nvidia-cublas", marker = "extra == 'group-7-solfire-cuda-134' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100')" },
+    { name = "nvidia-cusparse", marker = "extra == 'group-7-solfire-cuda-134' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100')" },
+    { name = "nvidia-nvjitlink", marker = "extra == 'group-7-solfire-cuda-134' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100')" },
 ]
 wheels = [
     { url = "https://pypi.nvidia.com/nvidia-cusolver/nvidia_cusolver-12.3.2.15-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:a2a87b02aa59a88220f6c2d28589decb167ba3a575dfe90ec490cac841fe788f" },
@@ -909,7 +909,7 @@ name = "nvidia-cusparse"
 version = "12.8.6.49"
 source = { registry = "https://download.pytorch.org/whl/rocm10.0" }
 dependencies = [
-    { name = "nvidia-nvjitlink", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
+    { name = "nvidia-nvjitlink", marker = "extra == 'group-7-solfire-cuda-134' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100')" },
 ]
 wheels = [
     { url = "https://pypi.nvidia.com/nvidia-cusparse/nvidia_cusparse-12.8.6.49-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:3bf4f2e34e8cfe0c691a4afd7bd479bee49f44dc5fa4940d9d54f720cbd6f2f3" },
@@ -953,7 +953,7 @@ name = "nvidia-nvshmem-cu13"
 version = "3.7.2"
 source = { registry = "https://download.pytorch.org/whl/rocm10.0" }
 dependencies = [
-    { name = "nvidia-cuda-cccl", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
+    { name = "nvidia-cuda-cccl", marker = "extra == 'group-7-solfire-cuda-134' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100')" },
 ]
 wheels = [
     { url = "https://pypi.nvidia.com/nvidia-nvshmem-cu13/nvidia_nvshmem_cu13-3.7.2-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:0e748308b9e0a8a8d81859353f3e6c98fbe85a85f652a915a2ba60149a0bd124" },
@@ -1233,40 +1233,40 @@ name = "rocm"
 version = "10.0.0"
 source = { registry = "https://download.pytorch.org/whl/rocm10.0" }
 dependencies = [
-    { name = "rocm-sdk-core", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
+    { name = "rocm-sdk-core", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
 ]
 sdist = { url = "https://stable.repo.amd.com/rocm/core/whl-next/rocm/rocm-10.0.0.tar.gz" }
 
 [package.optional-dependencies]
 device-all = [
-    { name = "rocm-sdk-device-gfx1010", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
-    { name = "rocm-sdk-device-gfx1011", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
-    { name = "rocm-sdk-device-gfx1012", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
-    { name = "rocm-sdk-device-gfx1030", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
-    { name = "rocm-sdk-device-gfx1031", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
-    { name = "rocm-sdk-device-gfx1032", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
-    { name = "rocm-sdk-device-gfx1033", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
-    { name = "rocm-sdk-device-gfx1034", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
-    { name = "rocm-sdk-device-gfx1035", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
-    { name = "rocm-sdk-device-gfx1036", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
-    { name = "rocm-sdk-device-gfx1100", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
-    { name = "rocm-sdk-device-gfx1101", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
-    { name = "rocm-sdk-device-gfx1102", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
-    { name = "rocm-sdk-device-gfx1103", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
-    { name = "rocm-sdk-device-gfx1150", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
-    { name = "rocm-sdk-device-gfx1151", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
-    { name = "rocm-sdk-device-gfx1152", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
-    { name = "rocm-sdk-device-gfx1153", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
-    { name = "rocm-sdk-device-gfx1200", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
-    { name = "rocm-sdk-device-gfx1201", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
-    { name = "rocm-sdk-device-gfx1250", marker = "(sys_platform == 'linux' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
-    { name = "rocm-sdk-device-gfx908", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
-    { name = "rocm-sdk-device-gfx90a", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
-    { name = "rocm-sdk-device-gfx942", marker = "(sys_platform == 'linux' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
-    { name = "rocm-sdk-device-gfx950", marker = "(sys_platform == 'linux' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
+    { name = "rocm-sdk-device-gfx1010", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
+    { name = "rocm-sdk-device-gfx1011", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
+    { name = "rocm-sdk-device-gfx1012", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
+    { name = "rocm-sdk-device-gfx1030", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
+    { name = "rocm-sdk-device-gfx1031", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
+    { name = "rocm-sdk-device-gfx1032", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
+    { name = "rocm-sdk-device-gfx1033", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
+    { name = "rocm-sdk-device-gfx1034", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
+    { name = "rocm-sdk-device-gfx1035", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
+    { name = "rocm-sdk-device-gfx1036", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
+    { name = "rocm-sdk-device-gfx1100", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
+    { name = "rocm-sdk-device-gfx1101", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
+    { name = "rocm-sdk-device-gfx1102", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
+    { name = "rocm-sdk-device-gfx1103", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
+    { name = "rocm-sdk-device-gfx1150", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
+    { name = "rocm-sdk-device-gfx1151", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
+    { name = "rocm-sdk-device-gfx1152", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
+    { name = "rocm-sdk-device-gfx1153", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
+    { name = "rocm-sdk-device-gfx1200", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
+    { name = "rocm-sdk-device-gfx1201", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
+    { name = "rocm-sdk-device-gfx1250", marker = "(sys_platform == 'linux' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cuda-134' and extra == 'group-7-solfire-rocm-100')" },
+    { name = "rocm-sdk-device-gfx908", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
+    { name = "rocm-sdk-device-gfx90a", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
+    { name = "rocm-sdk-device-gfx942", marker = "(sys_platform == 'linux' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cuda-134' and extra == 'group-7-solfire-rocm-100')" },
+    { name = "rocm-sdk-device-gfx950", marker = "(sys_platform == 'linux' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cuda-134' and extra == 'group-7-solfire-rocm-100')" },
 ]
 libraries = [
-    { name = "rocm-sdk-libraries", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
+    { name = "rocm-sdk-libraries", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
 ]
 
 [[package]]
@@ -1283,7 +1283,7 @@ name = "rocm-sdk-device-gfx1010"
 version = "10.0.0"
 source = { registry = "https://download.pytorch.org/whl/rocm10.0" }
 dependencies = [
-    { name = "rocm-sdk-libraries", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
+    { name = "rocm-sdk-libraries", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
 ]
 wheels = [
     { url = "https://stable.repo.amd.com/rocm/core/whl-next/rocm-sdk-device-gfx1010/rocm_sdk_device_gfx1010-10.0.0-py3-none-linux_x86_64.whl" },
@@ -1295,7 +1295,7 @@ name = "rocm-sdk-device-gfx1011"
 version = "10.0.0"
 source = { registry = "https://download.pytorch.org/whl/rocm10.0" }
 dependencies = [
-    { name = "rocm-sdk-libraries", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
+    { name = "rocm-sdk-libraries", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
 ]
 wheels = [
     { url = "https://stable.repo.amd.com/rocm/core/whl-next/rocm-sdk-device-gfx1011/rocm_sdk_device_gfx1011-10.0.0-py3-none-linux_x86_64.whl" },
@@ -1307,7 +1307,7 @@ name = "rocm-sdk-device-gfx1012"
 version = "10.0.0"
 source = { registry = "https://download.pytorch.org/whl/rocm10.0" }
 dependencies = [
-    { name = "rocm-sdk-libraries", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
+    { name = "rocm-sdk-libraries", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
 ]
 wheels = [
     { url = "https://stable.repo.amd.com/rocm/core/whl-next/rocm-sdk-device-gfx1012/rocm_sdk_device_gfx1012-10.0.0-py3-none-linux_x86_64.whl" },
@@ -1319,7 +1319,7 @@ name = "rocm-sdk-device-gfx1030"
 version = "10.0.0"
 source = { registry = "https://download.pytorch.org/whl/rocm10.0" }
 dependencies = [
-    { name = "rocm-sdk-libraries", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
+    { name = "rocm-sdk-libraries", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
 ]
 wheels = [
     { url = "https://stable.repo.amd.com/rocm/core/whl-next/rocm-sdk-device-gfx1030/rocm_sdk_device_gfx1030-10.0.0-py3-none-linux_x86_64.whl" },
@@ -1331,7 +1331,7 @@ name = "rocm-sdk-device-gfx1031"
 version = "10.0.0"
 source = { registry = "https://download.pytorch.org/whl/rocm10.0" }
 dependencies = [
-    { name = "rocm-sdk-libraries", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
+    { name = "rocm-sdk-libraries", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
 ]
 wheels = [
     { url = "https://stable.repo.amd.com/rocm/core/whl-next/rocm-sdk-device-gfx1031/rocm_sdk_device_gfx1031-10.0.0-py3-none-linux_x86_64.whl" },
@@ -1343,7 +1343,7 @@ name = "rocm-sdk-device-gfx1032"
 version = "10.0.0"
 source = { registry = "https://download.pytorch.org/whl/rocm10.0" }
 dependencies = [
-    { name = "rocm-sdk-libraries", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
+    { name = "rocm-sdk-libraries", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
 ]
 wheels = [
     { url = "https://stable.repo.amd.com/rocm/core/whl-next/rocm-sdk-device-gfx1032/rocm_sdk_device_gfx1032-10.0.0-py3-none-linux_x86_64.whl" },
@@ -1355,7 +1355,7 @@ name = "rocm-sdk-device-gfx1033"
 version = "10.0.0"
 source = { registry = "https://download.pytorch.org/whl/rocm10.0" }
 dependencies = [
-    { name = "rocm-sdk-libraries", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
+    { name = "rocm-sdk-libraries", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
 ]
 wheels = [
     { url = "https://stable.repo.amd.com/rocm/core/whl-next/rocm-sdk-device-gfx1033/rocm_sdk_device_gfx1033-10.0.0-py3-none-linux_x86_64.whl" },
@@ -1367,7 +1367,7 @@ name = "rocm-sdk-device-gfx1034"
 version = "10.0.0"
 source = { registry = "https://download.pytorch.org/whl/rocm10.0" }
 dependencies = [
-    { name = "rocm-sdk-libraries", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
+    { name = "rocm-sdk-libraries", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
 ]
 wheels = [
     { url = "https://stable.repo.amd.com/rocm/core/whl-next/rocm-sdk-device-gfx1034/rocm_sdk_device_gfx1034-10.0.0-py3-none-linux_x86_64.whl" },
@@ -1379,7 +1379,7 @@ name = "rocm-sdk-device-gfx1035"
 version = "10.0.0"
 source = { registry = "https://download.pytorch.org/whl/rocm10.0" }
 dependencies = [
-    { name = "rocm-sdk-libraries", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
+    { name = "rocm-sdk-libraries", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
 ]
 wheels = [
     { url = "https://stable.repo.amd.com/rocm/core/whl-next/rocm-sdk-device-gfx1035/rocm_sdk_device_gfx1035-10.0.0-py3-none-linux_x86_64.whl" },
@@ -1391,7 +1391,7 @@ name = "rocm-sdk-device-gfx1036"
 version = "10.0.0"
 source = { registry = "https://download.pytorch.org/whl/rocm10.0" }
 dependencies = [
-    { name = "rocm-sdk-libraries", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
+    { name = "rocm-sdk-libraries", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
 ]
 wheels = [
     { url = "https://stable.repo.amd.com/rocm/core/whl-next/rocm-sdk-device-gfx1036/rocm_sdk_device_gfx1036-10.0.0-py3-none-linux_x86_64.whl" },
@@ -1403,7 +1403,7 @@ name = "rocm-sdk-device-gfx1100"
 version = "10.0.0"
 source = { registry = "https://download.pytorch.org/whl/rocm10.0" }
 dependencies = [
-    { name = "rocm-sdk-libraries", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
+    { name = "rocm-sdk-libraries", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
 ]
 wheels = [
     { url = "https://stable.repo.amd.com/rocm/core/whl-next/rocm-sdk-device-gfx1100/rocm_sdk_device_gfx1100-10.0.0-py3-none-linux_x86_64.whl" },
@@ -1415,7 +1415,7 @@ name = "rocm-sdk-device-gfx1101"
 version = "10.0.0"
 source = { registry = "https://download.pytorch.org/whl/rocm10.0" }
 dependencies = [
-    { name = "rocm-sdk-libraries", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
+    { name = "rocm-sdk-libraries", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
 ]
 wheels = [
     { url = "https://stable.repo.amd.com/rocm/core/whl-next/rocm-sdk-device-gfx1101/rocm_sdk_device_gfx1101-10.0.0-py3-none-linux_x86_64.whl" },
@@ -1427,7 +1427,7 @@ name = "rocm-sdk-device-gfx1102"
 version = "10.0.0"
 source = { registry = "https://download.pytorch.org/whl/rocm10.0" }
 dependencies = [
-    { name = "rocm-sdk-libraries", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
+    { name = "rocm-sdk-libraries", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
 ]
 wheels = [
     { url = "https://stable.repo.amd.com/rocm/core/whl-next/rocm-sdk-device-gfx1102/rocm_sdk_device_gfx1102-10.0.0-py3-none-linux_x86_64.whl" },
@@ -1439,7 +1439,7 @@ name = "rocm-sdk-device-gfx1103"
 version = "10.0.0"
 source = { registry = "https://download.pytorch.org/whl/rocm10.0" }
 dependencies = [
-    { name = "rocm-sdk-libraries", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
+    { name = "rocm-sdk-libraries", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
 ]
 wheels = [
     { url = "https://stable.repo.amd.com/rocm/core/whl-next/rocm-sdk-device-gfx1103/rocm_sdk_device_gfx1103-10.0.0-py3-none-linux_x86_64.whl" },
@@ -1451,7 +1451,7 @@ name = "rocm-sdk-device-gfx1150"
 version = "10.0.0"
 source = { registry = "https://download.pytorch.org/whl/rocm10.0" }
 dependencies = [
-    { name = "rocm-sdk-libraries", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
+    { name = "rocm-sdk-libraries", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
 ]
 wheels = [
     { url = "https://stable.repo.amd.com/rocm/core/whl-next/rocm-sdk-device-gfx1150/rocm_sdk_device_gfx1150-10.0.0-py3-none-linux_x86_64.whl" },
@@ -1463,7 +1463,7 @@ name = "rocm-sdk-device-gfx1151"
 version = "10.0.0"
 source = { registry = "https://download.pytorch.org/whl/rocm10.0" }
 dependencies = [
-    { name = "rocm-sdk-libraries", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
+    { name = "rocm-sdk-libraries", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
 ]
 wheels = [
     { url = "https://stable.repo.amd.com/rocm/core/whl-next/rocm-sdk-device-gfx1151/rocm_sdk_device_gfx1151-10.0.0-py3-none-linux_x86_64.whl" },
@@ -1475,7 +1475,7 @@ name = "rocm-sdk-device-gfx1152"
 version = "10.0.0"
 source = { registry = "https://download.pytorch.org/whl/rocm10.0" }
 dependencies = [
-    { name = "rocm-sdk-libraries", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
+    { name = "rocm-sdk-libraries", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
 ]
 wheels = [
     { url = "https://stable.repo.amd.com/rocm/core/whl-next/rocm-sdk-device-gfx1152/rocm_sdk_device_gfx1152-10.0.0-py3-none-linux_x86_64.whl" },
@@ -1487,7 +1487,7 @@ name = "rocm-sdk-device-gfx1153"
 version = "10.0.0"
 source = { registry = "https://download.pytorch.org/whl/rocm10.0" }
 dependencies = [
-    { name = "rocm-sdk-libraries", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
+    { name = "rocm-sdk-libraries", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
 ]
 wheels = [
     { url = "https://stable.repo.amd.com/rocm/core/whl-next/rocm-sdk-device-gfx1153/rocm_sdk_device_gfx1153-10.0.0-py3-none-linux_x86_64.whl" },
@@ -1499,7 +1499,7 @@ name = "rocm-sdk-device-gfx1200"
 version = "10.0.0"
 source = { registry = "https://download.pytorch.org/whl/rocm10.0" }
 dependencies = [
-    { name = "rocm-sdk-libraries", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
+    { name = "rocm-sdk-libraries", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
 ]
 wheels = [
     { url = "https://stable.repo.amd.com/rocm/core/whl-next/rocm-sdk-device-gfx1200/rocm_sdk_device_gfx1200-10.0.0-py3-none-linux_x86_64.whl" },
@@ -1511,7 +1511,7 @@ name = "rocm-sdk-device-gfx1201"
 version = "10.0.0"
 source = { registry = "https://download.pytorch.org/whl/rocm10.0" }
 dependencies = [
-    { name = "rocm-sdk-libraries", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
+    { name = "rocm-sdk-libraries", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
 ]
 wheels = [
     { url = "https://stable.repo.amd.com/rocm/core/whl-next/rocm-sdk-device-gfx1201/rocm_sdk_device_gfx1201-10.0.0-py3-none-linux_x86_64.whl" },
@@ -1523,7 +1523,7 @@ name = "rocm-sdk-device-gfx1250"
 version = "10.0.0"
 source = { registry = "https://download.pytorch.org/whl/rocm10.0" }
 dependencies = [
-    { name = "rocm-sdk-libraries", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
+    { name = "rocm-sdk-libraries", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
 ]
 wheels = [
     { url = "https://stable.repo.amd.com/rocm/core/whl-next/rocm-sdk-device-gfx1250/rocm_sdk_device_gfx1250-10.0.0-py3-none-linux_x86_64.whl" },
@@ -1534,7 +1534,7 @@ name = "rocm-sdk-device-gfx908"
 version = "10.0.0"
 source = { registry = "https://download.pytorch.org/whl/rocm10.0" }
 dependencies = [
-    { name = "rocm-sdk-libraries", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
+    { name = "rocm-sdk-libraries", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
 ]
 wheels = [
     { url = "https://stable.repo.amd.com/rocm/core/whl-next/rocm-sdk-device-gfx908/rocm_sdk_device_gfx908-10.0.0-py3-none-linux_x86_64.whl" },
@@ -1546,7 +1546,7 @@ name = "rocm-sdk-device-gfx90a"
 version = "10.0.0"
 source = { registry = "https://download.pytorch.org/whl/rocm10.0" }
 dependencies = [
-    { name = "rocm-sdk-libraries", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
+    { name = "rocm-sdk-libraries", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
 ]
 wheels = [
     { url = "https://stable.repo.amd.com/rocm/core/whl-next/rocm-sdk-device-gfx90a/rocm_sdk_device_gfx90a-10.0.0-py3-none-linux_x86_64.whl" },
@@ -1558,7 +1558,7 @@ name = "rocm-sdk-device-gfx942"
 version = "10.0.0"
 source = { registry = "https://download.pytorch.org/whl/rocm10.0" }
 dependencies = [
-    { name = "rocm-sdk-libraries", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
+    { name = "rocm-sdk-libraries", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
 ]
 wheels = [
     { url = "https://stable.repo.amd.com/rocm/core/whl-next/rocm-sdk-device-gfx942/rocm_sdk_device_gfx942-10.0.0-py3-none-linux_x86_64.whl" },
@@ -1569,7 +1569,7 @@ name = "rocm-sdk-device-gfx950"
 version = "10.0.0"
 source = { registry = "https://download.pytorch.org/whl/rocm10.0" }
 dependencies = [
-    { name = "rocm-sdk-libraries", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
+    { name = "rocm-sdk-libraries", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
 ]
 wheels = [
     { url = "https://stable.repo.amd.com/rocm/core/whl-next/rocm-sdk-device-gfx950/rocm_sdk_device_gfx950-10.0.0-py3-none-linux_x86_64.whl" },
@@ -1766,14 +1766,14 @@ dependencies = [
     { name = "pillow" },
     { name = "safetensors" },
     { name = "timm" },
-    { name = "torch", version = "2.15.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'darwin' and extra == 'group-34-solarfilamentsegmentationchallenge-cpu') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
-    { name = "torch", version = "2.15.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'group-34-solarfilamentsegmentationchallenge-cpu') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
-    { name = "torch", version = "2.15.0+cu134", source = { registry = "https://download.pytorch.org/whl/cu134" }, marker = "extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
-    { name = "torch", version = "2.15.0+rocm10.0", source = { registry = "https://download.pytorch.org/whl/rocm10.0" }, marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
-    { name = "torchvision", version = "0.29.2", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'darwin' and extra == 'group-34-solarfilamentsegmentationchallenge-cpu') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
-    { name = "torchvision", version = "0.29.2+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'group-34-solarfilamentsegmentationchallenge-cpu') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
-    { name = "torchvision", version = "0.29.2+cu134", source = { registry = "https://download.pytorch.org/whl/cu134" }, marker = "extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
-    { name = "torchvision", version = "0.29.2+rocm10.0", source = { registry = "https://download.pytorch.org/whl/rocm10.0" }, marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
+    { name = "torch", version = "2.15.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'darwin' and extra == 'group-7-solfire-cpu') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cuda-134' and extra == 'group-7-solfire-rocm-100')" },
+    { name = "torch", version = "2.15.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'group-7-solfire-cpu') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cuda-134' and extra == 'group-7-solfire-rocm-100')" },
+    { name = "torch", version = "2.15.0+cu134", source = { registry = "https://download.pytorch.org/whl/cu134" }, marker = "extra == 'group-7-solfire-cuda-134' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100')" },
+    { name = "torch", version = "2.15.0+rocm10.0", source = { registry = "https://download.pytorch.org/whl/rocm10.0" }, marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
+    { name = "torchvision", version = "0.29.2", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'darwin' and extra == 'group-7-solfire-cpu') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cuda-134' and extra == 'group-7-solfire-rocm-100')" },
+    { name = "torchvision", version = "0.29.2+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'group-7-solfire-cpu') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cuda-134' and extra == 'group-7-solfire-rocm-100')" },
+    { name = "torchvision", version = "0.29.2+cu134", source = { registry = "https://download.pytorch.org/whl/cu134" }, marker = "extra == 'group-7-solfire-cuda-134' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100')" },
+    { name = "torchvision", version = "0.29.2+rocm10.0", source = { registry = "https://download.pytorch.org/whl/rocm10.0" }, marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
     { name = "tqdm" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/40/b5/dfeb5742787921c61b61490dcf1b599247547e9468bbf01b303eed3e7ee4/segmentation_models_pytorch-0.6.0.tar.gz", hash = "sha256:5f90a7a43fac608f85a9dce66f65297d887605da9c2caafb44aa875c30180424", size = 104077, upload-time = "2026-10-26T16:44:36.527Z" }
@@ -1786,10 +1786,10 @@ name = "serron"
 version = "0.5.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "torch", version = "2.15.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'darwin' and extra == 'group-34-solarfilamentsegmentationchallenge-cpu') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
-    { name = "torch", version = "2.15.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'group-34-solarfilamentsegmentationchallenge-cpu') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
-    { name = "torch", version = "2.15.0+cu134", source = { registry = "https://download.pytorch.org/whl/cu134" }, marker = "extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
-    { name = "torch", version = "2.15.0+rocm10.0", source = { registry = "https://download.pytorch.org/whl/rocm10.0" }, marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
+    { name = "torch", version = "2.15.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'darwin' and extra == 'group-7-solfire-cpu') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cuda-134' and extra == 'group-7-solfire-rocm-100')" },
+    { name = "torch", version = "2.15.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'group-7-solfire-cpu') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cuda-134' and extra == 'group-7-solfire-rocm-100')" },
+    { name = "torch", version = "2.15.0+cu134", source = { registry = "https://download.pytorch.org/whl/cu134" }, marker = "extra == 'group-7-solfire-cuda-134' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100')" },
+    { name = "torch", version = "2.15.0+rocm10.0", source = { registry = "https://download.pytorch.org/whl/rocm10.0" }, marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/96/f5/7e635d2b569d3e6b2b1a4becd4dcdd2e938f466a3ace3390f3716396ed57/serron-0.5.0.tar.gz", hash = "sha256:dc408f11ded768f6abadf6487ab374c0e0dbeb91321f144350e224fe57a6cd70", size = 55293, upload-time = "2026-10-11T11:27:55.734Z" }
 wheels = [
@@ -1817,9 +1817,9 @@ wheels = [
 ]
 
 [[package]]
-name = "solarfilamentsegmentationchallenge"
+name = "solfire"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "astropy" },
     { name = "kaggle" },
@@ -1840,10 +1840,10 @@ cpu = [
     { name = "segmentation-models-pytorch" },
     { name = "serron" },
     { name = "timm" },
-    { name = "torch", version = "2.15.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'darwin' and extra == 'group-34-solarfilamentsegmentationchallenge-cpu') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
-    { name = "torch", version = "2.15.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'group-34-solarfilamentsegmentationchallenge-cpu') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
-    { name = "torchvision", version = "0.29.2", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'darwin' and extra == 'group-34-solarfilamentsegmentationchallenge-cpu') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
-    { name = "torchvision", version = "0.29.2+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'group-34-solarfilamentsegmentationchallenge-cpu') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
+    { name = "torch", version = "2.15.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'darwin' and extra == 'group-7-solfire-cpu') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cuda-134' and extra == 'group-7-solfire-rocm-100')" },
+    { name = "torch", version = "2.15.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'group-7-solfire-cpu') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cuda-134' and extra == 'group-7-solfire-rocm-100')" },
+    { name = "torchvision", version = "0.29.2", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'darwin' and extra == 'group-7-solfire-cpu') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cuda-134' and extra == 'group-7-solfire-rocm-100')" },
+    { name = "torchvision", version = "0.29.2+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'group-7-solfire-cpu') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cuda-134' and extra == 'group-7-solfire-rocm-100')" },
 ]
 cuda-134 = [
     { name = "segmentation-models-pytorch" },
@@ -1888,15 +1888,15 @@ cpu = [
     { name = "segmentation-models-pytorch", specifier = "==0.6.0" },
     { name = "serron", specifier = "==0.5.0" },
     { name = "timm", specifier = "==1.0.30" },
-    { name = "torch", specifier = "==2.15.0", index = "https://download.pytorch.org/whl/cpu", conflict = { package = "solarfilamentsegmentationchallenge", group = "cpu" } },
-    { name = "torchvision", specifier = "==0.29.2", index = "https://download.pytorch.org/whl/cpu", conflict = { package = "solarfilamentsegmentationchallenge", group = "cpu" } },
+    { name = "torch", specifier = "==2.15.0", index = "https://download.pytorch.org/whl/cpu", conflict = { package = "solfire", group = "cpu" } },
+    { name = "torchvision", specifier = "==0.29.2", index = "https://download.pytorch.org/whl/cpu", conflict = { package = "solfire", group = "cpu" } },
 ]
 cuda-134 = [
     { name = "segmentation-models-pytorch", specifier = "==0.6.0" },
     { name = "serron", specifier = "==0.5.0" },
     { name = "timm", specifier = "==1.0.30" },
-    { name = "torch", specifier = "==2.15.0", index = "https://download.pytorch.org/whl/cu134", conflict = { package = "solarfilamentsegmentationchallenge", group = "cuda-134" } },
-    { name = "torchvision", specifier = "==0.29.2", index = "https://download.pytorch.org/whl/cu134", conflict = { package = "solarfilamentsegmentationchallenge", group = "cuda-134" } },
+    { name = "torch", specifier = "==2.15.0", index = "https://download.pytorch.org/whl/cu134", conflict = { package = "solfire", group = "cuda-134" } },
+    { name = "torchvision", specifier = "==0.29.2", index = "https://download.pytorch.org/whl/cu134", conflict = { package = "solfire", group = "cuda-134" } },
 ]
 dev = [
     { name = "py-spy" },
@@ -1909,8 +1909,8 @@ rocm-100 = [
     { name = "segmentation-models-pytorch", marker = "platform_machine == 'x86_64'", specifier = "==0.6.0" },
     { name = "serron", marker = "platform_machine == 'x86_64'", specifier = "==0.5.0" },
     { name = "timm", marker = "platform_machine == 'x86_64'", specifier = "==1.0.30" },
-    { name = "torch", marker = "platform_machine == 'x86_64'", specifier = "==2.15.0", index = "https://download.pytorch.org/whl/rocm10.0", conflict = { package = "solarfilamentsegmentationchallenge", group = "rocm-100" } },
-    { name = "torchvision", marker = "platform_machine == 'x86_64'", specifier = "==0.29.2", index = "https://download.pytorch.org/whl/rocm10.0", conflict = { package = "solarfilamentsegmentationchallenge", group = "rocm-100" } },
+    { name = "torch", marker = "platform_machine == 'x86_64'", specifier = "==2.15.0", index = "https://download.pytorch.org/whl/rocm10.0", conflict = { package = "solfire", group = "rocm-100" } },
+    { name = "torchvision", marker = "platform_machine == 'x86_64'", specifier = "==0.29.2", index = "https://download.pytorch.org/whl/rocm10.0", conflict = { package = "solfire", group = "rocm-100" } },
 ]
 
 [[package]]
@@ -1963,14 +1963,14 @@ dependencies = [
     { name = "huggingface-hub" },
     { name = "pyyaml" },
     { name = "safetensors" },
-    { name = "torch", version = "2.15.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'darwin' and extra == 'group-34-solarfilamentsegmentationchallenge-cpu') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
-    { name = "torch", version = "2.15.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'group-34-solarfilamentsegmentationchallenge-cpu') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
-    { name = "torch", version = "2.15.0+cu134", source = { registry = "https://download.pytorch.org/whl/cu134" }, marker = "extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
-    { name = "torch", version = "2.15.0+rocm10.0", source = { registry = "https://download.pytorch.org/whl/rocm10.0" }, marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
-    { name = "torchvision", version = "0.29.2", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'darwin' and extra == 'group-34-solarfilamentsegmentationchallenge-cpu') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
-    { name = "torchvision", version = "0.29.2+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'group-34-solarfilamentsegmentationchallenge-cpu') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
-    { name = "torchvision", version = "0.29.2+cu134", source = { registry = "https://download.pytorch.org/whl/cu134" }, marker = "extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
-    { name = "torchvision", version = "0.29.2+rocm10.0", source = { registry = "https://download.pytorch.org/whl/rocm10.0" }, marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
+    { name = "torch", version = "2.15.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'darwin' and extra == 'group-7-solfire-cpu') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cuda-134' and extra == 'group-7-solfire-rocm-100')" },
+    { name = "torch", version = "2.15.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'group-7-solfire-cpu') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cuda-134' and extra == 'group-7-solfire-rocm-100')" },
+    { name = "torch", version = "2.15.0+cu134", source = { registry = "https://download.pytorch.org/whl/cu134" }, marker = "extra == 'group-7-solfire-cuda-134' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100')" },
+    { name = "torch", version = "2.15.0+rocm10.0", source = { registry = "https://download.pytorch.org/whl/rocm10.0" }, marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
+    { name = "torchvision", version = "0.29.2", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'darwin' and extra == 'group-7-solfire-cpu') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cuda-134' and extra == 'group-7-solfire-rocm-100')" },
+    { name = "torchvision", version = "0.29.2+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'group-7-solfire-cpu') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cuda-134' and extra == 'group-7-solfire-rocm-100')" },
+    { name = "torchvision", version = "0.29.2+cu134", source = { registry = "https://download.pytorch.org/whl/cu134" }, marker = "extra == 'group-7-solfire-cuda-134' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100')" },
+    { name = "torchvision", version = "0.29.2+rocm10.0", source = { registry = "https://download.pytorch.org/whl/rocm10.0" }, marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/0e/ab/49041213990e48edcb6013463b18ef86d8d3c5d6ac5b408802c480443025/timm-1.0.30.tar.gz", hash = "sha256:1444a3af7e17fdba5440ac2bcf6e4b728da96dd62289ed9e1bcba31a545f5935", size = 2534738, upload-time = "2026-09-22T20:46:13.9Z" }
 wheels = [
@@ -1985,13 +1985,13 @@ resolution-markers = [
     "sys_platform == 'darwin'",
 ]
 dependencies = [
-    { name = "filelock", marker = "(sys_platform == 'darwin' and extra == 'group-34-solarfilamentsegmentationchallenge-cpu') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
-    { name = "fsspec", marker = "(sys_platform == 'darwin' and extra == 'group-34-solarfilamentsegmentationchallenge-cpu') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
-    { name = "jinja2", marker = "(sys_platform == 'darwin' and extra == 'group-34-solarfilamentsegmentationchallenge-cpu') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
-    { name = "networkx", marker = "(sys_platform == 'darwin' and extra == 'group-34-solarfilamentsegmentationchallenge-cpu') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
-    { name = "setuptools", marker = "(sys_platform == 'darwin' and extra == 'group-34-solarfilamentsegmentationchallenge-cpu') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
-    { name = "sympy", marker = "(sys_platform == 'darwin' and extra == 'group-34-solarfilamentsegmentationchallenge-cpu') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
-    { name = "typing-extensions", marker = "(sys_platform == 'darwin' and extra == 'group-34-solarfilamentsegmentationchallenge-cpu') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
+    { name = "filelock", marker = "(sys_platform == 'darwin' and extra == 'group-7-solfire-cpu') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cuda-134' and extra == 'group-7-solfire-rocm-100')" },
+    { name = "fsspec", marker = "(sys_platform == 'darwin' and extra == 'group-7-solfire-cpu') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cuda-134' and extra == 'group-7-solfire-rocm-100')" },
+    { name = "jinja2", marker = "(sys_platform == 'darwin' and extra == 'group-7-solfire-cpu') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cuda-134' and extra == 'group-7-solfire-rocm-100')" },
+    { name = "networkx", marker = "(sys_platform == 'darwin' and extra == 'group-7-solfire-cpu') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cuda-134' and extra == 'group-7-solfire-rocm-100')" },
+    { name = "setuptools", marker = "(sys_platform == 'darwin' and extra == 'group-7-solfire-cpu') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cuda-134' and extra == 'group-7-solfire-rocm-100')" },
+    { name = "sympy", marker = "(sys_platform == 'darwin' and extra == 'group-7-solfire-cpu') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cuda-134' and extra == 'group-7-solfire-rocm-100')" },
+    { name = "typing-extensions", marker = "(sys_platform == 'darwin' and extra == 'group-7-solfire-cpu') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cuda-134' and extra == 'group-7-solfire-rocm-100')" },
 ]
 wheels = [
     { url = "https://download-r2.pytorch.org/whl/cpu/torch-2.15.0-cp315-cp315-macosx_14_0_arm64.whl", hash = "sha256:06a686eb717cd3d1662363082820be45497318887c596d691af0af0c7649c8f0", upload-time = "2026-10-28T13:17:25Z" },
@@ -2006,13 +2006,13 @@ resolution-markers = [
     "sys_platform != 'darwin'",
 ]
 dependencies = [
-    { name = "filelock", marker = "(sys_platform != 'darwin' and extra == 'group-34-solarfilamentsegmentationchallenge-cpu') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
-    { name = "fsspec", marker = "(sys_platform != 'darwin' and extra == 'group-34-solarfilamentsegmentationchallenge-cpu') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
-    { name = "jinja2", marker = "(sys_platform != 'darwin' and extra == 'group-34-solarfilamentsegmentationchallenge-cpu') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
-    { name = "networkx", marker = "(sys_platform != 'darwin' and extra == 'group-34-solarfilamentsegmentationchallenge-cpu') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
-    { name = "setuptools", marker = "(sys_platform != 'darwin' and extra == 'group-34-solarfilamentsegmentationchallenge-cpu') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
-    { name = "sympy", marker = "(sys_platform != 'darwin' and extra == 'group-34-solarfilamentsegmentationchallenge-cpu') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
-    { name = "typing-extensions", marker = "(sys_platform != 'darwin' and extra == 'group-34-solarfilamentsegmentationchallenge-cpu') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
+    { name = "filelock", marker = "(sys_platform != 'darwin' and extra == 'group-7-solfire-cpu') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cuda-134' and extra == 'group-7-solfire-rocm-100')" },
+    { name = "fsspec", marker = "(sys_platform != 'darwin' and extra == 'group-7-solfire-cpu') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cuda-134' and extra == 'group-7-solfire-rocm-100')" },
+    { name = "jinja2", marker = "(sys_platform != 'darwin' and extra == 'group-7-solfire-cpu') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cuda-134' and extra == 'group-7-solfire-rocm-100')" },
+    { name = "networkx", marker = "(sys_platform != 'darwin' and extra == 'group-7-solfire-cpu') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cuda-134' and extra == 'group-7-solfire-rocm-100')" },
+    { name = "setuptools", marker = "(sys_platform != 'darwin' and extra == 'group-7-solfire-cpu') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cuda-134' and extra == 'group-7-solfire-rocm-100')" },
+    { name = "sympy", marker = "(sys_platform != 'darwin' and extra == 'group-7-solfire-cpu') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cuda-134' and extra == 'group-7-solfire-rocm-100')" },
+    { name = "typing-extensions", marker = "(sys_platform != 'darwin' and extra == 'group-7-solfire-cpu') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cuda-134' and extra == 'group-7-solfire-rocm-100')" },
 ]
 wheels = [
     { url = "https://download-r2.pytorch.org/whl/cpu/torch-2.15.0%2Bcpu-cp315-cp315-manylinux_2_28_aarch64.whl", hash = "sha256:2cec97b29524b3352bb794321976da7cef2ecee171866499c5630c865396c0a2", upload-time = "2026-10-28T13:20:08Z" },
@@ -2028,21 +2028,21 @@ name = "torch"
 version = "2.15.0+cu134"
 source = { registry = "https://download.pytorch.org/whl/cu134" }
 dependencies = [
-    { name = "cuda-toolkit", extra = ["cudart", "cufft", "cufile", "cupti", "cusparse", "nvjitlink", "nvrtc", "nvtx"], marker = "(sys_platform == 'linux' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
-    { name = "filelock", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
-    { name = "fsspec", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
-    { name = "jinja2", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
-    { name = "networkx", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
-    { name = "nvidia-cublas", marker = "(sys_platform == 'linux' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
-    { name = "nvidia-cudnn-cu13", marker = "(sys_platform == 'linux' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
-    { name = "nvidia-cusolver", marker = "(sys_platform == 'linux' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
-    { name = "nvidia-cusparselt-cu13", marker = "(sys_platform == 'linux' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
-    { name = "nvidia-nccl-cu13", marker = "(sys_platform == 'linux' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
-    { name = "nvidia-nvshmem-cu13", marker = "(sys_platform == 'linux' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
-    { name = "setuptools", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
-    { name = "sympy", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
-    { name = "triton", marker = "(sys_platform == 'linux' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
-    { name = "typing-extensions", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
+    { name = "cuda-toolkit", extra = ["cudart", "cufft", "cufile", "cupti", "cusparse", "nvjitlink", "nvrtc", "nvtx"], marker = "(sys_platform == 'linux' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cuda-134' and extra == 'group-7-solfire-rocm-100')" },
+    { name = "filelock", marker = "extra == 'group-7-solfire-cuda-134' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100')" },
+    { name = "fsspec", marker = "extra == 'group-7-solfire-cuda-134' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100')" },
+    { name = "jinja2", marker = "extra == 'group-7-solfire-cuda-134' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100')" },
+    { name = "networkx", marker = "extra == 'group-7-solfire-cuda-134' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100')" },
+    { name = "nvidia-cublas", marker = "(sys_platform == 'linux' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cuda-134' and extra == 'group-7-solfire-rocm-100')" },
+    { name = "nvidia-cudnn-cu13", marker = "(sys_platform == 'linux' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cuda-134' and extra == 'group-7-solfire-rocm-100')" },
+    { name = "nvidia-cusolver", marker = "(sys_platform == 'linux' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cuda-134' and extra == 'group-7-solfire-rocm-100')" },
+    { name = "nvidia-cusparselt-cu13", marker = "(sys_platform == 'linux' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cuda-134' and extra == 'group-7-solfire-rocm-100')" },
+    { name = "nvidia-nccl-cu13", marker = "(sys_platform == 'linux' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cuda-134' and extra == 'group-7-solfire-rocm-100')" },
+    { name = "nvidia-nvshmem-cu13", marker = "(sys_platform == 'linux' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cuda-134' and extra == 'group-7-solfire-rocm-100')" },
+    { name = "setuptools", marker = "extra == 'group-7-solfire-cuda-134' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100')" },
+    { name = "sympy", marker = "extra == 'group-7-solfire-cuda-134' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100')" },
+    { name = "triton", marker = "(sys_platform == 'linux' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cuda-134' and extra == 'group-7-solfire-rocm-100')" },
+    { name = "typing-extensions", marker = "extra == 'group-7-solfire-cuda-134' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100')" },
 ]
 wheels = [
     { url = "https://download-r2.pytorch.org/whl/cu134/torch-2.15.0%2Bcu134-cp315-cp315-manylinux_2_28_aarch64.whl", hash = "sha256:25e7c9ebf7a66ad82e048e5d4a5bbe784fcd11e57f46a835adf9a72aa1ecffee", upload-time = "2026-10-28T17:33:46Z" },
@@ -2058,15 +2058,15 @@ name = "torch"
 version = "2.15.0+rocm10.0"
 source = { registry = "https://download.pytorch.org/whl/rocm10.0" }
 dependencies = [
-    { name = "filelock", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
-    { name = "fsspec", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
-    { name = "jinja2", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
-    { name = "networkx", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
-    { name = "rocm", extra = ["device-all", "libraries"], marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
-    { name = "setuptools", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
-    { name = "sympy", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
-    { name = "triton-rocm", marker = "(sys_platform == 'linux' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
-    { name = "typing-extensions", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
+    { name = "filelock", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
+    { name = "fsspec", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
+    { name = "jinja2", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
+    { name = "networkx", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
+    { name = "rocm", extra = ["device-all", "libraries"], marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
+    { name = "setuptools", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
+    { name = "sympy", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
+    { name = "triton-rocm", marker = "(sys_platform == 'linux' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cuda-134' and extra == 'group-7-solfire-rocm-100')" },
+    { name = "typing-extensions", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
 ]
 wheels = [
     { url = "https://download-r2.pytorch.org/whl/rocm10.0/torch-2.15.0%2Brocm10.0-cp315-cp315-manylinux_2_28_x86_64.whl", hash = "sha256:2f5b5ee52680d742141b72728287d2cd6e9502a5003138a23b041920f41cd6b7", upload-time = "2026-10-28T17:45:56Z" },
@@ -2081,9 +2081,9 @@ resolution-markers = [
     "sys_platform == 'darwin'",
 ]
 dependencies = [
-    { name = "numpy", marker = "(sys_platform == 'darwin' and extra == 'group-34-solarfilamentsegmentationchallenge-cpu') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
-    { name = "pillow", marker = "(sys_platform == 'darwin' and extra == 'group-34-solarfilamentsegmentationchallenge-cpu') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
-    { name = "torch", version = "2.15.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'darwin' and extra == 'group-34-solarfilamentsegmentationchallenge-cpu') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
+    { name = "numpy", marker = "(sys_platform == 'darwin' and extra == 'group-7-solfire-cpu') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cuda-134' and extra == 'group-7-solfire-rocm-100')" },
+    { name = "pillow", marker = "(sys_platform == 'darwin' and extra == 'group-7-solfire-cpu') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cuda-134' and extra == 'group-7-solfire-rocm-100')" },
+    { name = "torch", version = "2.15.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'darwin' and extra == 'group-7-solfire-cpu') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cuda-134' and extra == 'group-7-solfire-rocm-100')" },
 ]
 wheels = [
     { url = "https://download-r2.pytorch.org/whl/cpu/torchvision-0.29.2-py3-none-macosx_14_0_arm64.whl", hash = "sha256:d412494ff011f24c884a3cffd33eba1cb45a0299d4e26c1e175113f9d3b3ebc7", upload-time = "2026-10-28T14:18:50Z" },
@@ -2097,9 +2097,9 @@ resolution-markers = [
     "sys_platform != 'darwin'",
 ]
 dependencies = [
-    { name = "numpy", marker = "(sys_platform != 'darwin' and extra == 'group-34-solarfilamentsegmentationchallenge-cpu') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
-    { name = "pillow", marker = "(sys_platform != 'darwin' and extra == 'group-34-solarfilamentsegmentationchallenge-cpu') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
-    { name = "torch", version = "2.15.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'group-34-solarfilamentsegmentationchallenge-cpu') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134') or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100') or (extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
+    { name = "numpy", marker = "(sys_platform != 'darwin' and extra == 'group-7-solfire-cpu') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cuda-134' and extra == 'group-7-solfire-rocm-100')" },
+    { name = "pillow", marker = "(sys_platform != 'darwin' and extra == 'group-7-solfire-cpu') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cuda-134' and extra == 'group-7-solfire-rocm-100')" },
+    { name = "torch", version = "2.15.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'group-7-solfire-cpu') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134') or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100') or (extra == 'group-7-solfire-cuda-134' and extra == 'group-7-solfire-rocm-100')" },
 ]
 wheels = [
     { url = "https://download-r2.pytorch.org/whl/cpu/torchvision-0.29.2%2Bcpu-py3-none-manylinux_2_28_aarch64.whl", hash = "sha256:0be2f85933012cb487f844c7483665191653ee8684da89d6d0e34fd63c3a0a88", upload-time = "2026-10-28T14:18:50Z" },
@@ -2112,9 +2112,9 @@ name = "torchvision"
 version = "0.29.2+cu134"
 source = { registry = "https://download.pytorch.org/whl/cu134" }
 dependencies = [
-    { name = "numpy", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
-    { name = "pillow", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
-    { name = "torch", version = "2.15.0+cu134", source = { registry = "https://download.pytorch.org/whl/cu134" }, marker = "extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100')" },
+    { name = "numpy", marker = "extra == 'group-7-solfire-cuda-134' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100')" },
+    { name = "pillow", marker = "extra == 'group-7-solfire-cuda-134' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100')" },
+    { name = "torch", version = "2.15.0+cu134", source = { registry = "https://download.pytorch.org/whl/cu134" }, marker = "extra == 'group-7-solfire-cuda-134' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-rocm-100')" },
 ]
 wheels = [
     { url = "https://download-r2.pytorch.org/whl/cu134/torchvision-0.29.2%2Bcu134-py3-none-manylinux_2_28_aarch64.whl", hash = "sha256:458115047c75c2ad39a17bfb0c61eb250adb8c73891636b710392714b54a48fc", upload-time = "2026-10-28T14:19:02Z" },
@@ -2127,9 +2127,9 @@ name = "torchvision"
 version = "0.29.2+rocm10.0"
 source = { registry = "https://download.pytorch.org/whl/rocm10.0" }
 dependencies = [
-    { name = "numpy", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
-    { name = "pillow", marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
-    { name = "torch", version = "2.15.0+rocm10.0", source = { registry = "https://download.pytorch.org/whl/rocm10.0" }, marker = "extra == 'group-34-solarfilamentsegmentationchallenge-rocm-100' or (extra == 'group-34-solarfilamentsegmentationchallenge-cpu' and extra == 'group-34-solarfilamentsegmentationchallenge-cuda-134')" },
+    { name = "numpy", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
+    { name = "pillow", marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
+    { name = "torch", version = "2.15.0+rocm10.0", source = { registry = "https://download.pytorch.org/whl/rocm10.0" }, marker = "extra == 'group-7-solfire-rocm-100' or (extra == 'group-7-solfire-cpu' and extra == 'group-7-solfire-cuda-134')" },
 ]
 wheels = [
     { url = "https://download-r2.pytorch.org/whl/rocm10.0/torchvision-0.29.2%2Brocm10.0-py3-none-manylinux_2_28_x86_64.whl", hash = "sha256:cea198e23587cbab3ca3493aaa9878f0820e709deba56a93e0d48aaeae865767", upload-time = "2026-10-28T14:19:05Z" },

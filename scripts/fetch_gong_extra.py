@@ -28,8 +28,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import fetch_gong
 
-from src.data import TRAIN_IMAGES
-from src.data.magnetogram import plage_correlation, read_magnetogram
+from solfire.data import TRAIN_IMAGES
+from solfire.data.magnetogram import plage_correlation, read_magnetogram
 
 EXTERNAL = fetch_gong.REPO / "runs" / "external"
 HALPHA_JPEG = EXTERNAL / "gong" / "jpeg"

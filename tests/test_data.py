@@ -10,7 +10,7 @@ from PIL import Image
 from pycocotools import mask as coco_mask
 from synthetic import filament_polygon
 
-from src.data.dataset import FilamentCropDataset, kfold_split, polygon_to_mask, train_val_split
+from solfire.data.dataset import FilamentCropDataset, kfold_split, polygon_to_mask, train_val_split
 
 
 def test_coco_crop_equals_full_frame_fill(rng):

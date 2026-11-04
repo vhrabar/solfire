@@ -16,10 +16,10 @@ from scipy import ndimage
 from skimage.morphology import disk, skeletonize
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from src.data.dataset import kfold_split, load_annotations
-from src.inference.postprocess import connected_components, erode, instance_scores, keep_labels
-from src.training.calibrate import load_probabilities
-from src.training.metrics import annotation_pixels, instance_iou, pq_counts
+from solfire.data.dataset import kfold_split, load_annotations
+from solfire.inference.postprocess import connected_components, erode, instance_scores, keep_labels
+from solfire.training.calibrate import load_probabilities
+from solfire.training.metrics import annotation_pixels, instance_iou, pq_counts
 
 # FINE_SET=thin measures the thin-aware fine-tunes (sweeps/finetune_thin*.json) instead
 SET = os.environ.get("FINE_SET", "lovasz")

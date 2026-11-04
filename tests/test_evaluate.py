@@ -7,8 +7,8 @@ import pickle
 import numpy as np
 import pytest
 
-from src.inference.refiner import RefinedInstance, Window
-from src.training.evaluate import evaluate
+from solfire.inference.refiner import RefinedInstance, Window
+from solfire.training.evaluate import evaluate
 
 
 def square(top, left, side) -> list:

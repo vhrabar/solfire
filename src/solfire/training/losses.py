@@ -139,7 +139,7 @@ class BCEDiceLoss(nn.Module):
         :param pos_weight: Weight of positive pixels inside the BCE term, or ``None``
         :param lovasz_weight: Weight of the Lovász hinge term; ``0`` leaves it out
         :param pixel_weights: The targets carry a second channel of per-pixel weights
-            (:func:`~src.data.structure.thickness_weight`), applied to the BCE and Lovász terms
+            (:func:`~solfire.data.structure.thickness_weight`), applied to the BCE and Lovász terms
         :param tversky_beta: Weight of the false negatives in the overlap term; ``0.5`` is Dice
         """
         super().__init__()

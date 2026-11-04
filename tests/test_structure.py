@@ -6,8 +6,8 @@ import numpy as np
 import pytest
 import torch
 
-from src.data.structure import REFERENCE_HALF_WIDTH, spine_heatmap, thickness_weight, thin_mask
-from src.training.losses import BarbHeadLoss, BCEDiceLoss, ThinHeadLoss, lovasz_hinge_loss
+from solfire.data.structure import REFERENCE_HALF_WIDTH, spine_heatmap, thickness_weight, thin_mask
+from solfire.training.losses import BarbHeadLoss, BCEDiceLoss, ThinHeadLoss, lovasz_hinge_loss
 
 
 def body_with_barb():

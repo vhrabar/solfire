@@ -14,9 +14,9 @@ from tqdm import tqdm
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.data import TRAIN_IMAGES, load_annotations, load_image, validation_split
-from src.inference.predict import load_model
-from src.inference.tiling import predict_tiled
+from solfire.data import TRAIN_IMAGES, load_annotations, load_image, validation_split
+from solfire.inference.predict import load_model
+from solfire.inference.tiling import predict_tiled
 
 REPO = Path(__file__).resolve().parent.parent
 GONG = REPO / "runs" / "external" / "gong"

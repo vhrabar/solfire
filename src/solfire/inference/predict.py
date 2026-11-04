@@ -26,7 +26,10 @@ def load_model(checkpoint_path, device) -> tuple[torch.nn.Module, dict]:
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
     arch = checkpoint.get("arch", "unet")
     if arch not in ARCHITECTURES:
-        raise ValueError(f"unknown architecture {arch!r} in {checkpoint_path}, expected one of {sorted(ARCHITECTURES)}")
+        raise ValueError(
+            f"unknown architecture {arch!r} in {checkpoint_path}, expected one of {sorted(ARCHITECTURES)}; "
+            "checkpoints of the experiments need solfire-lab"
+        )
     model = ARCHITECTURES[arch](**(checkpoint.get("model_config") or {}))
     model.load_state_dict(checkpoint["model_state"])
     model.to(device).eval()
@@ -134,7 +137,8 @@ def predict_dataset(
     :param original_size: Edge length to upsample to, or ``None`` to stay at model resolution
     :param min_area: Drop instances with at most this many pixels
     :param min_score: Drop instances whose mean probability is below this
-    :param instance_filter: A fitted :class:`InstanceFilter` deciding which instances to keep, or ``None``
+    :param instance_filter: An object whose ``keep(labels, n_labels, probabilities, image)`` decides which
+        instances to keep (the experiments' learned filter), or ``None``
     :param offset: Morphological steps applied to the thresholded mask
     :param category_id: Category assigned to every predicted instance
     :param save_masks_dir: Directory to write binary mask PNGs to, or ``None``

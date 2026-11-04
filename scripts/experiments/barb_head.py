@@ -5,7 +5,6 @@ Barbs from the barb head (train --barb-head-weight), scored on the refined out-o
 import argparse
 import json
 import pickle
-import sys
 from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
@@ -15,10 +14,9 @@ import torch
 from scipy import ndimage
 from skimage.morphology import disk
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from solfire.data import load_annotations
 from solfire.data.dataset import validation_split
-from solfire.data.structure import thin_mask
+from solfire.experiments.data.structure import thin_mask
 from solfire.inference.barbs import thin_pieces
 from solfire.inference.postprocess import EIGHT_CONNECTED
 from solfire.inference.predict import load_model

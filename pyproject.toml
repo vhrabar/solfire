@@ -28,6 +28,7 @@ dependencies = [
 
 [project.scripts]
 solfire = "solfire.main:main"
+solfire-lab = "solfire.experiments.main:main"
 
 [dependency-groups]
 dev = [

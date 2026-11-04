@@ -142,7 +142,7 @@ def magnetic_targets(field, header, size=TARGET_GRID, sigma_mm=12.0, gradient=1.
 
 class MagneticTargets:
     """
-    Windows of the precomputed auxiliary targets (``scripts/magnetic_targets.py``).
+    Windows of the precomputed auxiliary targets (``scripts/experiments/magnetic_targets.py``).
     """
 
     def __init__(self, directory) -> None:
@@ -152,7 +152,9 @@ class MagneticTargets:
         self.directory = Path(directory)
         self.available = {path.stem for path in self.directory.glob("*.npy")}
         if not self.available:
-            raise FileNotFoundError(f"no magnetic targets in {self.directory}; build them with scripts/magnetic_targets.py")
+            raise FileNotFoundError(
+                f"no magnetic targets in {self.directory}; build them with scripts/experiments/magnetic_targets.py"
+            )
 
     def window(self, file_name, x, y, crop, size) -> np.ndarray:
         """

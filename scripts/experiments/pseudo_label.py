@@ -4,7 +4,6 @@ Soft pseudo-labels for the unlabeled GONG bursts, one set per cross-validation f
 
 import argparse
 import json
-import sys
 from pathlib import Path
 
 import numpy as np
@@ -12,13 +11,12 @@ import torch
 from PIL import Image
 from tqdm import tqdm
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
+from solfire import PROJECT_ROOT
 from solfire.data import TRAIN_IMAGES, load_annotations, load_image, validation_split
 from solfire.inference.predict import load_model
 from solfire.inference.tiling import predict_tiled
 
-REPO = Path(__file__).resolve().parent.parent
+REPO = PROJECT_ROOT
 GONG = REPO / "runs" / "external" / "gong"
 DISTILL = REPO / "runs" / "distill" / "targets"
 

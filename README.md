@@ -87,7 +87,8 @@ pip install -r requirements.txt
 ```
 
 `uv build` produces a wheel and sdist in `dist/`. Installing the package adds the `solfire` command
-(the same CLI as `python -m solfire.main`). `data/` and `runs/` are resolved against the source checkout
+(the same CLI as `python -m solfire.main`) and `solfire-lab`, the same CLI with the dropped
+experiments' options (`src/solfire/experiments/README.md`). `data/` and `runs/` are resolved against the source checkout
 when the package is imported from one, otherwise against the working directory; set `FILAMENT_PROJECT_ROOT` to
 override, or `FILAMENT_DATA_ROOT` to point at the data alone.
 
@@ -108,7 +109,7 @@ data/
 uv run --group cuda-134 solfire train --arch pretrained --decoder unetplusplus --encoder resnet34 --fold 0 ...
 
 # run a sweep spec (train + calibrate every config)
-uv run --group cuda-134 python scripts/sweep.py sweeps/cv5.json --only fold
+uv run --group cuda-134 python scripts/sweep.py sweeps/cv5_hrnet.json --only fold
 
 # calibrate post-processing on the pooled out-of-fold maps of several checkpoints
 uv run --group cuda-134 solfire calibrate --checkpoint runs/<sweep>/*/best.pt --output runs/ensembles/<name>.calibration.json
@@ -125,15 +126,19 @@ uv run --group cuda-134 python scripts/submit.py <checkpoints> --calibration run
 ## Repository layout
 
 ```
-src/solfire/ the package
-  main.py            CLI (`solfire`): train, predict, calibrate, evaluate, fit-filter
-  data/              dataset, crop sampling, target rasterisation, preprocessing
-  networks/          smp wrappers (pretrained encoders), TransUNet baseline
-  training/          losses, engine, calibration, evaluation, metrics, instance filter
-  inference/         tiling, prediction, post-processing
-scripts/             sweeps, submission, model upload, data tools
-sweeps/              experiment specs (JSON)
-tests/               unit tests
+src/solfire/           the package: the final method
+  main.py              CLI (`solfire`): train, predict, calibrate, evaluate
+  extension.py         hooks the experiments plug into
+  data/                dataset, crop sampling, target rasterisation, preprocessing cache
+  networks/            pretrained-encoder U-Net / U-Net++ (smp)
+  training/            losses, engine, calibration, evaluation, metrics, crop refiner training
+  inference/           tiling, TTA, prediction, crop refiner, barb growth, post-processing
+  experiments/         every dropped experiment, still runnable with `solfire-lab` (see its README.md)
+scripts/               sweeps, submission, model upload, notebook build, SSL pretraining, refiner
+scripts/experiments/   data and analysis scripts of the dropped experiments
+sweeps/                specs of the final method's runs (JSON)
+sweeps/experiments/    specs of the dropped experiments, run through solfire-lab
+tests/                 unit tests; tests/experiments/ for the experiments
 ```
 
 ## Tests

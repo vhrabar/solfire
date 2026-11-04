@@ -1,5 +1,8 @@
 """
-Parameter sweep over ``solfire.main train`` + ``calibrate``
+Parameter sweep over ``solfire train`` + ``calibrate``.
+
+Specs under ``sweeps/experiments/`` run through ``solfire-lab`` (``solfire.experiments.main``),
+the command line with the dropped experiments' options; the others through ``solfire``.
 """
 
 import argparse
@@ -59,7 +62,7 @@ def load_spec(path: Path) -> dict:
 
 def render_args(params: dict) -> list[str]:
     """
-    Turn a ``{snake_key: value}`` config into a ``solfire.main`` argument list.
+    Turn a ``{snake_key: value}`` config into a ``train`` argument list.
     :param params: Config parameters; ``None`` values are dropped
     :return: Flat list of ``--kebab-key`` / value tokens
     """
@@ -223,7 +226,7 @@ def run_one(config: dict, seed: int, sweep_dir: Path, calibrate_args: list[str] 
     train_cmd = [
         *launcher,
         "-m",
-        "solfire.main",
+        args.module,
         "--seed",
         str(seed),
         *device,
@@ -233,7 +236,7 @@ def run_one(config: dict, seed: int, sweep_dir: Path, calibrate_args: list[str] 
         str(run_dir),
         "--resume",
     ]
-    calibrate_cmd_prefix = [*launcher, "-m", "solfire.main", *device, "calibrate"]
+    calibrate_cmd_prefix = [*launcher, "-m", args.module, *device, "calibrate"]
 
     if args.dry_run:
         print("  train:    " + " ".join(train_cmd))
@@ -329,7 +332,13 @@ def main() -> None:
     parser.add_argument("--grid", action="append", default=[], metavar="KEY=V1,V2", help="add/override a swept arg")
     parser.add_argument("--seeds", help="comma-separated, overrides the spec")
     parser.add_argument("--name", help="sweep name -> runs/<name>/, overrides the spec")
-    parser.add_argument("--device", help="passed through to solfire.main")
+    parser.add_argument("--device", help="passed through to the command line")
+    parser.add_argument(
+        "--module",
+        default=None,
+        help="command line module the runs start; default solfire.experiments.main for specs under "
+        "sweeps/experiments/, else solfire.main",
+    )
     parser.add_argument(
         "--launcher",
         default=DEFAULT_LAUNCHER,
@@ -344,6 +353,9 @@ def main() -> None:
     args = parser.parse_args()
 
     spec = load_spec(args.spec) if args.spec else {}
+    if args.module is None:
+        experiment = args.spec is not None and "experiments" in args.spec.resolve().parent.parts
+        args.module = "solfire.experiments.main" if experiment else "solfire.main"
     for item in args.set:
         key, _, value = item.partition("=")
         spec.setdefault("base", {})[key] = parse_scalar(value)

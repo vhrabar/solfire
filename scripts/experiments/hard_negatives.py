@@ -4,14 +4,11 @@ Find the dark features models mistake for filaments, for hard-negative crop samp
 
 import argparse
 import json
-import sys
 from pathlib import Path
 
 import numpy as np
 import torch
 from scipy import ndimage
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from solfire.data import load_annotations, validation_split
 from solfire.inference.postprocess import connected_components, instance_scores

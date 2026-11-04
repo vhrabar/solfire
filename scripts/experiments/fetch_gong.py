@@ -22,7 +22,9 @@ import numpy as np
 from astropy.io import fits
 from PIL import Image
 
-REPO = Path(__file__).resolve().parent.parent
+from solfire import PROJECT_ROOT
+
+REPO = PROJECT_ROOT
 ARCHIVE = "https://gong2.nso.edu/HA/haf"
 CONVERTOR = REPO / "external" / "mleco-fits2jpegconvertor" / "src"
 OUTPUT = REPO / "runs" / "external" / "gong"

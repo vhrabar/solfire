@@ -2,7 +2,8 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 
-from ..padding import pad_to_multiple
+from solfire.networks.padding import pad_to_multiple
+
 from .encoder import EncoderStage
 
 

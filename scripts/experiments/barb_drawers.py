@@ -5,15 +5,13 @@ The annotation records that draw barbs.
 import argparse
 import itertools
 import json
-import sys
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from solfire.data import load_annotations
-from solfire.data.structure import thin_mask
+from solfire.experiments.data.structure import thin_mask
 from solfire.training.metrics import annotation_pixels
 
 

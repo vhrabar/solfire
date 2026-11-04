@@ -1,6 +1,7 @@
 from torch import Tensor, nn
 
-from .padding import pad_to_multiple
+from solfire.networks.padding import pad_to_multiple
+
 from .Transformer import TransformerBottleneck
 from .UNet import UNetDecoder, UNetEncoder
 

@@ -23,13 +23,12 @@ from pathlib import Path
 
 from astropy.io import fits
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import fetch_gong
 
 from solfire.data import TRAIN_IMAGES
-from solfire.data.magnetogram import plage_correlation, read_magnetogram
+from solfire.experiments.data.magnetogram import plage_correlation, read_magnetogram
 
 EXTERNAL = fetch_gong.REPO / "runs" / "external"
 HALPHA_JPEG = EXTERNAL / "gong" / "jpeg"

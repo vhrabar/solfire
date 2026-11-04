@@ -11,12 +11,13 @@ import numpy as np
 from threadpoolctl import threadpool_limits
 from tqdm import tqdm
 
-from ..data import TRAIN_IMAGES, load_image
-from ..data.preprocess import observation_path
-from ..inference.instance_filter import InstanceFilter, build_regressor, instance_features, matched_iou_per_record
-from ..inference.postprocess import apply_offset, connected_components
-from .calibrate import load_probabilities
-from .metrics import annotation_pixels, instance_iou
+from solfire.data import TRAIN_IMAGES, load_image
+from solfire.data.preprocess import observation_path
+from solfire.inference.postprocess import apply_offset, connected_components
+from solfire.training.calibrate import load_probabilities
+from solfire.training.metrics import annotation_pixels, instance_iou
+
+from .instance_filter import InstanceFilter, build_regressor, instance_features, matched_iou_per_record
 
 DEFAULT_CUTS = tuple(round(value, 2) for value in np.arange(0.10, 0.45, 0.01))
 
@@ -146,3 +147,26 @@ def filter_path(output) -> Path:
     """
     path = Path(output)
     return path.with_name(path.name.removesuffix(".json").removesuffix(".calibration") + ".filter.pkl")
+
+
+def cross_validated_filters(instance_data, calibration, folds=5, seed=0) -> tuple[dict[str, int], dict[int, InstanceFilter]]:
+    """
+    Refit a calibration's learned filter once per group of observations, each without that group,
+    so :func:`solfire.training.evaluate.evaluate` scores every observation with a filter that never saw it.
+    :param instance_data: Result of :func:`collect_instances` at the calibration's threshold
+    :param calibration: Calibration naming the ``filter``, and its ``filter_report`` cut when stored
+    :param folds: Groups the filter is cross-validated over
+    :param seed: Seed of the grouping and the regressor
+    :return: Tuple of (per observation file its group, per group the filter fitted without it)
+    """
+    shuffled = sorted(set(instance_data["files"].tolist()))
+    random.Random(seed).shuffle(shuffled)
+    group_of = {name: index % folds for index, name in enumerate(shuffled)}
+    groups = np.asarray([group_of[name] for name in instance_data["files"]])
+    cut = float(calibration.get("filter_report", {}).get("cut", InstanceFilter.load(calibration["filter"]).cut))
+    filters = {}
+    for group in range(folds):
+        model = build_regressor(seed)
+        model.fit(instance_data["features"][groups != group], instance_data["earned"][groups != group])
+        filters[group] = InstanceFilter(model=model, cut=cut, threshold=calibration["threshold"])
+    return group_of, filters

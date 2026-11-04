@@ -3,13 +3,10 @@ Build the preprocessed copies of the train and test observations.
 """
 
 import argparse
-import sys
 import time
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-from solfire.data import PREPROCESSING, TEST_IMAGES, TRAIN_IMAGES, build_cache
+import solfire.experiments  # noqa: F401  registers clahe
+from solfire.data import TEST_IMAGES, TRAIN_IMAGES, build_cache, preprocessing_methods
 
 
 def main() -> int:
@@ -18,7 +15,7 @@ def main() -> int:
     :return: Process exit code
     """
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--method", choices=[m for m in PREPROCESSING if m != "none"], default="clahe")
+    parser.add_argument("--method", choices=[m for m in preprocessing_methods() if m != "none"], default="clahe")
     parser.add_argument("--workers", type=int, default=8)
     args = parser.parse_args()
     for images_dir in (TRAIN_IMAGES, TEST_IMAGES):

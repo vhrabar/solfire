@@ -8,9 +8,9 @@ from .dataset import (
     TEST_IMAGES,
     TRAIN_ANNOTATIONS,
     TRAIN_IMAGES,
+    Crop,
     FilamentCropDataset,
     FilamentDataset,
-    PseudoLabelledCropDataset,
     TestImageDataset,
     kfold_split,
     load_annotations,
@@ -21,20 +21,19 @@ from .dataset import (
     train_val_split,
     validation_split,
 )
-from .preprocess import PREPROCESSING, build_cache, preprocessed_dir
+from .preprocess import build_cache, preprocessed_dir, preprocessing_methods, register_preprocessing
 
 __all__ = [
     "CATEGORY_NAMES",
     "DATA_ROOT",
-    "PREPROCESSING",
     "RASTERS",
     "TARGETS",
     "TEST_IMAGES",
     "TRAIN_ANNOTATIONS",
     "TRAIN_IMAGES",
+    "Crop",
     "FilamentCropDataset",
     "FilamentDataset",
-    "PseudoLabelledCropDataset",
     "TestImageDataset",
     "build_cache",
     "kfold_split",
@@ -44,6 +43,8 @@ __all__ = [
     "polygon_bounds",
     "polygon_to_mask",
     "preprocessed_dir",
+    "preprocessing_methods",
+    "register_preprocessing",
     "train_val_split",
     "validation_split",
 ]

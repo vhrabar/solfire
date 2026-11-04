@@ -10,13 +10,12 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import fetch_gong
 
 from solfire.data import TRAIN_IMAGES
-from solfire.data.magnetogram import magnetogram_path, plage_correlation, read_magnetogram
+from solfire.experiments.data.magnetogram import magnetogram_path, plage_correlation, read_magnetogram
 
 ARCHIVE = "https://nispdata.nso.edu/ftp/vmb/archive/bzi"
 OUTPUT = fetch_gong.REPO / "runs" / "external" / "gong_bzi"

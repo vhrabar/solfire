@@ -1,25 +1,27 @@
 from .padding import pad_to_multiple
 from .pretrained import DECODERS, Pretrained
-from .Transformer import SegFormer, TransformerBottleneck
-from .transunet import TransUNet
-from .UNet import UNet, UNetDecoder, UNetEncoder
 
-ARCHITECTURES = {
-    "unet": UNet,
-    "segformer": SegFormer,
-    "transunet": TransUNet,
+# name -> model class; checkpoints record the name. The experiments register their own
+# architectures here (solfire.experiments.register) so their checkpoints load as well.
+ARCHITECTURES: dict[str, type] = {
     "pretrained": Pretrained,
 }
+
+
+def register_architecture(name: str, model_class: type) -> None:
+    """
+    Make an architecture available to ``train --arch`` and to :func:`~solfire.inference.load_model`.
+    :param name: Name the checkpoints record
+    :param model_class: ``nn.Module`` subclass built from the checkpoint's ``model_config``
+    :return: None
+    """
+    ARCHITECTURES[name] = model_class
+
 
 __all__ = [
     "ARCHITECTURES",
     "DECODERS",
     "Pretrained",
-    "SegFormer",
-    "TransUNet",
-    "TransformerBottleneck",
-    "UNet",
-    "UNetDecoder",
-    "UNetEncoder",
     "pad_to_multiple",
+    "register_architecture",
 ]

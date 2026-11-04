@@ -4,10 +4,10 @@ The quantitative eval on held-out samples
 
 import multiprocessing
 import pickle
-import random
 from collections import Counter
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 from threadpoolctl import threadpool_limits
@@ -15,13 +15,12 @@ from tqdm import tqdm
 
 from ..data import TRAIN_IMAGES, load_image
 from ..data.preprocess import observation_path
-from ..inference.instance_filter import InstanceFilter, build_regressor
 from ..inference.postprocess import SUBMISSION_SIZE, keep_labels, label_instances
 from ..inference.refiner import assemble, offset_labels
 from .calibrate import load_probabilities
 from .metrics import IOU_THRESHOLD, annotation_pixels, instance_iou, pq_from_counts
 
-_GROUP_FILTERS: dict[int, InstanceFilter] = {}
+_GROUP_FILTERS: dict[int, Any] = {}
 
 
 def evaluate_observation(labels, n_labels, records) -> dict:
@@ -97,21 +96,18 @@ def summarise(results) -> dict:
     }
 
 
-def evaluate(
-    sources, records, calibration, images_dir=TRAIN_IMAGES, instance_data=None, folds=5, seed=0, workers=8, refined_dir=None
-):
+def evaluate(sources, records, calibration, images_dir=TRAIN_IMAGES, filters=None, workers=8, refined_dir=None):
     """
     Score a calibration's post-processing on held-out maps with every judged quantity.
 
     :param sources: Per observation file, the cache directories of the models that held it out
     :param records: Per observation file, the annotations of each of its records
-    :param calibration: Calibration dict: ``threshold``, ``offset``, ``min_area``,
-        ``min_score`` and optionally a ``filter`` path
-    :param images_dir: Directory holding the observations the filter reads
-    :param instance_data: Result of :func:`filter_fit.collect_instances` at the
-        calibration's threshold, required when it names a filter
-    :param folds: Groups the filter is cross-validated over
-    :param seed: Seed of the grouping and the regressor
+    :param calibration: Calibration dict: ``threshold``, ``offset``, ``min_area`` and ``min_score``
+    :param images_dir: Directory holding the observations the instance filters read
+    :param filters: ``(group_of, filters)``: per observation file its group, and per group an
+        object whose ``keep(labels, n_labels, probabilities, image)`` says which instances to
+        submit, fitted without that group; ``None`` for no filter. A calibration naming a learned
+        ``filter`` needs them (:func:`solfire.experiments.filter_fit.cross_validated_filters`)
     :param workers: Processes working in parallel
     :param refined_dir: Refined out-of-fold instances (``scripts/refine.py refine``); the
         instances are then assembled with the calibration's ``refiner`` block instead of
@@ -123,21 +119,10 @@ def evaluate(
             raise ValueError("refined instances need a calibration with a refiner block")
         if calibration.get("filter"):
             raise ValueError("a learned filter and the refiner are alternatives; the calibration has both")
+    if calibration.get("filter") and filters is None:
+        raise ValueError("a calibration with a learned filter is scored with its cross-validated filters; use solfire-lab")
     names = sorted(sources)
-    group_of: dict[str, int] = {}
-    filters: dict[int, InstanceFilter] = {}
-    if calibration.get("filter"):
-        if instance_data is None:
-            raise ValueError("a calibration with a learned filter needs its instance data to be cross-validated")
-        shuffled = sorted(set(instance_data["files"].tolist()))
-        random.Random(seed).shuffle(shuffled)
-        group_of = {name: index % folds for index, name in enumerate(shuffled)}
-        groups = np.asarray([group_of[name] for name in instance_data["files"]])
-        cut = float(calibration.get("filter_report", {}).get("cut", InstanceFilter.load(calibration["filter"]).cut))
-        for group in range(folds):
-            model = build_regressor(seed)
-            model.fit(instance_data["features"][groups != group], instance_data["earned"][groups != group])
-            filters[group] = InstanceFilter(model=model, cut=cut, threshold=calibration["threshold"])
+    group_of, group_filters = filters or ({}, {})
 
     settings = {key: calibration.get(key, 0) for key in ("threshold", "offset", "min_area", "min_score")}
     if refined_dir is not None:
@@ -148,14 +133,14 @@ def evaluate(
             "min_score": refiner["min_score"],
             "final_offset": refiner.get("final_offset", 0),
         }
-    filtered = bool(filters)
+    filtered = bool(group_filters)
     jobs = [
         (name, sources[name], records[name], settings, group_of.get(name, 0) if filtered else None, images_dir) for name in names
     ]
     results = []
 
     context = multiprocessing.get_context("forkserver" if filtered else "fork")
-    with ProcessPoolExecutor(max(1, workers), mp_context=context, initializer=_set_filters, initargs=(filters,)) as pool:
+    with ProcessPoolExecutor(max(1, workers), mp_context=context, initializer=_set_filters, initargs=(group_filters,)) as pool:
         for result in tqdm(pool.map(_evaluate_one, jobs), total=len(jobs), desc="evaluating", leave=False, mininterval=2.0):
             results.append(result)
     overlaps = [(iou, 2 * iou / np.maximum(1 + iou, 1e-9)) for r in results for iou in r["overlaps"]]

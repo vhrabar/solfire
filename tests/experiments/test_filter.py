@@ -6,7 +6,8 @@ import numpy as np
 import pytest
 from synthetic import SIZE, filament_polygon
 
-from solfire.inference.instance_filter import (
+from solfire.experiments.filter_fit import pq_of
+from solfire.experiments.instance_filter import (
     FEATURES,
     MIN_PIXELS,
     InstanceFilter,
@@ -14,7 +15,6 @@ from solfire.inference.instance_filter import (
     matched_iou_per_record,
 )
 from solfire.inference.postprocess import connected_components
-from solfire.training.filter_fit import pq_of
 from solfire.training.metrics import annotation_pixels, instance_iou, pq_counts, pq_from_counts
 
 

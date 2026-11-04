@@ -6,8 +6,9 @@ import numpy as np
 import pytest
 import torch
 
-from solfire.data.structure import REFERENCE_HALF_WIDTH, spine_heatmap, thickness_weight, thin_mask
-from solfire.training.losses import BarbHeadLoss, BCEDiceLoss, ThinHeadLoss, lovasz_hinge_loss
+from solfire.experiments.data.structure import REFERENCE_HALF_WIDTH, spine_heatmap, thickness_weight, thin_mask
+from solfire.experiments.losses import BarbHeadLoss, ExperimentPixelLoss, ThinHeadLoss
+from solfire.training.losses import BCEDiceLoss, lovasz_hinge_loss
 
 
 def body_with_barb():
@@ -78,9 +79,9 @@ def test_pixel_weights_raise_the_cost_of_a_missed_barb():
     logits = (2 * target - 1) * 5
     logits[:, :, 10:20, 20:25] = -5
     weights = torch.ones_like(target)
-    plain = BCEDiceLoss(0.5, 0.5, 5.0, lovasz_weight=0.5, pixel_weights=True)(logits, torch.cat([target, weights], 1))
+    plain = ExperimentPixelLoss(0.5, 0.5, 5.0, lovasz_weight=0.5, pixel_weights=True)(logits, torch.cat([target, weights], 1))
     weights[:, :, 10:20, 20:25] = 6
-    heavy = BCEDiceLoss(0.5, 0.5, 5.0, lovasz_weight=0.5, pixel_weights=True)(logits, torch.cat([target, weights], 1))
+    heavy = ExperimentPixelLoss(0.5, 0.5, 5.0, lovasz_weight=0.5, pixel_weights=True)(logits, torch.cat([target, weights], 1))
     assert heavy > plain
 
 
@@ -94,7 +95,7 @@ def test_thin_head_loss_trains_the_head_and_passes_weights_to_the_base():
     target[:, 1] = 1
     target[:, 2, 10:12, 5:25] = 1
     target[:, 3, 15, 5:25] = 1
-    criterion = ThinHeadLoss(BCEDiceLoss(0.5, 0.5, 5.0, lovasz_weight=0.5, pixel_weights=True), 0.3)
+    criterion = ThinHeadLoss(ExperimentPixelLoss(0.5, 0.5, 5.0, lovasz_weight=0.5, pixel_weights=True), 0.3)
     criterion(logits, target).backward()
     assert logits.grad[:, 1:].abs().sum() > 0 and torch.isfinite(logits.grad).all()
 

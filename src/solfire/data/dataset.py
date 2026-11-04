@@ -5,6 +5,7 @@ Loading of the MAGFiLO 1.0 solar filament dataset.
 import json
 import os
 import random
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -16,7 +17,6 @@ from torch.utils.data import Dataset
 
 from .. import PROJECT_ROOT
 from .preprocess import IMAGE_SUFFIXES, observation_path
-from .structure import spine_heatmap, thickness_weight, thin_mask
 
 ANNOTATIONS_NAME = "MAGFiLO_1.0_Annotations_kaggle2026_train.json"
 REPO_DATA = PROJECT_ROOT / "data"
@@ -26,8 +26,6 @@ CATEGORY_NAMES = {1: "Left", 2: "Right", 3: "Unidentifiable", 4: "Ambiguous"}
 
 RASTERS = ("coco", "pil")
 TARGETS = ("each", "mean")
-# category ids an auxiliary head predicts, one channel each
-CATEGORY_CHANNELS = (1, 2, 3)
 
 
 def candidate_roots() -> list[Path]:
@@ -363,6 +361,22 @@ def load_image_window(path, size, window, crop) -> torch.Tensor:
     return torch.from_numpy(array.copy()).unsqueeze(0).float().div_(255.0)
 
 
+@dataclass
+class Crop:
+    """
+    One drawn window and the annotations rasterised into it, for :meth:`FilamentCropDataset.make_target`.
+    """
+
+    record: dict
+    group: list
+    x: int
+    y: int
+    size: int
+    scale: float
+    masks: list[np.ndarray] = field(default_factory=list)
+    drawn: list[list[tuple[dict, np.ndarray]]] = field(default_factory=list)
+
+
 class FilamentCropDataset(Dataset):
     """
     Random crops taken at the resolution the observations were annotated at.
@@ -373,6 +387,9 @@ class FilamentCropDataset(Dataset):
     the native scale instead, and because the filaments cover about two parts in a
     thousand of the disk, most crops are drawn around an annotation rather than
     uniformly, which would return empty sky most of the time.
+
+    Subclasses change where crops are drawn (:meth:`sample_window`) and what is returned
+    as the target (:meth:`make_target`); :mod:`solfire.experiments.data` does both.
     """
 
     def __init__(
@@ -388,16 +405,7 @@ class FilamentCropDataset(Dataset):
         seed=None,
         raster="pil",
         targets="each",
-        hard_negatives=None,
-        hard_negative_prob=0.0,
-        categories=False,
-        magnetic=None,
-        thickness_cap=0.0,
-        thin_head=False,
         input_scale=1.0,
-        barb_targets=None,
-        barb_level=1.0,
-        barb_records=None,
     ):
         """
         :param image_ids: Image ids to sample from, or ``None`` for all of them
@@ -413,41 +421,14 @@ class FilamentCropDataset(Dataset):
             which the data loader reseeds per worker
         :param raster: How polygons are filled, one of :data:`RASTERS`
         :param targets: How the records of one observation become samples, one of :data:`TARGETS`
-        :param hard_negatives: Per observation file, ``(x, y)`` points of dark features that
-            models mistake for filaments, or ``None``
-        :param hard_negative_prob: Probability of centring a crop on one of them, taken
-            from the uniformly placed crops
-        :param categories: Also return one indicator channel per category of
-            :data:`CATEGORY_CHANNELS` after the filament target, for an auxiliary head
-        :param magnetic: :class:`~solfire.data.magnetogram.MagneticTargets` whose PIL proximity,
-            strong-flux and valid channels follow the filament target, or ``None``
-        :param thickness_cap: Above ``0``, a per-pixel loss weight channel follows the filament
-            target, growing as the annotated structure gets thinner, up to this value
-            (:func:`~solfire.data.structure.thickness_weight`)
-        :param thin_head: Append the thin mask and the spine heatmap of the annotations as
-            the last two channels, for an auxiliary head
         :param input_scale: Without ``native_size``, decode the observation at this multiple of
             its own size, so a crop covers ``crop / input_scale`` annotated pixels and a thin
             filament spans more of the network's pixels
-        :param barb_targets: Directory of 0/255 PNGs, one per observation, marking barbs grown
-            from the image outside the annotations (scripts/barb_targets.py), or ``None``
-        :param barb_level: Target value at those barb pixels
-        :param barb_records: Image ids of the records that draw barbs (scripts/barb_drawers.py), or
-            ``None``; when given, two channels follow the filament target for a barb head: the
-            thin mask of those records alone, and 1 where it is valid, i.e. over the whole crop
-            when the sample holds at least one of them and 0 otherwise
         """
         if targets not in TARGETS:
             raise ValueError(f"unknown targets {targets!r}, expected one of {TARGETS}")
-        heads = (bool(categories), magnetic is not None, bool(thickness_cap) or thin_head, barb_records is not None)
-        if sum(heads) > 1:
-            raise ValueError("the category, magnetic, thin-structure and barb targets cannot be combined")
-        if barb_targets is not None and (native_size or input_scale != 1):
-            raise ValueError("barb targets are drawn at the annotated resolution only")
         images, by_image = load_annotations(annotations_path)
         self.images_dir = Path(images_dir)
-        self.barb_targets = None if barb_targets is None else Path(barb_targets)
-        self.barb_level = float(barb_level)
         self.crop = crop
         self.raster = raster
         self.native_size = native_size
@@ -461,13 +442,6 @@ class FilamentCropDataset(Dataset):
         self.records = records
         self.annotations = by_image
         self._rng = None if seed is None else random.Random(seed)
-        self.hard_negatives = hard_negatives or {}
-        self.hard_negative_prob = hard_negative_prob
-        self.categories = categories
-        self.magnetic = magnetic
-        self.thickness_cap = float(thickness_cap)
-        self.thin_head = thin_head
-        self.barb_records = None if barb_records is None else set(barb_records)
 
         # each sample is the list of records whose masks are averaged into its target
         if targets == "mean":
@@ -503,23 +477,19 @@ class FilamentCropDataset(Dataset):
             return annotations
         return [ann for ann in annotations if ann["category_id"] in self.category_ids]
 
-    def sample_window(self, annotations, size, scale, hard_negatives=()) -> tuple[int, int]:
+    def sample_window(self, annotations, size, scale, record) -> tuple[int, int]:
         """
         Pick the top left corner of a crop.
 
         :param annotations: Annotations of the observation
         :param size: Edge length the observation is decoded at
         :param scale: Factor the annotation coordinates are scaled by
-        :param hard_negatives: ``(x, y)`` points of look-alikes in the observation
+        :param record: Image record of the observation
         :return: ``(x, y)`` corner, clamped to keep the crop inside the observation
         """
         limit = max(0, size - self.crop)
         draw = self.rng.random()
-        if hard_negatives and self.foreground_prob <= draw < self.foreground_prob + self.hard_negative_prob:
-            x, y = self.rng.choice(hard_negatives)
-            x = int(x * scale) - self.rng.randrange(self.crop)
-            y = int(y * scale) - self.rng.randrange(self.crop)
-        elif annotations and draw < self.foreground_prob:
+        if annotations and draw < self.foreground_prob:
             annotation = self.rng.choice(annotations)
             points = np.asarray(annotation["segmentation"][0], dtype=np.float64).reshape(-1, 2)
             x, y = points[self.rng.randrange(len(points))] * scale
@@ -531,13 +501,21 @@ class FilamentCropDataset(Dataset):
             y = self.rng.randint(0, limit)
         return min(max(x, 0), limit), min(max(y, 0), limit)
 
+    def make_target(self, target, crop: Crop) -> torch.Tensor:
+        """
+        Turn the soft target of a crop into what the loss receives.
+        :param target: ``(crop, crop)`` fraction of the sample's records that mark each pixel
+        :param crop: The window and its rasterised annotations
+        :return: ``(crop, crop)`` float tensor
+        """
+        return torch.from_numpy(target)
+
     def __getitem__(self, index):
         """
         Draw one crop and rasterise the annotations that reach into it.
         :param index: Position in the epoch; samples are cycled ``repeat`` times
-        :return: Tuple of (``(1, crop, crop)`` image tensor, ``(crop, crop)`` float mask,
-            the fraction of the sample's records that mark each pixel; ``(C, crop, crop)``
-            with the auxiliary channels after it)
+        :return: Tuple of (``(1, crop, crop)`` image tensor, target from :meth:`make_target`:
+            the fraction of the sample's records that mark each pixel)
         """
         group = self.samples[index % len(self.samples)]
         record = self.records[group[0]]
@@ -545,131 +523,28 @@ class FilamentCropDataset(Dataset):
         scale = size / record["width"]
 
         per_record = [self.selected(image_id) for image_id in group]
-        x, y = self.sample_window(
-            [ann for annotations in per_record for ann in annotations],
-            size,
-            scale,
-            self.hard_negatives.get(record["file_name"], ()),
-        )
+        x, y = self.sample_window([ann for annotations in per_record for ann in annotations], size, scale, record)
         image = load_image_window(
             observation_path(self.images_dir, record["file_name"]), None if scale == 1 else size, (x, y), self.crop
         )
 
+        crop = Crop(record, group, x, y, size, scale)
         target = np.zeros((self.crop, self.crop), dtype=np.float32)
-        categories = np.zeros((len(CATEGORY_CHANNELS), self.crop, self.crop), dtype=bool) if self.categories else None
-        union = np.zeros((self.crop, self.crop), dtype=bool)
-        thin = np.zeros((self.crop, self.crop), dtype=np.float32) if self.thin_head else None
-        spine = np.zeros((self.crop, self.crop), dtype=np.float32) if self.thin_head else None
-        barb = np.zeros((self.crop, self.crop), dtype=np.float32)
-        drawers = 0
-        for image_id, annotations in zip(group, per_record):
+        for annotations in per_record:
             mask = np.zeros((self.crop, self.crop), dtype=bool)
-            spines = []
+            drawn = []
             for ann in annotations:
                 x0, y0, x1, y1 = polygon_bounds(ann["segmentation"][0], scale)
                 if x1 < x or x0 > x + self.crop or y1 < y or y0 > y + self.crop:
                     continue
                 filled = polygon_to_mask(ann["segmentation"][0], self.crop, self.crop, scale, origin=(x, y), raster=self.raster)
                 mask |= filled
-                if categories is not None and ann["category_id"] in CATEGORY_CHANNELS:
-                    categories[CATEGORY_CHANNELS.index(ann["category_id"])] |= filled
-                if ann.get("spine"):
-                    spines.append(ann["spine"])
+                drawn.append((ann, filled))
             target += mask
-            union |= mask
-            if self.thin_head:
-                thin += thin_mask(mask)
-                spine += spine_heatmap(spines, self.crop, self.crop, scale, origin=(x, y))
-            if self.barb_records is not None and image_id in self.barb_records:
-                barb += thin_mask(mask)
-                drawers += 1
+            crop.masks.append(mask)
+            crop.drawn.append(drawn)
         target /= len(per_record)
-        if self.barb_targets is not None:
-            with Image.open(self.barb_targets / f"{Path(record['file_name']).stem}.png") as handle:
-                barbs = np.asarray(handle.crop((x, y, x + self.crop, y + self.crop))) > 0
-            target[barbs] = np.maximum(target[barbs], self.barb_level)
-
-        if self.thickness_cap or self.thin_head:
-            channels = [target]
-            if self.thickness_cap:
-                channels.append(thickness_weight(union, self.thickness_cap))
-            if self.thin_head:
-                channels += [thin / len(per_record), spine / len(per_record)]
-            return image, torch.from_numpy(np.stack(channels))
-
-        if self.barb_records is not None:
-            valid = np.full((self.crop, self.crop), float(drawers > 0), dtype=np.float32)
-            return image, torch.from_numpy(np.stack([target, barb / max(drawers, 1), valid]))
-
-        if self.magnetic is not None:
-            extra = self.magnetic.window(record["file_name"], x, y, self.crop, size)
-            return image, torch.from_numpy(np.concatenate([target[None], extra]))
-        if categories is None:
-            return image, torch.from_numpy(target)
-        return image, torch.from_numpy(np.concatenate([target[None], categories.astype(np.float32)]))
-
-
-class PseudoLabelledCropDataset(Dataset):
-    """
-    Native-resolution crops of unlabeled observations with soft pseudo-label targets.
-    """
-
-    def __init__(self, images_dir, target_dir, crop=512, repeat=1, foreground_prob=0.7, foreground_level=0.5, seed=None):
-        """
-        :param images_dir: Directory holding the observations
-        :param target_dir: Directory holding one target PNG per observation
-        :param crop: Edge length of the returned window
-        :param repeat: Crops drawn per observation and epoch
-        :param foreground_prob: Probability of centring the crop on a likely filament pixel
-        :param foreground_level: Target value a pixel needs to count as a likely filament
-        :param seed: Seed for a private RNG; ``None`` uses the global :mod:`random`
-        """
-        self.images_dir = Path(images_dir)
-        self.targets = sorted(Path(target_dir).glob("*.png"))
-        if not self.targets:
-            raise FileNotFoundError(f"no pseudo-label targets in {target_dir}")
-        self.crop = crop
-        self.repeat = max(1, repeat)
-        self.foreground_prob = foreground_prob
-        self.foreground_level = foreground_level
-        self._rng = None if seed is None else random.Random(seed)
-
-    @property
-    def rng(self):
-        """
-        The random source to draw windows from.
-        :return: A :class:`random.Random` or the :mod:`random` module
-        """
-        return random if self._rng is None else self._rng
-
-    def __len__(self):
-        """
-        :return: Number of crops in one epoch
-        """
-        return len(self.targets) * self.repeat
-
-    def __getitem__(self, index):
-        """
-        Draw one crop of an observation and its target.
-        :param index: Position in the epoch; observations are cycled ``repeat`` times
-        :return: Tuple of (``(1, crop, crop)`` image tensor, ``(crop, crop)`` float target)
-        """
-        target_path = self.targets[index % len(self.targets)]
-        with Image.open(target_path) as handle:
-            target = np.asarray(handle, dtype=np.uint8)
-        size = target.shape[0]
-        limit = max(0, size - self.crop)
-        ys, xs = np.nonzero(target >= round(self.foreground_level * 255))
-        if len(ys) and self.rng.random() < self.foreground_prob:
-            pick = self.rng.randrange(len(ys))
-            x = int(xs[pick]) - self.rng.randrange(self.crop)
-            y = int(ys[pick]) - self.rng.randrange(self.crop)
-        else:
-            x, y = self.rng.randint(0, limit), self.rng.randint(0, limit)
-        x, y = min(max(x, 0), limit), min(max(y, 0), limit)
-        image = load_image_window(self.images_dir / f"{target_path.stem}.jpeg", None, (x, y), self.crop)
-        window = target[y : y + self.crop, x : x + self.crop].astype(np.float32) / 255.0
-        return image, torch.from_numpy(window)
+        return image, self.make_target(target, crop)
 
 
 class TestImageDataset(Dataset):

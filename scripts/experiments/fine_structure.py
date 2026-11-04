@@ -15,7 +15,6 @@ import numpy as np
 from scipy import ndimage
 from skimage.morphology import disk, skeletonize
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from solfire.data.dataset import kfold_split, load_annotations
 from solfire.inference.postprocess import connected_components, erode, instance_scores, keep_labels
 from solfire.training.calibrate import load_probabilities

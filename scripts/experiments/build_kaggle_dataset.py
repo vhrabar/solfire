@@ -7,7 +7,9 @@ import json
 import shutil
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent.parent
+from solfire import PROJECT_ROOT
+
+REPO = PROJECT_ROOT
 EXTERNAL = REPO / "runs" / "external"
 SOURCE = REPO / "kaggle" / "gong-dataset"
 

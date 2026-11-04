@@ -3,7 +3,6 @@ Barb training targets without barb labels.
 """
 
 import argparse
-import sys
 from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
@@ -11,7 +10,6 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from solfire.data import load_annotations
 from solfire.data.dataset import TRAIN_IMAGES, load_image
 from solfire.data.preprocess import observation_path

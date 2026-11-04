@@ -4,7 +4,8 @@ U-Net for binary segmentation of solar filaments.
 
 from torch import Tensor, nn
 
-from ..padding import pad_to_multiple
+from solfire.networks.padding import pad_to_multiple
+
 from .decoder import UNetDecoder
 from .encoder import UNetEncoder
 

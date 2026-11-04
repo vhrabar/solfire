@@ -4,18 +4,16 @@ Precompute the auxiliary magnetic training targets from the matched GONG magneto
 
 import argparse
 import json
-import sys
 from concurrent.futures import ProcessPoolExecutor
 from functools import partial
 from pathlib import Path
 
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from solfire import PROJECT_ROOT
+from solfire.experiments.data.magnetogram import TARGET_GRID, magnetic_targets, magnetogram_path, read_magnetogram
 
-from solfire.data.magnetogram import TARGET_GRID, magnetic_targets, magnetogram_path, read_magnetogram
-
-BZI = Path(__file__).resolve().parent.parent / "runs" / "external" / "gong_bzi"
+BZI = PROJECT_ROOT / "runs" / "external" / "gong_bzi"
 
 
 def build(name, output, settings) -> str:

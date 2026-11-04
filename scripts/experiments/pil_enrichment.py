@@ -4,17 +4,14 @@ Do annotated filaments sit on polarity-inversion lines (PILs) of the matched GON
 
 import argparse
 import json
-import sys
-from pathlib import Path
 
 import numpy as np
 from PIL import Image, ImageDraw
 from scipy import ndimage
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
+from solfire import PROJECT_ROOT
 from solfire.data import load_annotations
-from solfire.data.magnetogram import (
+from solfire.experiments.data.magnetogram import (
     HA_SIZE,
     magnetogram_on_grid,
     magnetogram_path,
@@ -23,7 +20,7 @@ from solfire.data.magnetogram import (
     read_magnetogram,
 )
 
-BZI = Path(__file__).resolve().parent.parent / "runs" / "external" / "gong_bzi"
+BZI = PROJECT_ROOT / "runs" / "external" / "gong_bzi"
 GRID = 512
 MM_PER_PIXEL = mm_per_pixel(GRID)
 

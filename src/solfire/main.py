@@ -1,3 +1,10 @@
+"""
+The ``solfire`` command line: train, calibrate, evaluate and predict with the final method.
+
+``solfire-lab`` (:mod:`solfire.experiments.main`) is the same command line with the dropped
+experiments added through :class:`~solfire.extension.Extension`.
+"""
+
 import argparse
 import json
 import os
@@ -6,24 +13,21 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from torch.utils.data import ConcatDataset, DataLoader
+from torch.utils.data import DataLoader
 
 from .data import (
     DATA_ROOT,
-    PREPROCESSING,
     RASTERS,
     TARGETS,
     TEST_IMAGES,
     TRAIN_IMAGES,
-    FilamentCropDataset,
     FilamentDataset,
-    PseudoLabelledCropDataset,
     TestImageDataset,
     load_annotations,
     preprocessed_dir,
     validation_split,
 )
-from .data.magnetogram import MagneticTargets
+from .extension import Extension
 from .inference import (
     DEFAULT_OVERLAP,
     MIN_AREA,
@@ -34,7 +38,6 @@ from .inference import (
     write_submission,
 )
 from .inference.barbs import DEFAULT_BARBS
-from .inference.instance_filter import InstanceFilter
 from .inference.refiner import load_refiner
 from .networks import ARCHITECTURES, DECODERS
 from .training import (
@@ -42,15 +45,7 @@ from .training import (
     DEFAULT_MIN_AREAS,
     DEFAULT_MIN_SCORES,
     DEFAULT_OFFSETS,
-    KERNEL_SHAPES,
     AugmentedDataset,
-    BarbHeadLoss,
-    BCEDiceLoss,
-    CategoryHeadLoss,
-    MagneticHeadLoss,
-    MorphologyLoss,
-    ThinHeadLoss,
-    build_criterion,
     build_optimizer,
     build_scheduler,
     cache_directory,
@@ -65,15 +60,15 @@ from .training import (
     write_calibration,
 )
 from .training.evaluate import evaluate
-from .training.filter_fit import collect_instances, filter_path, fit_instance_filter
 
-BARB_PRIOR_LOGIT = -4.0
+CORE = Extension()
 
 
-def parse_args() -> argparse.Namespace:
+def build_parser(extension: Extension = CORE) -> tuple[argparse.ArgumentParser, dict]:
     """
-    Parse the ``train`` and ``predict`` command lines.
-    :return: Parsed arguments
+    Build the command line.
+    :param extension: Adds options and subcommands
+    :return: Tuple of (parser, subcommand name -> function of ``(args, device)`` for the extension's subcommands)
     """
     parser = argparse.ArgumentParser(description="Solar filament segmentation")
     parser.add_argument("--seed", type=int, default=1)
@@ -101,28 +96,11 @@ def parse_args() -> argparse.Namespace:
         help="train on observations enlarged by this factor; validation and inference enlarge them the same way",
     )
     train.add_argument("--size", type=int, default=256, help="edge length observations are resized to when --crop is 0")
-    train.add_argument("--arch", choices=sorted(ARCHITECTURES), default="unet")
-    train.add_argument("--base-channels", type=int, default=32, help="unet/transunet only")
-    train.add_argument("--depth", type=int, default=4, help="unet/transunet only")
-    train.add_argument("--bilinear", action=argparse.BooleanOptionalAction, default=True, help="unet/transunet only")
-    train.add_argument("--embed-dims", type=int, nargs="+", default=[32, 64, 160, 256], help="segformer only")
-    train.add_argument("--depths", type=int, nargs="+", default=[2, 2, 2, 2], help="segformer only")
-    train.add_argument("--num-heads", type=int, nargs="+", default=[1, 2, 5, 8], help="segformer only")
-    train.add_argument("--decoder-dim", type=int, default=256, help="segformer only")
-    train.add_argument("--blocks", type=int, default=4, help="transunet only: attention blocks at the bottleneck")
-    train.add_argument("--heads", type=int, default=8, help="transunet only: attention heads")
-    train.add_argument("--embed-dim", type=int, default=None, help="transunet only: token width (default: the bottleneck width)")
-    train.add_argument("--mlp-ratio", type=float, default=2.0, help="transunet only")
-    train.add_argument("--decoder", choices=sorted(DECODERS), default="unet", help="pretrained only")
-    train.add_argument("--encoder", default="resnet34", help="pretrained only: smp encoder name, tu- prefixed for timm")
-    train.add_argument(
-        "--encoder-weights", default="imagenet", help="pretrained only: weights to start the encoder from; 'none' for random"
-    )
-    train.add_argument(
-        "--encoder-lr-scale", type=float, default=1.0, help="pretrained only: encoder learning rate as a fraction of --lr"
-    )
-    train.add_argument("--dropout", type=float, default=0.0, help="segformer/transunet only")
-    train.add_argument("--drop-path", type=float, default=0.1, help="segformer/transunet only")
+    train.add_argument("--arch", choices=sorted(ARCHITECTURES), default="pretrained")
+    train.add_argument("--decoder", choices=sorted(DECODERS), default="unet")
+    train.add_argument("--encoder", default="resnet34", help="smp encoder name, tu- prefixed for timm")
+    train.add_argument("--encoder-weights", default="imagenet", help="weights to start the encoder from; 'none' for random")
+    train.add_argument("--encoder-lr-scale", type=float, default=1.0, help="encoder learning rate as a fraction of --lr")
     train.add_argument("--val-fraction", type=float, default=0.2)
     train.add_argument(
         "--folds", type=int, default=0, help="hold out one fold of a grouped k-fold instead of --val-fraction; 0 disables it"
@@ -130,21 +108,6 @@ def parse_args() -> argparse.Namespace:
     train.add_argument("--fold", type=int, default=0, help="the fold held out when --folds is set")
     train.add_argument(
         "--raster", choices=RASTERS, default="coco", help="how annotation polygons are filled; coco matches the scored masks"
-    )
-    train.add_argument(
-        "--pseudo-labels",
-        default=None,
-        help="directory of per-fold soft targets for unlabeled observations (scripts/pseudo_label.py); needs --folds",
-    )
-    train.add_argument(
-        "--pseudo-images", default="runs/external/gong/jpeg", help="directory holding the pseudo-labelled observations"
-    )
-    train.add_argument("--pseudo-crops-per-image", type=int, default=1, help="crops drawn per pseudo-labelled observation")
-    train.add_argument(
-        "--preprocess",
-        choices=PREPROCESSING,
-        default="none",
-        help="read observations from a preprocessed cache; build it first with scripts/preprocess.py",
     )
     train.add_argument(
         "--targets",
@@ -169,109 +132,9 @@ def parse_args() -> argparse.Namespace:
         "--pos-weight", type=float, default=None, help="positive class weight in the BCE term (default: estimated)"
     )
     train.add_argument("--dice-weight", type=float, default=0.5)
-    train.add_argument(
-        "--category-head-weight",
-        type=float,
-        default=0.0,
-        help="pretrained only: weight of an auxiliary head predicting the filament category (Left/Right/Unidentifiable); 0 disables it",
-    )
-    train.add_argument(
-        "--magnetic-head-weight",
-        type=float,
-        default=0.0,
-        help="pretrained only: weight of a training-only head regressing GONG magnetogram targets "
-        "(PIL proximity, strong flux); 0 disables it",
-    )
-    train.add_argument(
-        "--magnetic-targets",
-        default="runs/external/gong_bzi/targets",
-        help="directory of precomputed magnetic targets (scripts/magnetic_targets.py)",
-    )
     train.add_argument("--lovasz-weight", type=float, default=0.0, help="weight of the Lovász hinge term; 0 leaves it out")
     train.add_argument(
-        "--tversky-beta",
-        type=float,
-        default=0.5,
-        help="weight of false negatives in the overlap term (Tversky); 0.5 is Dice, above it favours recall",
-    )
-    train.add_argument(
-        "--thickness-weight-cap",
-        type=float,
-        default=0.0,
-        help="weight filament pixels in the BCE and Lovász terms by 6 / local half-width, clamped to [1, cap], "
-        "so barbs and thin ends count as much as the body; needs --crop; 0 disables it",
-    )
-    train.add_argument(
-        "--barb-targets",
-        default=None,
-        help="directory of barb PNGs grown from the images outside the annotations (scripts/barb_targets.py); "
-        "the target is raised to --barb-level there; needs --crop at the annotated resolution",
-    )
-    train.add_argument("--barb-level", type=float, default=1.0, help="target value at the --barb-targets pixels")
-    train.add_argument(
-        "--thin-head-weight",
-        type=float,
-        default=0.0,
-        help="pretrained only: weight of a training-only head predicting the thin part of the annotation "
-        "(opening residual, r=2) and the spine heatmap; 0 disables it",
-    )
-    train.add_argument(
-        "--barb-head-weight",
-        type=float,
-        default=0.0,
-        help="pretrained only: weight of a head predicting the thin part of the annotation of the records "
-        "that draw barbs (--barb-records), kept in the checkpoint for scripts/barb_head.py; 0 disables it",
-    )
-    train.add_argument(
-        "--head-lr-scale",
-        type=float,
-        default=1.0,
-        help="pretrained only: learning rate of the output layer as a multiple of --lr, e.g. so a new barb head "
-        "channel is learnt within a fine-tune",
-    )
-    train.add_argument(
-        "--barb-records",
-        default="runs/barb_drawers.json",
-        help="JSON list of the image ids of the records that draw barbs (scripts/barb_drawers.py)",
-    )
-    train.add_argument(
         "--init-checkpoint", default=None, help="start from this checkpoint's weights (same architecture), e.g. to fine-tune"
-    )
-    train.add_argument(
-        "--hard-negatives", default=None, help="JSON of per-file (x, y) look-alike points (scripts/hard_negatives.py)"
-    )
-    train.add_argument(
-        "--hard-negative-prob",
-        type=float,
-        default=0.15,
-        help="share of crops centred on a hard negative, taken from random crops",
-    )
-    train.add_argument(
-        "--morph-open-weight",
-        type=float,
-        default=0.0,
-        help="weight of the opening residual term: penalises thin spurs and speckle the model predicts",
-    )
-    train.add_argument(
-        "--morph-close-weight",
-        type=float,
-        default=0.0,
-        help="weight of the closing residual term: penalises the small gaps that split one filament in two",
-    )
-    train.add_argument(
-        "--morph-cldice-weight",
-        type=float,
-        default=0.0,
-        help="weight of the soft centre-line Dice term: rewards keeping a filament connected end to end",
-    )
-    train.add_argument("--morph-kernel", choices=sorted(KERNEL_SHAPES), default="disk", help="structuring element shape")
-    train.add_argument("--morph-kernel-size", type=int, default=3, help="structuring element edge length in pixels, odd")
-    train.add_argument("--morph-skeleton-iters", type=int, default=5, help="erosion steps in the clDice skeleton")
-    train.add_argument(
-        "--morph-warmup-epochs",
-        type=int,
-        default=0,
-        help="ramp the morphology terms in linearly over this many epochs; 0 applies them from the first step",
     )
     train.add_argument("--warmup-epochs", type=int, default=1)
     train.add_argument("--grad-clip", type=float, default=1.0)
@@ -286,10 +149,12 @@ def parse_args() -> argparse.Namespace:
         help="continue from output-dir/last.pt where it left off instead of starting over; "
         "a no-op if it already reached --epochs",
     )
+    # the final models read the observations as they are; solfire-lab adds --preprocess
+    train.set_defaults(preprocess="none")
 
     predict = subparsers.add_parser("predict", help="write predictions for the test observations")
     predict.add_argument(
-        "--checkpoint", nargs="+", default=["runs/unet/best.pt"], help="several checkpoints average their probabilities"
+        "--checkpoint", nargs="+", default=["runs/pretrained/best.pt"], help="several checkpoints average their probabilities"
     )
     predict.add_argument(
         "--calibration", default=None, help="calibration JSON to take the post-processing from; default: the first checkpoint"
@@ -330,7 +195,7 @@ def parse_args() -> argparse.Namespace:
         default=True,
         help="use the crop refiner when the calibration names one (scripts/refine.py)",
     )
-    predict.add_argument("--output-dir", default="runs/unet/predictions")
+    predict.add_argument("--output-dir", default="runs/pretrained/predictions")
 
     calibration = subparsers.add_parser(
         "calibrate", help="tune the decision threshold, the morphological offset and the minimum area on validation"
@@ -338,7 +203,7 @@ def parse_args() -> argparse.Namespace:
     calibration.add_argument(
         "--checkpoint",
         nargs="+",
-        default=["runs/unet/best.pt"],
+        default=["runs/pretrained/best.pt"],
         help="several checkpoints are averaged on the observations they all held out, and pooled across different splits",
     )
     calibration.add_argument("--thresholds", type=float, nargs="+", default=list(CALIBRATION_THRESHOLDS))
@@ -386,27 +251,19 @@ def parse_args() -> argparse.Namespace:
         "scored on them, the others on the probabilities",
     )
 
-    fitting = subparsers.add_parser(
-        "fit-filter", help="learn which predicted instances to submit, on the held-out maps of the checkpoints"
-    )
-    fitting.add_argument("--checkpoint", nargs="+", required=True, help="as for calibrate")
-    fitting.add_argument("--threshold", type=float, default=0.5, help="probability threshold the instances are cut at")
-    fitting.add_argument("--offset", type=int, default=0)
-    fitting.add_argument("--tile", type=int, default=0, help="inference window; 0 follows the checkpoint")
-    fitting.add_argument("--overlap", type=float, default=DEFAULT_OVERLAP)
-    fitting.add_argument("--tile-batch", type=int, default=8)
-    fitting.add_argument("--tta", action=argparse.BooleanOptionalAction, default=True)
-    fitting.add_argument(
-        "--variants",
-        nargs="+",
-        default=["base"],
-        help="inference variants averaged per checkpoint, each cached on its own: base, or '-'-joined parts "
-        "turned|d4, s<scale>, o<overlap> (e.g. base turned s1.25); base+turned is the full D4 average",
-    )
-    fitting.add_argument("--workers", type=int, default=8)
-    fitting.add_argument("--output", required=True, help="calibration JSON to write; the filter is pickled next to it")
+    extension.add_arguments({"train": train, "predict": predict, "calibrate": calibration, "evaluate": evaluation})
+    return parser, extension.add_commands(subparsers)
 
-    return parser.parse_args()
+
+def parse_args(argv=None, extension: Extension = CORE) -> argparse.Namespace:
+    """
+    Parse the command line.
+    :param argv: Arguments, or ``None`` for ``sys.argv``
+    :param extension: Adds options and subcommands
+    :return: Parsed arguments
+    """
+    parser, _ = build_parser(extension)
+    return parser.parse_args(argv)
 
 
 def resolve_device(name=None) -> torch.device:
@@ -420,63 +277,27 @@ def resolve_device(name=None) -> torch.device:
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-def build_model_config(args) -> dict:
+def build_model_config(args, extension: Extension = CORE) -> dict:
     """
     Collect the constructor arguments of the requested architecture.
     :param args: Parsed ``train`` arguments
+    :param extension: Builds the architectures other than ``pretrained``, and sets the auxiliary channels
     :return: Keyword arguments for the matching entry of :data:`networks.ARCHITECTURES`
     """
-    if args.arch in {"unet", "transunet"}:
-        config = {
-            "in_channels": 1,
-            "out_channels": 1,
-            "base_channels": args.base_channels,
-            "depth": args.depth,
-            "bilinear": args.bilinear,
-        }
-        if args.arch == "transunet":
-            config |= {
-                "blocks": args.blocks,
-                "num_heads": args.heads,
-                "embed_dim": args.embed_dim,
-                "mlp_ratio": args.mlp_ratio,
-                "dropout": args.dropout,
-                "drop_path": args.drop_path,
-            }
-        return config
-
-    if args.arch == "pretrained":
-        weights = None if args.encoder_weights.lower() == "none" else args.encoder_weights
-        return {
-            "in_channels": 1,
-            "out_channels": 1,
-            "decoder": args.decoder,
-            "encoder": args.encoder,
-            "encoder_weights": weights,
-            "aux_channels": 3
-            if args.category_head_weight > 0
-            else 2
-            if args.magnetic_head_weight > 0 or args.thin_head_weight > 0
-            else 1
-            if args.barb_head_weight > 0
-            else 0,
-        }
-
-    stages = len(args.embed_dims)
+    if args.arch != "pretrained":
+        return extension.model_config(args)
+    weights = None if args.encoder_weights.lower() == "none" else args.encoder_weights
     return {
         "in_channels": 1,
         "out_channels": 1,
-        "embed_dims": tuple(args.embed_dims),
-        "depths": tuple(args.depths),
-        "num_heads": tuple(args.num_heads),
-        "reductions": tuple(max(1, 8 // 2**stage) for stage in range(stages)),
-        "decoder_dim": args.decoder_dim,
-        "dropout": args.dropout,
-        "drop_path": args.drop_path,
+        "decoder": args.decoder,
+        "encoder": args.encoder,
+        "encoder_weights": weights,
+        "aux_channels": extension.aux_channels(args),
     }
 
 
-def build_datasets(args) -> tuple[FilamentDataset | FilamentCropDataset | ConcatDataset, FilamentDataset, int]:
+def build_datasets(args, extension: Extension = CORE):
     """
     Build the training and validation datasets for the requested resolution mode.
 
@@ -485,6 +306,7 @@ def build_datasets(args) -> tuple[FilamentDataset | FilamentCropDataset | Concat
     eleven pixels wide. Validation then runs on whole observations, which is the
     shape the submission is written in.
     :param args: Parsed ``train`` arguments
+    :param extension: Builds the training crops and adds samples
     :return: Tuple of (train dataset, validation dataset, validation batch size)
     """
     images, _ = load_annotations()
@@ -499,38 +321,17 @@ def build_datasets(args) -> tuple[FilamentDataset | FilamentCropDataset | Concat
         valid_dataset = FilamentDataset(val_ids, size=args.size, **common)
         return train_dataset, valid_dataset, args.batch_size
 
-    train_dataset = FilamentCropDataset(
-        train_ids,
-        crop=args.crop,
-        native_size=native_size,
-        repeat=args.crops_per_image,
-        foreground_prob=args.foreground_prob,
-        targets=args.targets,
-        hard_negatives=json.loads(Path(args.hard_negatives).read_text()) if args.hard_negatives else None,
-        hard_negative_prob=args.hard_negative_prob if args.hard_negatives else 0.0,
-        categories=args.category_head_weight > 0,
-        magnetic=MagneticTargets(args.magnetic_targets) if args.magnetic_head_weight > 0 else None,
-        thickness_cap=args.thickness_weight_cap,
-        thin_head=args.thin_head_weight > 0,
-        input_scale=args.input_scale,
-        barb_targets=args.barb_targets,
-        barb_level=args.barb_level,
-        barb_records=json.loads(Path(args.barb_records).read_text()) if args.barb_head_weight > 0 else None,
+    options = {
+        "crop": args.crop,
+        "native_size": native_size,
+        "repeat": args.crops_per_image,
+        "foreground_prob": args.foreground_prob,
+        "targets": args.targets,
+        "input_scale": args.input_scale,
         **common,
-    )
+    }
+    train_dataset = extension.extend_train_dataset(args, extension.train_dataset(args, train_ids, options))
     valid_dataset = FilamentDataset(val_ids, size=native_size, **common)
-    if args.pseudo_labels:
-        if not args.folds:
-            raise SystemExit("--pseudo-labels needs --folds: the targets of fold k come from teachers that held fold k out")
-        pseudo = PseudoLabelledCropDataset(
-            args.pseudo_images,
-            Path(args.pseudo_labels) / f"fold{args.fold}",
-            crop=args.crop,
-            repeat=args.pseudo_crops_per_image,
-            foreground_prob=args.foreground_prob,
-        )
-        print(f"pseudo-labelled: {len(pseudo)} crops from {len(pseudo.targets)} observations")
-        train_dataset = ConcatDataset([train_dataset, pseudo])
     return train_dataset, valid_dataset, 1
 
 
@@ -541,7 +342,7 @@ def require_images(images_dir) -> Path:
     :return: ``images_dir``
     """
     if not Path(images_dir).is_dir():
-        raise SystemExit(f"{images_dir} does not exist; build it with `python scripts/preprocess.py`")
+        raise SystemExit(f"{images_dir} does not exist; build it with `python scripts/experiments/preprocess.py`")
     return Path(images_dir)
 
 
@@ -569,17 +370,19 @@ def load_matching(model, state) -> None:
     model.load_state_dict(own)
 
 
-def run_training(args, device) -> None:
+def run_training(args, device, extension: Extension = CORE) -> None:
     """
     Train a segmentation model and checkpoint the best validation Panoptic Quality.
     :param args: Parsed ``train`` arguments
     :param device: Device to run on
+    :param extension: Adds datasets, objectives and checks
     :return: None
     """
+    extension.check(args)
     output_dir = args.output_dir or f"runs/{args.arch}"
     categories = tuple(args.categories) if args.categories else None
 
-    train_dataset, valid_dataset, val_batch_size = build_datasets(args)
+    train_dataset, valid_dataset, val_batch_size = build_datasets(args, extension)
     print(f"train {len(train_dataset)} crops / val {len(valid_dataset)} observations")
 
     pos_weight = args.pos_weight
@@ -609,20 +412,13 @@ def run_training(args, device) -> None:
         raise SystemExit("--swa-epochs and --patience need a validation split")
     val_loader = DataLoader(valid_dataset, batch_size=val_batch_size, shuffle=False, **loader_kwargs) if held_out else None
 
-    model_config = build_model_config(args)
+    model_config = build_model_config(args, extension)
     model = ARCHITECTURES[args.arch](**model_config).to(device)
     if args.init_checkpoint:
         start = torch.load(args.init_checkpoint, map_location=device, weights_only=False)
         load_matching(model, start["model_state"])
         print(f"starting from {args.init_checkpoint} (epoch {start.get('epoch')})")
-    if args.barb_head_weight > 0:
-        # barbs cover well under one percent of a crop; a fresh channel at logit 0 says 0.5 everywhere
-        # and a fine-tune learning rate takes far longer than 8 epochs to pull it down
-        head = model.get_submodule("net.segmentation_head.0")
-        assert isinstance(head, torch.nn.Conv2d) and head.bias is not None
-        with torch.no_grad():
-            head.weight[1:].mul_(0.1)
-            head.bias[1:] = BARB_PRIOR_LOGIT
+    extension.prepare_model(args, model)
     n_params = sum(p.numel() for p in model.parameters())
     print(f"{type(model).__name__}: {n_params / 1e6:.2f}M parameters")
     encoder_lr_scale = 1.0
@@ -632,76 +428,13 @@ def run_training(args, device) -> None:
         # the state dict carries the trained weights, so rebuilding must not fetch the pretrained ones again
         model_config = model_config | {"encoder_weights": None}
 
-    if args.barb_targets and not args.crop:
-        raise SystemExit("--barb-targets needs --crop")
-    thin_structure = args.thickness_weight_cap > 0 or args.thin_head_weight > 0
-    if thin_structure:
-        if not args.crop:
-            raise SystemExit("--thickness-weight-cap and --thin-head-weight need --crop")
-        if args.pseudo_labels:
-            raise SystemExit("--thickness-weight-cap and --thin-head-weight do not support --pseudo-labels")
-        if args.category_head_weight > 0 or args.magnetic_head_weight > 0:
-            raise SystemExit("the thin-structure targets cannot be combined with the category or magnetic head")
-        if max(args.morph_open_weight, args.morph_close_weight, args.morph_cldice_weight) > 0:
-            raise SystemExit("the thin-structure targets cannot be combined with the morphology terms")
-    if args.barb_head_weight > 0:
-        if args.arch != "pretrained" or not args.crop:
-            raise SystemExit("--barb-head-weight needs --arch pretrained and --crop")
-        if thin_structure or args.pseudo_labels or args.category_head_weight > 0 or args.magnetic_head_weight > 0:
-            raise SystemExit("--barb-head-weight cannot be combined with the other heads, pixel weights or pseudo-labels")
-        if max(args.morph_open_weight, args.morph_close_weight, args.morph_cldice_weight) > 0:
-            raise SystemExit("--barb-head-weight cannot be combined with the morphology terms")
-    if args.head_lr_scale != 1.0 and args.arch != "pretrained":
-        raise SystemExit("--head-lr-scale needs --arch pretrained")
-    if args.thin_head_weight > 0 and args.arch != "pretrained":
-        raise SystemExit("--thin-head-weight needs --arch pretrained")
-    if not 0 < args.tversky_beta < 1:
-        raise SystemExit("--tversky-beta must lie strictly between 0 and 1")
-    if args.thickness_weight_cap and args.thickness_weight_cap < 1:
-        raise SystemExit("--thickness-weight-cap must be at least 1")
-
-    base_criterion = BCEDiceLoss(
-        bce_weight=1.0 - args.dice_weight,
-        dice_weight=args.dice_weight,
-        pos_weight=pos_weight,
-        lovasz_weight=args.lovasz_weight,
-        pixel_weights=args.thickness_weight_cap > 0,
-        tversky_beta=args.tversky_beta,
-    )
-    criterion = build_criterion(base_criterion, args)
-    if args.thin_head_weight > 0:
-        criterion = ThinHeadLoss(criterion, args.thin_head_weight)
-    if args.barb_head_weight > 0:
-        criterion = BarbHeadLoss(criterion, args.barb_head_weight)
-    if args.category_head_weight > 0:
-        if args.arch != "pretrained":
-            raise SystemExit("--category-head-weight needs --arch pretrained")
-        criterion = CategoryHeadLoss(criterion, args.category_head_weight)
-    if args.magnetic_head_weight > 0:
-        if args.arch != "pretrained":
-            raise SystemExit("--magnetic-head-weight needs --arch pretrained")
-        if args.category_head_weight > 0:
-            raise SystemExit("--magnetic-head-weight and --category-head-weight cannot be combined")
-        if args.pseudo_labels:
-            raise SystemExit("--magnetic-head-weight does not support --pseudo-labels yet")
-        if not args.crop:
-            raise SystemExit("--magnetic-head-weight needs --crop")
-        criterion = MagneticHeadLoss(criterion, args.magnetic_head_weight)
-    criterion = criterion.to(device)
-    if isinstance(criterion, MorphologyLoss):
-        terms = [
-            f"{name} {weight:g}"
-            for name, weight in (
-                ("open", criterion.open_weight),
-                ("close", criterion.close_weight),
-                ("cldice", criterion.cldice_weight),
-            )
-            if weight > 0
-        ]
-        warmup = f", warmup {args.morph_warmup_epochs} epochs" if args.morph_warmup_epochs else ""
-        print(f"morphology loss (serron, {args.morph_kernel} {args.morph_kernel_size}px): {', '.join(terms)}{warmup}")
+    criterion = extension.wrap_criterion(args, extension.criterion(args, pos_weight)).to(device)
     optimizer = build_optimizer(
-        model, lr=args.lr, weight_decay=args.weight_decay, encoder_lr_scale=encoder_lr_scale, head_lr_scale=args.head_lr_scale
+        model,
+        lr=args.lr,
+        weight_decay=args.weight_decay,
+        encoder_lr_scale=encoder_lr_scale,
+        **extension.optimizer_options(args),
     )
     scheduler = build_scheduler(optimizer, args.epochs, max(1, len(train_loader)), warmup_epochs=args.warmup_epochs)
 
@@ -722,35 +455,10 @@ def run_training(args, device) -> None:
         "targets": args.targets,
         "preprocess": args.preprocess,
         "lovasz_weight": args.lovasz_weight,
-        "tversky_beta": args.tversky_beta,
-        "category_head_weight": args.category_head_weight,
-        "magnetic_head_weight": args.magnetic_head_weight,
-        "magnetic_targets": args.magnetic_targets if args.magnetic_head_weight > 0 else None,
-        "thickness_weight_cap": args.thickness_weight_cap,
-        "thin_head_weight": args.thin_head_weight,
-        "barb_targets": args.barb_targets,
-        "barb_level": args.barb_level,
-        "barb_head_weight": args.barb_head_weight,
-        "head_lr_scale": args.head_lr_scale,
-        "barb_records": args.barb_records if args.barb_head_weight > 0 else None,
         "init_checkpoint": args.init_checkpoint,
-        "hard_negatives": args.hard_negatives,
-        "hard_negative_prob": args.hard_negative_prob if args.hard_negatives else 0.0,
-        "pseudo_labels": args.pseudo_labels,
-        "pseudo_crops_per_image": args.pseudo_crops_per_image if args.pseudo_labels else 0,
         "seed": args.seed,
         "categories": list(categories) if categories else None,
-        "morph": {
-            "open_weight": args.morph_open_weight,
-            "close_weight": args.morph_close_weight,
-            "cldice_weight": args.morph_cldice_weight,
-            "kernel": args.morph_kernel,
-            "kernel_size": args.morph_kernel_size,
-            "skeleton_iters": args.morph_skeleton_iters,
-            "warmup_epochs": args.morph_warmup_epochs,
-        }
-        if isinstance(criterion, MorphologyLoss)
-        else None,
+        **extension.checkpoint_metadata(args),
     }
 
     def validate_tiled(network):
@@ -824,11 +532,12 @@ def checkpoint_setting(checkpoint, name, override, default=None):
     return default if value is None else value
 
 
-def run_prediction(args, device) -> None:
+def run_prediction(args, device, extension: Extension = CORE) -> None:
     """
     Write COCO-style detections for the unlabelled test observations.
     :param args: Parsed ``predict`` arguments
     :param device: Device to run on
+    :param extension: Loads a learned instance filter a calibration names
     :return: None
     """
     loaded = [load_model(path, device) for path in args.checkpoint]
@@ -843,7 +552,7 @@ def run_prediction(args, device) -> None:
     offset = checkpoint_setting(settings, "offset", args.offset, 0)
     min_area = checkpoint_setting(settings, "min_area", args.min_area, MIN_AREA)
     min_score = checkpoint_setting(settings, "min_score", args.min_score, 0.0)
-    instance_filter = InstanceFilter.load(settings["filter"]) if settings.get("filter") else None
+    instance_filter = extension.instance_filter(settings)
     precision = args.precision or settings.get("precision") or "fp32"
     skip_dark = settings.get("skip_dark", False) if args.skip_dark is None else args.skip_dark
     variant_names = settings.get("variants") or ["base"]
@@ -1049,78 +758,30 @@ def run_calibration(args, device) -> None:
     print(f"stored in {checkpoint_path} and {checkpoint_path.with_suffix('.calibration.json')}")
 
 
-def run_filter_fitting(args, device) -> None:
-    """
-    Fit the learned instance filter on held-out maps and write a calibration that uses it.
-    :param args: Parsed ``fit-filter`` arguments
-    :param device: Device to run on
-    :return: None
-    """
-    sources, per_file, tiles, method = held_out_maps(args, device)
-    if method == "mixed":
-        raise SystemExit("the checkpoints were trained on different preprocessing; the filter reads one kind of image")
-    data = collect_instances(
-        sources,
-        per_file,
-        args.threshold,
-        args.offset,
-        images_dir=require_images(preprocessed_dir(TRAIN_IMAGES, method)),
-        workers=args.workers,
-    )
-    instance_filter, report = fit_instance_filter(data, args.threshold, args.offset)
-    path = filter_path(args.output)
-    instance_filter.save(path)
-    print(
-        f"out-of-fold pq {report['pq']:.4f} at cut {report['cut']:.2f}, keeping {report['kept']} of "
-        f"{report['instances']} instances over {report['files']} observations -> {path}"
-    )
-    calibration = {
-        "threshold": args.threshold,
-        "offset": args.offset,
-        "min_area": 0,
-        "min_score": 0.0,
-        "filter": str(path),
-        "pq": report["pq"],
-        "filter_report": report,
-        "tile": tiles.pop() if len(tiles) == 1 else None,
-        "overlap": args.overlap,
-        "tta": args.tta,
-        "checkpoints": [str(checkpoint) for checkpoint in args.checkpoint],
-    }
-    write_calibration(args.output, calibration)
-    print(f"stored in {args.output}")
-
-
-def run_evaluation(args, device) -> None:
+def run_evaluation(args, device, extension: Extension = CORE) -> None:
     """
     Compare calibrations on every quantity the final judging grades.
     :param args: Parsed ``evaluate`` arguments
     :param device: Device to run on
+    :param extension: Supplies the cross-validated filters of a calibration with a learned filter
     :return: None
     """
     sources, per_file, _, method = held_out_maps(args, device)
     images_dir = None if method == "mixed" else require_images(preprocessed_dir(TRAIN_IMAGES, method))
-    instances: dict[tuple[float, int], dict] = {}
+    cache: dict = {}
     summaries = {}
     for path in args.calibration:
         calibration = json.loads(Path(path).read_text())
-        instance_data = None
         refined_dir = args.refined_dir if "refiner" in calibration else None
+        filters = None
         if calibration.get("filter") and refined_dir is None:
-            if images_dir is None:
-                raise SystemExit("the checkpoints were trained on different preprocessing; the filter reads one kind of image")
-            cut_at = (float(calibration["threshold"]), int(calibration.get("offset", 0)))
-            if cut_at not in instances:
-                instances[cut_at] = collect_instances(
-                    sources, per_file, cut_at[0], cut_at[1], images_dir=images_dir, workers=args.workers
-                )
-            instance_data = instances[cut_at]
+            filters = extension.evaluation_filters(calibration, sources, per_file, images_dir, args.workers, cache)
         summary, overlaps = evaluate(
             sources,
             per_file,
             calibration,
             images_dir=images_dir or TRAIN_IMAGES,
-            instance_data=instance_data,
+            filters=filters,
             workers=args.workers,
             refined_dir=refined_dir,
         )
@@ -1157,27 +818,30 @@ def run_evaluation(args, device) -> None:
         print(f"stored in {args.output}")
 
 
-def main() -> None:
+def main(argv=None, extension: Extension = CORE) -> None:
     """
     Dispatch to the requested subcommand.
+    :param argv: Arguments, or ``None`` for ``sys.argv``
+    :param extension: Adds options and subcommands; :mod:`solfire.experiments.main` passes the experiments'
     :return: None
     """
-    args = parse_args()
+    parser, commands = build_parser(extension)
+    args = parser.parse_args(argv)
     set_seeds(args.seed)
     device = resolve_device(args.device)
     print(f"device: {device}")
     print(f"data: {DATA_ROOT}")
 
-    if args.command == "train":
-        run_training(args, device)
+    if args.command in commands:
+        commands[args.command](args, device)
+    elif args.command == "train":
+        run_training(args, device, extension)
     elif args.command == "calibrate":
         run_calibration(args, device)
     elif args.command == "evaluate":
-        run_evaluation(args, device)
-    elif args.command == "fit-filter":
-        run_filter_fitting(args, device)
+        run_evaluation(args, device, extension)
     else:
-        run_prediction(args, device)
+        run_prediction(args, device, extension)
 
 
 def set_seeds(seed: int) -> None:

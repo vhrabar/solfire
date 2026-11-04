@@ -176,10 +176,14 @@ class InstanceFilter:
 
 class _RenamedPackageUnpickler(pickle.Unpickler):
     """
-    Reads filters pickled before the package moved from ``src`` to ``solfire``.
+    Reads filters pickled before this module moved: first the package was ``src``, and the
+    filter lived in ``inference.instance_filter`` before it joined the experiments.
     """
 
+    MOVED = {"src.inference.instance_filter": __name__, "solfire.inference.instance_filter": __name__}
+
     def find_class(self, module, name):
+        module = self.MOVED.get(module, module)
         if module == "src" or module.startswith("src."):
             module = "solfire" + module.removeprefix("src")
         return super().find_class(module, name)

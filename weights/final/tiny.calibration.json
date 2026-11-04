@@ -1,0 +1,43 @@
+{
+  "threshold": 0.375,
+  "offset": -1,
+  "min_area": 0,
+  "min_score": 0.675,
+  "pq": 0.45307644578777057,
+  "tp": 5352,
+  "fp": 2531,
+  "fn": 2847,
+  "at_edge": [
+    "min_area"
+  ],
+  "files": 707,
+  "records": 1154,
+  "tile": 512,
+  "overlap": 0.25,
+  "tta": true,
+  "checkpoints": [
+    "weights/final/c06_full-lovasz-hrnet32_seed1-best.pt"
+  ],
+  "precision": "fp16",
+  "skip_dark": true,
+  "variants": [
+    "base"
+  ],
+  "barbs": {
+    "contrast": 0.05,
+    "ridge": 0.025,
+    "band": 20,
+    "min_ratio": 4.0,
+    "max_width": 4.0
+  },
+  "preset": {
+    "name": "tiny",
+    "summary": "the full-data HRNet-W32 U-Net alone, barbs",
+    "source_calibration": "runs/ensembles/ctl-hrnet-oof.calibration.json",
+    "oof_pq_without_barbs": 0.4531,
+    "oof_pq": null,
+    "seconds_per_image": 1.5,
+    "public_lb": null,
+    "refiner_fold": null
+  }
+}

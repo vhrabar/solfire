@@ -1,0 +1,233 @@
+{
+  "presets": {
+    "final": {
+      "name": "final",
+      "summary": "4 models with TTA (o0.5 + turned), crop refiner, barbs",
+      "source_calibration": "runs/ensembles/b6-zoom-ssl-tta32-barbs.calibration.json",
+      "oof_pq_without_barbs": 0.4692,
+      "oof_pq": 0.4668,
+      "seconds_per_image": 12.9,
+      "public_lb": 0.4,
+      "refiner_fold": 0,
+      "calibration": "final.calibration.json",
+      "files": [
+        "c02_full-lovasz-ssl-r34_seed1-best.pt",
+        "c04_full-lovasz-mitb2_seed1-best.pt",
+        "c06_full-lovasz-hrnet32_seed1-best.pt",
+        "c01_full-zoom-hrnet32_seed1-best.pt",
+        "refiner-zoom-ssl-tta-rt-fold0.pt"
+      ],
+      "bytes": 302905691
+    },
+    "fast": {
+      "name": "fast",
+      "summary": "the same 4 models without TTA, crop refiner, barbs",
+      "source_calibration": "runs/ensembles/b6-zoom-ssl-refined.calibration.json",
+      "oof_pq_without_barbs": 0.4664,
+      "oof_pq": null,
+      "seconds_per_image": 5.1,
+      "public_lb": 0.4,
+      "refiner_fold": 0,
+      "calibration": "fast.calibration.json",
+      "files": [
+        "c02_full-lovasz-ssl-r34_seed1-best.pt",
+        "c04_full-lovasz-mitb2_seed1-best.pt",
+        "c06_full-lovasz-hrnet32_seed1-best.pt",
+        "c01_full-zoom-hrnet32_seed1-best.pt",
+        "refiner-zoom-fold0.pt"
+      ],
+      "bytes": 302902417
+    },
+    "lite": {
+      "name": "lite",
+      "summary": "3 models (ImageNet ResNet34 U-Net++, MiT-B2, HRNet-W32), crop refiner, barbs",
+      "source_calibration": "runs/ensembles/b6-full-fp16-refined.calibration.json",
+      "oof_pq_without_barbs": 0.4637,
+      "oof_pq": null,
+      "seconds_per_image": 2.7,
+      "public_lb": 0.4,
+      "refiner_fold": 0,
+      "calibration": "lite.calibration.json",
+      "files": [
+        "c02_full-lovasz-r34_seed1-best.pt",
+        "c04_full-lovasz-mitb2_seed1-best.pt",
+        "c06_full-lovasz-hrnet32_seed1-best.pt",
+        "refiner-r34-fold0.pt"
+      ],
+      "bytes": 229813398
+    },
+    "tiny": {
+      "name": "tiny",
+      "summary": "the full-data HRNet-W32 U-Net alone, barbs",
+      "source_calibration": "runs/ensembles/ctl-hrnet-oof.calibration.json",
+      "oof_pq_without_barbs": 0.4531,
+      "oof_pq": null,
+      "seconds_per_image": 1.5,
+      "public_lb": null,
+      "refiner_fold": null,
+      "calibration": "tiny.calibration.json",
+      "files": [
+        "c06_full-lovasz-hrnet32_seed1-best.pt"
+      ],
+      "bytes": 73091297
+    }
+  },
+  "files": [
+    {
+      "file": "c02_full-lovasz-ssl-r34_seed1-best.pt",
+      "source": "runs/full_ssl/c02_full-lovasz-ssl-r34_seed1/best.pt",
+      "refiner": false,
+      "arch": "pretrained",
+      "model_config": {
+        "in_channels": 1,
+        "out_channels": 1,
+        "decoder": "unetplusplus",
+        "encoder": "resnet34",
+        "encoder_weights": null,
+        "aux_channels": 0
+      },
+      "epoch": 8,
+      "input_scale": 1.0,
+      "seed": 1,
+      "sha256": "064b71eaa3383f5e8f7ebfa338bb8ad70e896a08f9afc41c3f2571037ddc1e3e",
+      "bytes": 52389839,
+      "presets": [
+        "final",
+        "fast"
+      ]
+    },
+    {
+      "file": "c04_full-lovasz-mitb2_seed1-best.pt",
+      "source": "runs/full/c04_full-lovasz-mitb2_seed1/best.pt",
+      "refiner": false,
+      "arch": "pretrained",
+      "model_config": {
+        "in_channels": 1,
+        "out_channels": 1,
+        "decoder": "unet",
+        "encoder": "mit_b2",
+        "encoder_weights": null,
+        "aux_channels": 0
+      },
+      "epoch": 8,
+      "input_scale": 1.0,
+      "seed": 1,
+      "sha256": "10b62e7ebc712aaa5a77e7e5770fd8377d36879f22656c1c9d6248918f5e3f5a",
+      "bytes": 55255227,
+      "presets": [
+        "final",
+        "fast",
+        "lite"
+      ]
+    },
+    {
+      "file": "c06_full-lovasz-hrnet32_seed1-best.pt",
+      "source": "runs/full/c06_full-lovasz-hrnet32_seed1/best.pt",
+      "refiner": false,
+      "arch": "pretrained",
+      "model_config": {
+        "in_channels": 1,
+        "out_channels": 1,
+        "decoder": "unet",
+        "encoder": "tu-hrnet_w32",
+        "encoder_weights": null,
+        "aux_channels": 0
+      },
+      "epoch": 8,
+      "input_scale": 1.0,
+      "seed": 1,
+      "sha256": "877fdf5adbaca4b0de0d12b0966a890049ccca11f4ce76b4cd7fe307cd348c97",
+      "bytes": 73091297,
+      "presets": [
+        "final",
+        "fast",
+        "lite",
+        "tiny"
+      ]
+    },
+    {
+      "file": "c01_full-zoom-hrnet32_seed1-best.pt",
+      "source": "runs/full_zoom/c01_full-zoom-hrnet32_seed1/best.pt",
+      "refiner": false,
+      "arch": "pretrained",
+      "model_config": {
+        "in_channels": 1,
+        "out_channels": 1,
+        "decoder": "unet",
+        "encoder": "tu-hrnet_w32",
+        "encoder_weights": null,
+        "aux_channels": 0
+      },
+      "epoch": 12,
+      "input_scale": 2.0,
+      "seed": 1,
+      "sha256": "c7b91abcc0a33d1ffb3fd349bac59ffbc36276706331afc9332e61c1bc560a2a",
+      "bytes": 73087309,
+      "presets": [
+        "final",
+        "fast"
+      ]
+    },
+    {
+      "file": "refiner-zoom-ssl-tta-rt-fold0.pt",
+      "source": "runs/refiner/zoom-ssl-tta-rt/fold0.pt",
+      "refiner": true,
+      "fold": 0,
+      "epochs": 12,
+      "size": 256,
+      "sha256": "4577e4e50b45ed5c1ed55fe5867018aa4a92de2a0d0682c099d4799eb3ee1203",
+      "bytes": 49082019,
+      "presets": [
+        "final"
+      ]
+    },
+    {
+      "file": "refiner-zoom-fold0.pt",
+      "source": "runs/refiner/zoom/fold0.pt",
+      "refiner": true,
+      "fold": 0,
+      "epochs": 12,
+      "size": 256,
+      "sha256": "adabab07a07720461b986d2c5b51f3824ba9d8d4659b83ea5e9afab4b22613fa",
+      "bytes": 49078745,
+      "presets": [
+        "fast"
+      ]
+    },
+    {
+      "file": "c02_full-lovasz-r34_seed1-best.pt",
+      "source": "runs/full/c02_full-lovasz-r34_seed1/best.pt",
+      "refiner": false,
+      "arch": "pretrained",
+      "model_config": {
+        "in_channels": 1,
+        "out_channels": 1,
+        "decoder": "unetplusplus",
+        "encoder": "resnet34",
+        "encoder_weights": null,
+        "aux_channels": 0
+      },
+      "epoch": 8,
+      "input_scale": 1.0,
+      "seed": 1,
+      "sha256": "c9c47c6fd75ce055aa031bcd0dfbb8d5c054a95d6bd6bf3787eaa5c87ef9b9b9",
+      "bytes": 52388415,
+      "presets": [
+        "lite"
+      ]
+    },
+    {
+      "file": "refiner-r34-fold0.pt",
+      "source": "runs/refiner/r34/fold0.pt",
+      "refiner": true,
+      "fold": 0,
+      "epochs": 12,
+      "size": 256,
+      "sha256": "c0045e038ade039f3ede7150aaf60f4f18513e66c669e03a4c86008b5ccf7a41",
+      "bytes": 49078459,
+      "presets": [
+        "lite"
+      ]
+    }
+  ]
+}

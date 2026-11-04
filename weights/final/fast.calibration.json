@@ -1,0 +1,59 @@
+{
+  "threshold": 0.375,
+  "offset": -1,
+  "min_area": 0,
+  "min_score": 0.675,
+  "pq": 0.4598580847515591,
+  "tp": 5308,
+  "fp": 2292,
+  "fn": 2891,
+  "at_edge": [
+    "min_area"
+  ],
+  "files": 707,
+  "records": 1154,
+  "tile": 512,
+  "overlap": 0.25,
+  "tta": true,
+  "variants": [
+    "base"
+  ],
+  "checkpoints": [
+    "weights/final/c02_full-lovasz-ssl-r34_seed1-best.pt",
+    "weights/final/c04_full-lovasz-mitb2_seed1-best.pt",
+    "weights/final/c06_full-lovasz-hrnet32_seed1-best.pt",
+    "weights/final/c01_full-zoom-hrnet32_seed1-best.pt"
+  ],
+  "refiner": {
+    "checkpoints": [
+      "weights/final/refiner-zoom-fold0.pt"
+    ],
+    "proposal_threshold": 0.375,
+    "proposal_offset": -1,
+    "context": 1.5,
+    "threshold": 0.5,
+    "min_score": 0.32,
+    "pq": 0.46635390251132774,
+    "nested_pq": 0.4654586264239807
+  },
+  "note": "b6-zoom with the full-data r34 initialised from GONG masked-image pretraining; refiner block pq = cv20-zoom-ssl fold set through the zoom refiners",
+  "precision": "fp16",
+  "skip_dark": true,
+  "barbs": {
+    "contrast": 0.05,
+    "ridge": 0.025,
+    "band": 20,
+    "min_ratio": 4.0,
+    "max_width": 4.0
+  },
+  "preset": {
+    "name": "fast",
+    "summary": "the same 4 models without TTA, crop refiner, barbs",
+    "source_calibration": "runs/ensembles/b6-zoom-ssl-refined.calibration.json",
+    "oof_pq_without_barbs": 0.4664,
+    "oof_pq": null,
+    "seconds_per_image": 5.1,
+    "public_lb": 0.4,
+    "refiner_fold": 0
+  }
+}

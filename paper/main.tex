@@ -42,7 +42,7 @@
 \email{vedran.hrabar@fer.unizg.hr}
 
 \begin{abstract}
-    This report describes our solution to the Solar Filament Segmentation Challenge~2026, a Kaggle competition on automatic segmentation of solar filaments in GONG H-$\alpha$ observations.
+    This report describes solution to the Solar Filament Segmentation Challenge~2026, a Kaggle competition on automatic segmentation of solar filaments in GONG H-$\alpha$ observations.
 \end{abstract}
 
 \maketitle
@@ -51,8 +51,33 @@
 % ==================================== %
 %              INTRODUCTION            %
 % ==================================== %
-\section{Introduction}
-    This report goes over the details of our submitted solution to the Solar Filament Segmentation Challenge~2026~\cite{filament-segmentation-2026}. The challenge, launched on July~10,~2026, is organized by the Earth-Space AI Research (ESAIR) Lab\footnote{\href{https://www.esairlab.com/home}{www.esairlab.com/}}. This challenge utilizes the MAGFiLO dataset for evaluation of the segmentation algorithms~\cite{ahmadzadeh2024dataset}.
+\section{Introduction}\label{sec:introduction}
+    This report goes over the details of the submitted solution to the Solar Filament Segmentation Challenge~2026~\cite{filament-segmentation-2026}.
+    The challenge, launched on July~10,~2026, is organized by the Earth-Space AI Research (ESAIR) Lab\footnote{\href{https://www.esairlab.com/home}{www.esairlab.com/}}.
+    This challenge utilizes the MAGFiLO dataset for evaluation of the segmentation algorithms~\cite{ahmadzadeh2024dataset}.
+
+
+% ==================================== %
+%      DATA AND VALIDATION PROTOCOL    %
+% ==================================== %
+\section{Data and Validation Protocol}\label{sec:data}
+    \textbf{Labels.} The training set contains 707 observations and 1154 annotation records (411 observations with one annotator, 145 with two, 151 with three).
+    Together, these records hold 8199 filament polygons with a median area of 1228 px.
+    Thin structures under about 5 px, i.e.\ barbs, account for only 1.9\% of the annotated area.
+    One annotator's set was scored against another's on the 296 observations with several records.
+    This comparison gives PQ~0.34 (SQ 0.634, RQ 0.54), and annotators agree on barb pixels only 40\% of the time.
+    Most disagreement concerns whether a faint filament exists and where a long one ends.
+    A score of 0.47 is reached by the final model against the same records, so it agrees with each annotator more than the annotators agree with each other.
+
+    \textbf{Scoring.} PQ~\cite{kirillov2019panoptic} matches a prediction to a filament at IoU~$>0.5$ and computes $\mathrm{PQ}=\sum_{\mathrm{TP}}\mathrm{IoU}\,/\,(|\mathrm{TP}|+\tfrac12|\mathrm{FP}|+\tfrac12|\mathrm{FN}|)$.
+    Ground-truth instances are the individual polygons rasterised as COCO RLE~\cite{lin2014coco}, and each record is scored separately.
+
+    \textbf{Protocol.} Five-fold cross-validation grouped by observation is used.
+    The score is out-of-fold (OOF) PQ, with TP, FP, FN and IoU pooled over all 1{,}154 records as the evaluator does.
+    Post-processing is calibrated on the pooled OOF maps.
+    A \emph{nested} score is also reported, with parameters chosen on four folds and applied to the fifth.
+    Seeds alone move a five-model set by up to 0.007 and the crop refiner by $\pm0.001$.
+    A change is therefore adopted only if it beats a matching control by $>0.002$ after the full pipeline, with the nested score agreeing.
 
 
 % ==================================== %

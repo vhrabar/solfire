@@ -81,9 +81,11 @@ installs the package in editable mode together with the pinned torch stack:
 ```bash
 uv sync --group cuda-134   # or rocm-100 (AMD, x86_64), cpu
 ```
-or via pip
+or via pip, from the repository root; this also installs `solfire` in editable mode. The same file serves every Linux setup, and the index picks the torch build:
 ```bash
-pip install -r requirements.txt
+pip install -r requirements.txt                                                               # NVIDIA CUDA
+pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/rocm10.0   # AMD ROCm (x86_64)
+pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu        # CPU-only
 ```
 
 `uv build` produces a wheel and sdist in `dist/`. Installing the package adds the `solfire` command

@@ -173,6 +173,36 @@
 %           WHAT DID NOT WORK          %
 % ==================================== %
 \section{What Did Not Work}\label{sec:negative}
+    Table~\ref{tab:negative} lists changes that were tested and rejected.
+    Each is scored after calibration against a control with the same setup, and none passes the adoption rule of Section~\ref{sec:data}.
+    Losses with clDice or differentiable morphology terms were also tried and dropped.
+    A dedicated barb head gave no PQ gain (best +0.0001) and barely raised thin-structure recall, so it extended filament edges rather than adding barbs.
+
+    \begin{table}[H]
+        \caption{Rejected changes, as pooled OOF PQ against the matching control.}\label{tab:negative}
+        \small
+        \begin{tabular}{lrrr}
+            \toprule
+            Change & PQ & Control & Gain \\
+            \midrule
+            CLAHE contrast enhancement & 0.4367 & 0.4390 & $-0.0023$ \\
+            GONG pseudo-labels & 0.4353 & 0.4390 & $-0.0037$ \\
+            Lovász hinge from scratch & 0.4446 & 0.4503 & $-0.0057$ \\
+            $1024\times1024$ training crops & 0.4458 & 0.4503 & $-0.0045$ \\
+            Ensemble distillation & 0.4465 & 0.4503 & $-0.0038$ \\
+            Tversky loss in the fine-tune & 0.4585 & 0.4594 & $-0.0009$ \\
+            Longer fine-tune & 0.4589 & 0.4594 & $-0.0005$ \\
+            Thin-aware fine-tune & 0.4599 & 0.4594 & $+0.0005$ \\
+            35 models instead of 15 & 0.4558 & 0.4564 & $-0.0006$ \\
+            Magnetogram head, in ensemble & 0.4550 & 0.4549 & $+0.0001$ \\
+            Watershed instance splitting & 0.388 & 0.443 & $-0.055$ \\
+            YOLO26m-seg member, score-ordered & 0.4521 & 0.4641 & $-0.0120$ \\
+            Spine auxiliary head, with refiner & 0.4650 & 0.4637 & $+0.0013$ \\
+            Second refiner pass & 0.4692 & 0.4700 & $-0.0008$ \\
+            Other refiner encoders, best & 0.4692 & 0.4700 & $-0.0008$ \\
+            \bottomrule
+        \end{tabular}
+    \end{table}
 
 
 % ==================================== %

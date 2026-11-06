@@ -104,6 +104,22 @@
     \subsection{Models}\label{sec:models}
 
     \subsection{Training}\label{sec:training}
+    \textbf{Sampling.}
+    Each epoch draws seven $512\times512$ crops per observation at native resolution.
+    With probability 0.7, a crop contains a random vertex of a random filament polygon at a random position; otherwise it is placed uniformly.
+    Augmentation consists of flips, quarter turns, and gamma, brightness and contrast jitter.
+
+    \textbf{Base stage.}
+    Each model trains for 40 epochs on an equally weighted sum of BCE (positive weight 5) and soft Dice.
+    AdamW is used with batch size 8, weight decay 0.01, and a peak learning rate of $4\times10^{-4}$ ($0.25\times$ on the encoder), with three warm-up epochs and cosine decay.
+
+    \textbf{Fine-tune stage.}
+    Each model then trains for 8 more epochs at $10^{-4}$ with a Lovász hinge~\cite{berman2018lovasz} of weight 0.5 added, which binarises the soft targets at 0.5.
+    The zoom member instead starts from the base HRNet and trains for 12 epochs at $2\times$ input.
+
+    \textbf{Full-data retrain.}
+    The shipped models repeat both stages on all 707 observations and keep the final epoch, as nothing is held out for selection.
+    A control over the fine-tune stage supports this: on OOF, the final epoch scores 0.4602 and the validation-selected epoch 0.4593.
 
     \subsection{Inference}\label{sec:inference}
 

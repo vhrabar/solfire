@@ -91,6 +91,15 @@
     \end{figure}
 
     \subsection{Preprocessing and Targets}\label{sec:preprocessing}
+    \textbf{Input.}
+    Each $2048\times2048$ JPEG observation is read as one grayscale channel in $[0,1]$ and standardised with the ImageNet statistics used in encoder pretraining.
+    No contrast enhancement is applied (Section~\ref{sec:negative}).
+    The same steps are used for training and inference.
+
+    \textbf{Targets.}
+    Each polygon is rasterised with pycocotools, as in the evaluator, and the polygons of one annotation record are merged into a binary mask.
+    The target of an observation is the mean of its record masks, so each pixel holds the fraction of annotators who marked it.
+    Each observation therefore carries the same weight in training, however many records it has.
 
     \subsection{Models}\label{sec:models}
 

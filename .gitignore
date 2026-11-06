@@ -62,9 +62,9 @@ artifacts/
 # Datasets
 # -------------------------
 
-data/
-dataset/
-dataset_meta/
+/data/
+/dataset/
+/dataset_meta/
 
 
 # -------------------------
@@ -74,5 +74,3 @@ dataset_meta/
 predictions/
 output/
 runs/
-
-

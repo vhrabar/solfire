@@ -7,7 +7,7 @@ import pytest
 import torch
 from scipy import ndimage
 
-from src.inference.refiner import (
+from solfire.inference.refiner import (
     MIN_WINDOW,
     RefinedInstance,
     Refiner,
@@ -19,7 +19,7 @@ from src.inference.refiner import (
     refiner_inputs,
     window_of,
 )
-from src.training.refine import MAX_RECORDS, _flat_iou, record_weights, refiner_loss
+from solfire.training.refine import MAX_RECORDS, _flat_iou, record_weights, refiner_loss
 
 
 def test_window_is_square_centred_and_padded_past_the_edge():

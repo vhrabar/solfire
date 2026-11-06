@@ -72,11 +72,27 @@ training, and further post-processing.
 
 ## Setup
 
-Requires Python 3.14 and [uv](https://docs.astral.sh/uv/). Pick the dependency group that matches your hardware:
+The code is the installable Python package `solfire` (**SOL**ar **FI**lament **R**efined **E**nsemble; source in
+`src/solfire/`). It requires Python 3.15.
+
+With [uv](https://docs.astral.sh/uv/) (recommended), pick the dependency group that matches your hardware; this
+installs the package in editable mode together with the pinned torch stack:
 
 ```bash
-uv sync --group cuda-132   # or rocm-714 (AMD, x86_64), cpu
+uv sync --group cuda-134   # or rocm-100 (AMD, x86_64), cpu
 ```
+or via pip, from the repository root; this also installs `solfire` in editable mode. The same file serves every Linux setup, and the index picks the torch build:
+```bash
+pip install -r requirements.txt                                                               # NVIDIA CUDA
+pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/rocm10.0   # AMD ROCm (x86_64)
+pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu        # CPU-only
+```
+
+`uv build` produces a wheel and sdist in `dist/`. Installing the package adds the `solfire` command
+(the same CLI as `python -m solfire.main`) and `solfire-lab`, the same CLI with the dropped
+experiments' options (`src/solfire/experiments/README.md`). `data/` and `runs/` are resolved against the source checkout
+when the package is imported from one, otherwise against the working directory; set `FILAMENT_PROJECT_ROOT` to
+override, or `FILAMENT_DATA_ROOT` to point at the data alone.
 
 Place the competition data under `data/`:
 
@@ -92,41 +108,58 @@ data/
 
 ```bash
 # train one fold
-uv run --group cuda-132 python -m src.main train --arch pretrained --decoder unetplusplus --encoder resnet34 --fold 0 ...
+uv run --group cuda-134 solfire train --arch pretrained --decoder unetplusplus --encoder resnet34 --fold 0 ...
 
 # run a sweep spec (train + calibrate every config)
-uv run --group cuda-132 python scripts/sweep.py sweeps/cv5.json --only fold
+uv run --group cuda-134 python scripts/sweep.py sweeps/cv5_hrnet.json --only fold
 
 # calibrate post-processing on the pooled out-of-fold maps of several checkpoints
-uv run --group cuda-132 python -m src.main calibrate --checkpoint runs/<sweep>/*/best.pt --output runs/ensembles/<name>.calibration.json
+uv run --group cuda-134 solfire calibrate --checkpoint runs/<sweep>/*/best.pt --output runs/ensembles/<name>.calibration.json
 
 # final-rubric metrics
-uv run --group cuda-132 python -m src.main evaluate --checkpoint ...
+uv run --group cuda-134 solfire evaluate --checkpoint ...
 
 # predict the test set (and submit)
-uv run --group cuda-132 python scripts/submit.py <checkpoints> --calibration runs/ensembles/<name>.calibration.json --no-submit
+uv run --group cuda-134 python scripts/submit.py <checkpoints> --calibration runs/ensembles/<name>.calibration.json --no-submit
 ```
 
 <!-- TODO: exact commands to reproduce the final submission from scratch+ notebook for it-->
 
+## Weights
+
+`weights/final/` (Git LFS) holds the shipped weights in float16 and one calibration per preset. Out-of-fold PQ is
+without barbs; s/img is on an RTX 5070 Ti.
+
+| Preset  | Models                                                             | OOF PQ | s / img | Size   |
+|---------|--------------------------------------------------------------------|--------|---------|--------|
+| `final` | 4 (SSL ResNet34, MiT-B2, HRNet-W32, zoom HRNet) + D4 TTA + refiner | 0.4692 | 12.9    | 303 MB |
+| `fast`  | the same 4, flips only, + refiner                                  | 0.4664 | 5.1     | 303 MB |
+| `lite`  | 3 (ImageNet ResNet34, MiT-B2, HRNet-W32) + refiner                 | 0.4637 | 2.7     | 230 MB |
+| `tiny`  | HRNet-W32                                                          | 0.4531 | 1.5     | 73 MB  |
+
+
 ## Repository layout
 
 ```
-src/
-  main.py            CLI: train, predict, calibrate, evaluate, fit-filter
-  data/              dataset, crop sampling, target rasterisation, preprocessing
-  networks/          smp wrappers (pretrained encoders), TransUNet baseline
-  training/          losses, engine, calibration, evaluation, metrics, instance filter
-  inference/         tiling, prediction, post-processing
-scripts/             sweeps, submission, model upload, data tools
-sweeps/              experiment specs (JSON)
-tests/               unit tests
+src/solfire/           the package: the final method
+  main.py              CLI (`solfire`): train, predict, calibrate, evaluate
+  extension.py         hooks the experiments plug into
+  data/                dataset, crop sampling, target rasterisation, preprocessing cache
+  networks/            pretrained-encoder U-Net / U-Net++ (smp)
+  training/            losses, engine, calibration, evaluation, metrics, crop refiner training
+  inference/           tiling, TTA, prediction, crop refiner, barb growth, post-processing
+  experiments/         every dropped experiment, still runnable with `solfire-lab` (see its README.md)
+scripts/               sweeps, submission, model upload, notebook build, SSL pretraining, refiner
+scripts/experiments/   data and analysis scripts of the dropped experiments
+sweeps/                specs of the final method's runs (JSON)
+sweeps/experiments/    specs of the dropped experiments, run through solfire-lab
+tests/                 unit tests; tests/experiments/ for the experiments
 ```
 
 ## Tests
 
 ```bash
-uv run --group cuda-132 pytest
+uv run --group cuda-134 pytest
 ```
 
 <!-- TODO: list of tests ??? -->

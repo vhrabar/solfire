@@ -39,7 +39,7 @@ def resolve(model: Path) -> Path:
         return model.resolve()
     calibrated = [path for path in model.glob("*.pt") if calibration_of(path) is not None]
     if not calibrated:
-        sys.exit(f"{model}: no calibrated checkpoint; run `python -m src.main calibrate` first")
+        sys.exit(f"{model}: no calibrated checkpoint; run `python -m solfire.main calibrate` first")
     return max(calibrated, key=lambda path: calibration_of(path)["pq"]).resolve()
 
 
@@ -70,7 +70,7 @@ def predict(checkpoints: list[Path], output_dir: Path, calibration: dict, calibr
     command = [
         *PYTHON,
         "-m",
-        "src.main",
+        "solfire.main",
         "predict",
         "--checkpoint",
         *(str(checkpoint) for checkpoint in checkpoints),
@@ -251,7 +251,7 @@ def main() -> int:
         for checkpoint in dict.fromkeys(resolve(model) for model in args.models):
             calibration = calibration_of(checkpoint)
             if calibration is None:
-                sys.exit(f"{checkpoint} was never calibrated; run `python -m src.main calibrate` first")
+                sys.exit(f"{checkpoint} was never calibrated; run `python -m solfire.main calibrate` first")
             output_dir = checkpoint.parent / f"predictions_{checkpoint.stem}"
             submit_one(api, existing, model_name(checkpoint), [checkpoint], calibration, output_dir, args)
 

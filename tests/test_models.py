@@ -5,11 +5,11 @@ Losses, the auxiliary-head model and tiled inference with test-time augmentation
 import pytest
 import torch
 
-from src.inference.predict import observation_probabilities
-from src.inference.tiling import predict_probabilities, predict_tiled
-from src.main import load_matching
-from src.networks import ARCHITECTURES
-from src.training.losses import BCEDiceLoss, CategoryHeadLoss, lovasz_hinge_loss
+from solfire.inference.predict import observation_probabilities
+from solfire.inference.tiling import predict_probabilities, predict_tiled
+from solfire.main import load_matching
+from solfire.networks import ARCHITECTURES
+from solfire.training.losses import BCEDiceLoss, lovasz_hinge_loss
 
 
 def stripe_target():
@@ -70,19 +70,6 @@ def test_auxiliary_head_only_in_training_and_starts_from_one_channel_checkpoint(
     assert torch.allclose(extended(image), original(image), atol=1e-5)
     extended.train()
     assert extended(image).shape == (1, 4, 64, 64)
-
-
-def test_category_head_loss_trains_the_head():
-    """
-    The category cross entropy reaches the extra channels.
-    """
-    model = small_model(aux_channels=3).train()
-    target = torch.zeros(1, 4, 64, 64)
-    target[:, 0, 20:30, 10:50] = 1
-    target[:, 2, 20:30, 10:50] = 1
-    loss = CategoryHeadLoss(BCEDiceLoss(0.5, 0.5, 5.0), 0.2)(model(torch.rand(1, 1, 64, 64)), target)
-    loss.backward()
-    assert model.net.segmentation_head[0].weight.grad[1:].abs().sum() > 0
 
 
 def symmetric_model():

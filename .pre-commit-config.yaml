@@ -22,8 +22,15 @@ repos:
     rev: 0.13.6
     hooks:
       - id: uv-lock
-      - id: uv-export
-        args: [--quiet, --frozen, --format=requirements.txt, --group=cuda-134, --output-file=requirements.txt]
+
+  - repo: local
+    hooks:
+      - id: export-requirements
+        name: export requirements.txt from uv.lock
+        entry: bash -c 'set -o pipefail; uv export --quiet --frozen --format=requirements.txt --group=cpu --no-dev --no-hashes --no-annotate --no-header | sed -E "s/\+(cpu|cu[0-9]+|rocm[0-9.]+)//" > requirements.txt'
+        language: system
+        files: ^(uv\.lock|pyproject\.toml|requirements\.txt)$
+        pass_filenames: false
 
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.30.1
@@ -46,9 +53,10 @@ repos:
         require_serial: true
       - id: no-weights
         name: block model checkpoints
-        entry: model weights belong on Kaggle/HF, not in git
+        entry: model weights belong in weights/final/ (Git LFS), nowhere else in git
         language: fail
         files: \.(pt|pth|ckpt|safetensors|onnx|npz)$
+        exclude: ^weights/final/
       - id: no-credentials
         name: block credential files
         entry: credential file staged

@@ -11,10 +11,17 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.data import load_annotations, validation_split
-from src.inference.refiner import CONTEXT, load_refiner
-from src.training.calibrate import cache_directory
-from src.training.refine import SCORE_TARGETS, collect_crops, record_weights, refine_held_out, score_refined, train_refiner
+from solfire.data import load_annotations, validation_split
+from solfire.inference.refiner import CONTEXT, load_refiner
+from solfire.training.calibrate import cache_directory
+from solfire.training.refine import (
+    SCORE_TARGETS,
+    collect_crops,
+    record_weights,
+    refine_held_out,
+    score_refined,
+    train_refiner,
+)
 
 STEPS = ("collect", "train", "refine", "score")
 

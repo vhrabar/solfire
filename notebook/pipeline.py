@@ -20,12 +20,14 @@
 # | `zoom-hrnet32` | U-Net | HRNet-W32 at 2x | 0.4403 |
 # | ensemble of the three families (15 models) | | | 0.4594 |
 # | + zoom (20 models) | | | 0.4600 |
-# | **+ crop refiner** | | | **0.4664** |
+# | + crop refiner | | | 0.4664 |
+# | **+ eight-view TTA at overlap 0.5, refiners retrained on those maps** | | | **0.4700** |
 #
 # The refined post-processing is tuned on the same predictions it is scored on. Tuned on four folds and scored on
-# the fifth instead, it reaches 0.4655. Taking the final epoch instead of the best held-out one costs nothing
-# (control: 0.4602 vs 0.4593). Public LB: 0.40, 7.6 s per observation (`b6-full`: three ImageNet families without
-# zoom, 0.4637 out-of-fold, LB 0.40, 3.0 s per observation).
+# the fifth instead, it reaches 0.4691. Taking the final epoch instead of the best held-out one costs nothing
+# (control: 0.4602 vs 0.4593). Inference runs under float16 autocast (masks match float32 at IoU >= 0.99 for 99.8 %
+# of the filaments). The faster final, `b6-full` (three ImageNet families, no zoom, no extra TTA): 0.4637
+# out-of-fold, LB 0.40, 1.8 s per observation.
 #
 # **Recipe**, per family and fold:
 # 1. 40 epochs from ImageNet on random 512 px windows at native resolution (filaments are ~11 px wide, so
@@ -34,7 +36,8 @@
 # 2. An 8-epoch fine-tune from the best epoch of stage 1 at a lower learning rate, with a Lovász hinge term added.
 #    Lovász is a surrogate for IoU, the quantity Panoptic Quality is built on.
 #
-# **Inference.** Tiled 512 px windows (overlap 0.25, cosine-blended) with 4-flip TTA. Probabilities are averaged
+# **Inference.** Tiled 512 px windows (overlap 0.25, cosine-blended) with 4-flip TTA; the best-score final also adds
+# the four flips of the quarter-turned observation and a second pass at overlap 0.5. Probabilities are averaged
 # over the 15 models, then thresholded, eroded by one pixel, and split into 8-connected instances. Instances with a
 # mean probability below the cut are dropped. Threshold, offset, minimum area and score cut are chosen by grid
 # search, scored with the organizers' Panoptic Quality on the pooled out-of-fold predictions of all 707 training
@@ -68,10 +71,10 @@ TRAIN = False  # True: train every model from the competition data; False: fetch
 SEED = 1
 FOLDS = 5  # grouped by observation, the assignment is fixed (seed 0) whatever SEED is
 
-MODEL_HANDLE = "vhrabar/filament-segmentation-2026/pyTorch/b6-zoom-ssl/1"  # Kaggle Models: 4 checkpoints, 5 refiners
-CALIBRATION_NAME = "b6-zoom-ssl-refined.calibration.json"
-# the faster final: MODEL_HANDLE ".../pyTorch/b6-full/1" with CALIBRATION_NAME "b6-full-refined.calibration.json"
-WEIGHTS_DIR = None  # a local folder holding the checkpoints and the calibration; None downloads MODEL_HANDLE
+MODEL_HANDLE = "vhrabar/filament-segmentation-2026/pyTorch/b6-zoom-ssl-tta/1"  # Kaggle Models: 4 checkpoints, 5 refiners
+CALIBRATION_NAME = "b6-zoom-ssl-tta32-barbs.calibration.json"  # TTA, fp16, refiner cut 0.32, barbs on
+WEIGHTS_DIR = None  # an ovveride folder holding the checkpoints and the calibration
+REPO_WEIGHTS = Path("weights/final")
 
 FAMILIES = {
     "unetpp-r34": {"decoder": "unetplusplus", "encoder": "resnet34"},
@@ -116,6 +119,7 @@ REFINER = {
     "encoder_lr_scale": 0.5,
     "score_weight": 0.5,
 }
+BARBS = None  # None follows the calibration's "barbs" block; True / False forces the barbs on (DEFAULT_BARBS) or off
 REFINE_GRID = {
     "threshold": (0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6),
     "min_score": tuple(round(0.02 * step, 2) for step in range(31)),  # cut on the predicted IoU
@@ -141,6 +145,8 @@ import torch.nn.functional as F
 from PIL import Image
 from pycocotools import mask as coco_mask
 from scipy import ndimage
+from skimage.filters import sato
+from skimage.morphology import disk
 from torch import Tensor, nn
 from torch.utils.data import DataLoader, Dataset
 from tqdm.auto import tqdm
@@ -409,12 +415,14 @@ def load_model(path) -> tuple[nn.Module, dict]:
 
 # %%
 @torch.no_grad()
-def predict_flips(model, images: Tensor) -> Tensor:
+def predict_flips(model, images: Tensor, turned=False) -> Tensor:
     """
     :param model: Model in eval mode
     :param images: (B, 1, H, W) windows on DEVICE
+    :param turned: Use the four flips of the quarter-turned windows instead (the other half of the square's symmetries)
     :return: (B, 1, H, W) probabilities averaged over the identity and the three flips
     """
+    images = torch.rot90(images, 1, (-2, -1)) if turned else images
     total = torch.zeros_like(images, dtype=torch.float32)
     for flip_x in (False, True):
         for flip_y in (False, True):
@@ -422,7 +430,7 @@ def predict_flips(model, images: Tensor) -> Tensor:
             view = torch.flip(images, dims) if dims else images
             probabilities = torch.sigmoid(model(view).float())
             total += torch.flip(probabilities, dims) if dims else probabilities
-    return total / 4
+    return torch.rot90(total / 4, -1, (-2, -1)) if turned else total / 4
 
 
 def tile_offsets(size: int, tile: int, stride: int) -> list[int]:
@@ -438,7 +446,9 @@ def tile_offsets(size: int, tile: int, stride: int) -> list[int]:
 
 
 @torch.no_grad()
-def predict_tiled(model, image: Tensor, tile=TILE, overlap=OVERLAP, tta=True, batch_size=TILE_BATCH, scale=1.0) -> Tensor:
+def predict_tiled(
+    model, image: Tensor, tile=TILE, overlap=OVERLAP, tta=True, batch_size=TILE_BATCH, scale=1.0, turned=False, skip_dark=False
+) -> Tensor:
     """
     Probabilities for one whole observation, assembled from overlapping windows.
     :param model: Model in eval mode
@@ -449,13 +459,16 @@ def predict_tiled(model, image: Tensor, tile=TILE, overlap=OVERLAP, tta=True, ba
     :param batch_size: Windows per forward pass
     :param scale: Resize the observation by this factor first and the probabilities back afterwards
         (2 for the zoom family)
+    :param turned: Average over the flips of the quarter-turned windows instead (see predict_flips)
+    :param skip_dark: Give windows with nothing brighter than the black off the disk probability 0 without running
+        the model on them
     :return: (H, W) probabilities on the cpu
     """
     if scale != 1.0:
         height, width = image.shape[-2:]
         size = (round(height * scale), round(width * scale))
         resized = F.interpolate(image[None].float(), size=size, mode="bilinear", align_corners=False, antialias=scale < 1.0)
-        probabilities = predict_tiled(model, resized[0], tile, overlap, tta, batch_size)
+        probabilities = predict_tiled(model, resized[0], tile, overlap, tta, batch_size, 1.0, turned, skip_dark)
         return F.interpolate(probabilities[None, None], size=(height, width), mode="bilinear", align_corners=False)[0, 0]
     image = image.unsqueeze(0)
     height, width = image.shape[-2:]
@@ -466,10 +479,15 @@ def predict_tiled(model, image: Tensor, tile=TILE, overlap=OVERLAP, tta=True, ba
     weights = (ramp[:, None] * ramp[None, :])[None, None]
     total = torch.zeros((1, 1, height, width), dtype=torch.float32, device=DEVICE)
     counts = torch.zeros_like(total)
+    if skip_dark:
+        lit = [(y, x) for y, x in corners if image[..., y : y + tile, x : x + tile].max() > 10 / 255]
+        for y, x in set(corners) - set(lit):
+            counts[..., y : y + tile, x : x + tile] += weights
+        corners = lit
     for start in range(0, len(corners), batch_size):
         chunk = corners[start : start + batch_size]
         batch = torch.cat([image[..., y : y + tile, x : x + tile] for y, x in chunk]).to(DEVICE, non_blocking=True)
-        probabilities = predict_flips(model, batch) if tta else torch.sigmoid(model(batch).float())
+        probabilities = predict_flips(model, batch, turned) if tta else torch.sigmoid(model(batch).float())
         for (y, x), probability in zip(chunk, probabilities):
             total[..., y : y + tile, x : x + tile] += probability[None] * weights
             counts[..., y : y + tile, x : x + tile] += weights
@@ -1246,6 +1264,77 @@ def calibrate_refiner(refiner_paths, calibration: dict) -> dict:
 
 
 # %% [markdown]
+# ## Barbs
+#
+# The models draw the body of a filament well but rarely its barbs, the thin dark offshoots the annotators draw only
+# sometimes. Around every predicted instance, pixels darker than the local background (a median over ~60 px) that
+# also lie on a thin dark ridge (Sato filter) are candidates; the long, narrow pieces touching the instance are added
+# to that same instance. No labels are involved. Out of fold this adds 49k pixels and costs 0.0024 PQ (0.4692 to
+# 0.4668), since the annotators leave most barbs out.
+
+
+# %%
+# contrast and ridge cut the candidates; a piece is kept when length / mean width >= min_ratio and width <= max_width
+DEFAULT_BARBS = {"contrast": 0.05, "ridge": 0.025, "band": 20, "min_ratio": 4.0, "max_width": 4.0}
+
+
+def local_contrast(image: np.ndarray) -> np.ndarray:
+    """(background - image) / background, smoothed; the background is a median taken on a 4x smaller copy."""
+    height, width = image.shape
+    rows, columns = -(-height // 4) * 4, -(-width // 4) * 4
+    padded = np.pad(image.astype(np.float32), ((0, rows - height), (0, columns - width)), mode="edge")
+    small = padded.reshape(rows // 4, 4, columns // 4, 4).mean((1, 3))
+    background = np.kron(ndimage.median_filter(small, 15), np.ones((4, 4), np.float32))[:height, :width]
+    contrast = np.where(background > 20 / 255, (background - image) / np.maximum(background, 1e-6), 0)
+    return ndimage.gaussian_filter(contrast.astype(np.float32), 1)
+
+
+def thin_pieces(pieces: np.ndarray, mask: np.ndarray, min_ratio: float, max_width: float) -> np.ndarray:
+    """The long, narrow pieces, measured from where they leave the mask."""
+    labels, n_labels = ndimage.label(pieces, structure=EIGHT_CONNECTED)
+    distance = ndimage.distance_transform_edt(~mask)
+    keep = np.zeros(n_labels + 1, dtype=bool)
+    for number, window in enumerate(ndimage.find_objects(labels), start=1):
+        if window is None:
+            continue
+        points = np.argwhere(labels[window] == number) + np.array([window[0].start, window[1].start])
+        base = points[np.argmin(distance[points[:, 0], points[:, 1]])]
+        length = np.sqrt(((points - base) ** 2).sum(1).max()) + 1
+        width = len(points) / length
+        keep[number] = length / width >= min_ratio and width <= max_width
+    return keep[labels]
+
+
+def grow_barbs(labels: np.ndarray, n_labels: int, image: np.ndarray, settings: dict) -> np.ndarray:
+    """Add the visible barbs of every instance to it; grown pixels only fill background."""
+    settings = {**DEFAULT_BARBS, **settings}
+    if n_labels == 0:
+        return labels
+    contrast = local_contrast(image)
+    grown = labels.copy()
+    margin = settings["band"] + 2
+    height, width = labels.shape
+    for number, window in enumerate(ndimage.find_objects(labels), start=1):
+        if window is None:
+            continue
+        window = (
+            slice(max(window[0].start - margin, 0), min(window[0].stop + margin, height)),
+            slice(max(window[1].start - margin, 0), min(window[1].stop + margin, width)),
+        )
+        mask = labels[window] == number
+        local = contrast[window]
+        ridge = sato(local, sigmas=[1, 2], black_ridges=False)
+        band = ndimage.binary_dilation(mask, disk(int(settings["band"]))) & ~mask
+        candidates = band & (local > settings["contrast"]) & (ridge > settings["ridge"])
+        pieces, _ = ndimage.label(candidates, structure=EIGHT_CONNECTED)
+        touching = np.unique(pieces[ndimage.binary_dilation(mask, EIGHT_CONNECTED) & candidates])
+        barbs = thin_pieces(np.isin(pieces, touching[touching > 0]), mask, settings["min_ratio"], settings["max_width"])
+        target = grown[window]
+        target[barbs & (target == 0)] = number
+    return grown
+
+
+# %% [markdown]
 # ## Models: train or fetch
 
 
@@ -1263,15 +1352,23 @@ if TRAIN:
         calibration["refiner"] = calibrate_refiner(refiner_paths, calibration)
     (WORK / CALIBRATION_NAME).write_text(json.dumps(calibration, indent=2), encoding="utf-8")
 else:
-    if WEIGHTS_DIR is None:
+    if WEIGHTS_DIR is not None:
+        weights = Path(WEIGHTS_DIR)
+    elif (REPO_WEIGHTS / CALIBRATION_NAME).is_file():
+        weights = REPO_WEIGHTS
+    else:
         import kagglehub
 
         weights = Path(kagglehub.model_download(MODEL_HANDLE))
-    else:
-        weights = Path(WEIGHTS_DIR)
+    print(f"weights from {weights}")
     calibration = json.loads((weights / CALIBRATION_NAME).read_text(encoding="utf-8"))
-    # published as <run>-<stem>.pt, in the order the calibration lists them
-    checkpoints = [weights / f"{Path(path).parent.name}-{Path(path).stem}.pt" for path in calibration["checkpoints"]]
+    # in the order the calibration lists them: as named there (the repository copy) or published as <run>-<stem>.pt
+    checkpoints = [
+        weights / Path(path).name
+        if (weights / Path(path).name).is_file()
+        else weights / f"{Path(path).parent.name}-{Path(path).stem}.pt"
+        for path in calibration["checkpoints"]
+    ]
     missing = [path.name for path in checkpoints if not path.is_file()]
     assert not missing, f"{weights} lacks {missing}"
     if "refiner" in calibration:  # the published refiners sit next to the ensemble
@@ -1306,6 +1403,25 @@ def encode_rle(mask: np.ndarray) -> str:
     return coco_mask.encode(np.asfortranarray(mask.astype(np.uint8)))["counts"].decode("ascii")
 
 
+def parse_variant(name: str) -> dict:
+    """Inference variant of a calibration: base, or '-'-joined o<overlap> and turned (e.g. o0.5, turned)."""
+    settings = {"overlap": OVERLAP, "turned": False}
+    for part in [] if name == "base" else name.split("-"):
+        if part == "turned":
+            settings["turned"] = True
+        elif part.startswith("o"):
+            settings["overlap"] = float(part[1:])
+        else:
+            raise ValueError(f"unknown part {part!r} of inference variant {name!r}")
+    return settings
+
+
+variants = [parse_variant(name) for name in calibration.get("variants") or ["base"]]
+# float16 autocast when the calibration asks for it; the cached out-of-fold maps were float32, the masks match
+half = calibration.get("precision") == "fp16" and DEVICE.type == "cuda"
+skip_dark = bool(calibration.get("skip_dark"))
+barbs = calibration.get("barbs") if BARBS is None else ((calibration.get("barbs") or {}) if BARBS else None)
+print("barbs grown into the instances" if barbs is not None else "no barbs grown")
 models = []
 for path in checkpoints:
     model, meta = load_model(path)
@@ -1315,13 +1431,22 @@ started = time.time()
 rows = []
 for path in tqdm(TEST_FILES, desc="predict", mininterval=2.0):
     image = load_image(path)
-    probabilities = (sum(predict_tiled(model, image, scale=scale) for model, scale in models) / len(models)).numpy()
-    if REFINE:
-        labels, n_labels = refine_observation(refiners, image.numpy()[0], probabilities, refiner_settings)
+    with torch.autocast(DEVICE.type, dtype=torch.float16, enabled=half):
+        maps = [
+            predict_tiled(model, image, scale=scale, skip_dark=skip_dark, **variant)
+            for model, scale in models
+            for variant in variants
+        ]
+        probabilities = (sum(maps) / len(maps)).numpy()
+        refined = refine_observation(refiners, image.numpy()[0], probabilities, refiner_settings) if REFINE else None
+    if refined is not None:
+        labels, n_labels = refined
     else:
         labels, n_labels = label_instances(
             probabilities, calibration["threshold"], calibration["offset"], calibration["min_area"], calibration["min_score"]
         )
+    if barbs is not None:
+        labels = grow_barbs(labels, n_labels, image.numpy()[0], barbs)
     rows += [(f"{path.stem}_{label}", encode_rle(labels == label)) for label in range(1, n_labels + 1)]
 seconds = time.time() - started
 

@@ -24,13 +24,14 @@ jobs:
       - uses: astral-sh/setup-uv@v6
 
       - name: Re-lock the bumped packages and re-export requirements.txt
+        shell: bash
         env:
           PACKAGES: ${{ steps.meta.outputs.dependency-names }}
         run: |
           args=()
           for package in ${PACKAGES//,/ }; do args+=(--upgrade-package "$package"); done
           uv lock "${args[@]}"
-          uv export --quiet --frozen --format=requirements.txt --group=cuda-134 --output-file=requirements.txt
+          uv export --quiet --frozen --format=requirements.txt --group=cpu --no-dev --no-hashes --no-annotate --no-header | sed -E 's/\+(cpu|cu[0-9]+|rocm[0-9.]+)//' > requirements.txt
 
       - name: Push the fix to the PR branch
         run: |

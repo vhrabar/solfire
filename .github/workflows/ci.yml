@@ -17,12 +17,13 @@ jobs:
       - name: Install
         run: uv sync --locked --group cpu --group dev
 
-      # dependabot edits requirements.txt on its own; it must stay the export of uv.lock (same command as the uv-export hook)
+      # dependabot edits requirements.txt on its own; it must stay the export of uv.lock (same command as the export-requirements hook)
       - name: requirements.txt in sync with uv.lock
+        shell: bash
         run: |
-          uv export --quiet --frozen --format=requirements.txt --group=cuda-134 --output-file=requirements.txt
+          uv export --quiet --frozen --format=requirements.txt --group=cpu --no-dev --no-hashes --no-annotate --no-header | sed -E 's/\+(cpu|cu[0-9]+|rocm[0-9.]+)//' > requirements.txt
           git diff --exit-code requirements.txt || {
-            echo "::error file=requirements.txt::not the export of uv.lock; run uv lock --upgrade-package <pkg> and the uv-export hook"
+            echo "::error file=requirements.txt::not the export of uv.lock; run uv lock --upgrade-package <pkg> and the export-requirements hook"
             exit 1
           }
 

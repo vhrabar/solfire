@@ -8,7 +8,7 @@ import sys
 import torch
 
 from scripts.sweep import attempt
-from src.training.engine import _load_resume_state, atomic_save
+from solfire.training.engine import _load_resume_state, atomic_save
 
 
 def test_atomic_save_leaves_no_partial_file(tmp_path):
@@ -52,7 +52,7 @@ def test_training_without_a_validation_split_keeps_the_final_epoch(tmp_path):
     """
     from torch.utils.data import DataLoader, TensorDataset
 
-    from src.training.engine import fit
+    from solfire.training.engine import fit
 
     model = torch.nn.Conv2d(1, 1, 3, padding=1)
     data = TensorDataset(torch.rand(4, 1, 8, 8), (torch.rand(4, 1, 8, 8) > 0.5).float())

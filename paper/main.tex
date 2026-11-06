@@ -90,6 +90,32 @@
 %              EVALUATION              %
 % ==================================== %
 \section{Evaluation}\label{sec:evaluation}
+    Table~\ref{tab:presets} gives the results of the four released variants.
+    The shipped models are retrained on all data, so their quality is measured on the five-fold set of the same recipe.
+    Every variant ships with barbs enabled, and barb growth costs about 0.002 PQ in each case.
+    Nested scores without barbs are 0.4655 for \texttt{fast} and 0.4628 for \texttt{lite}.
+    For \texttt{final}, the nested score is 0.4691, but it is measured against the out-of-fold best cut (OOF 0.4700), while the shipped cut is stricter (OOF 0.4692).
+
+    \begin{table*}[t]
+        \caption{
+            Released variants.
+            OOF quality over the 1154 records, with barbs except the no-barbs PQ column; time and peak VRAM over the 180 test observations on an RTX 5070~Ti.
+        }\label{tab:presets}
+        \footnotesize
+        \setlength{\tabcolsep}{2.4pt}
+        \begin{tabular}{llllrrrrrrrrrrrrrr}
+            \toprule
+            & \multicolumn{3}{c}{Configuration} & \multicolumn{3}{c}{Cost} & & \multicolumn{2}{c}{PQ} & & & \multicolumn{2}{c}{Dice} & \multicolumn{4}{c}{Errors (\%)} \\
+            \cmidrule(lr){2-4} \cmidrule(lr){5-7} \cmidrule(lr){9-10} \cmidrule(lr){13-14} \cmidrule(lr){15-18}
+            Variant & Models & Refiner & TTA & \begin{tabular}[b]{@{}r@{}}Time\\(s/img)\end{tabular} & \begin{tabular}[b]{@{}r@{}}VRAM\\(GiB)\end{tabular} & \begin{tabular}[b]{@{}r@{}}Weights\\(MB)\end{tabular} & LB & barbs & no barbs & SQ & RQ & record & matched & missed & split & spurious & merged \\
+            \midrule
+            \texttt{final} & SSL-R34, MiT-B2, HRNet, zoom & yes & D4 & 10.8 & 4.0 & 303 & 0.40 & \textbf{0.4668} & 0.4692 & 0.689 & 0.678 & 0.662 & 0.813 & 24.3 & 2.1 & 11.6 & 2.1 \\
+            \texttt{fast} & same 4 & yes & flips & 4.1 & 4.0 & 303 & 0.40 & \textbf{0.4642} & 0.4664 & 0.688 & 0.675 & 0.660 & 0.812 & 22.9 & 2.6 & 12.1 & 2.0 \\
+            \texttt{lite} & R34, MiT-B2, HRNet & yes & flips & 2.0 & 3.9 & 230 & 0.39 & \textbf{0.4614} & 0.4637 & 0.687 & 0.672 & 0.668 & 0.811 & 21.7 & 2.6 & 13.1 & 2.1 \\
+            \texttt{tiny} & HRNet & no & flips & 1.2 & 1.8 & 73 & 0.39 & \textbf{0.4508} & 0.4531 & 0.679 & 0.664 & 0.667 & 0.806 & 18.2 & 2.9 & 14.8 & 3.0 \\
+            \bottomrule
+        \end{tabular}
+    \end{table*}
 
 
 

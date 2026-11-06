@@ -24,12 +24,14 @@
 
 \documentclass[sigconf]{acmart}
 \input{preamble}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,backgrounds,fit,positioning}
 
 \guideStylefalse
 
 \begin{document}
 
-\title{Beyond Annotator Agreement: A Calibrated Three-Family Ensemble with Crop Refinement for Solar Filaments}
+\title[A Calibrated Three-Family Ensemble with Crop Refinement for Solar Filaments]{Beyond Annotator Agreement: A Calibrated Three-Family Ensemble with Crop Refinement for Solar Filaments}
 \subtitle{A Solution to the Solar Filament Segmentation Challenge 2026}
 
 
@@ -84,11 +86,11 @@
 %              METHODOLOGY             %
 % ==================================== %
 \section{Methodology}\label{sec:methodology}
-    \begin{figure}[t]
+    \begin{figure*}[t]
         \centering
-        \fbox{\parbox[c][3.5cm][c]{0.9\columnwidth}{\centering Pipeline diagram (placeholder)}}
-        \caption{Pipeline overview.}\label{fig:pipeline}
-    \end{figure}
+        \input{figures/pipeline}
+        \caption{Pipeline of the \texttt{final} variant. Dashed arrows carry training outputs into inference.}\label{fig:pipeline}
+    \end{figure*}
 
     \subsection{Preprocessing and Targets}\label{subsec:preprocessing}
     \textbf{Input.}

@@ -1,0 +1,58 @@
+% Pipeline of the final variant
+\providecolor{figInk}{rgb}{0,0,0}
+\providecolor{figTrain}{rgb}{0.94,0.94,0.94}
+\providecolor{figInfer}{rgb}{0.93,0.93,1}
+\providecolor{figModel}{rgb}{1,1,1}
+\begin{tikzpicture}[
+        color=figInk,
+        font=\scriptsize,
+        >={Stealth[length=4pt]},
+        box/.style={draw, rounded corners=1.5pt, align=center, inner sep=2.5pt, minimum height=1.05cm},
+        train/.style={box, fill=figTrain, minimum height=0.95cm},
+        infer/.style={box, fill=figInfer},
+        model/.style={draw, rounded corners=1pt, fill=figModel, minimum width=2.75cm, minimum height=0.36cm, inner sep=1pt},
+        lane/.style={font=\scriptsize\bfseries, rotate=90, anchor=south},
+        feed/.style={->, dashed},
+        flow/.style={->},
+    ]
+
+    % Inference
+    \node[infer, text width=1.05cm] (obs) at (0.25, 0) {Observation\\$2048^2$ px};
+    \node[model] (m2) at (2.95, 0.21) {MiT-B2 U-Net};
+    \node[model, above=0.05cm of m2] (m1) {SSL-R34 U-Net++};
+    \node[model, below=0.05cm of m2] (m3) {HRNet-W32 U-Net};
+    \node[model, below=0.05cm of m3] (m4) {HRNet-W32 U-Net, $2\times$ input};
+    \begin{scope}[on background layer]
+        \node[draw=figInk, rounded corners=1.5pt, fill=figInfer, inner sep=2pt, fit=(m1)(m4),
+            label={[font=\scriptsize, inner sep=1pt, text=figInk]below:512 px tiles, D4 TTA}] (ensemble) {};
+    \end{scope}
+    \node[infer, text width=1.95cm] (props) at (6.25, 0) {\textbf{Proposals}\\mean map $\ge 0.35$,\\erode 1 px,\\components};
+    \node[infer, text width=2.45cm] (refiner) at (8.95, 0) {\textbf{Crop refiner}\\window $1.5\times$ box, 256 px;\\image, map, proposal $\to$\\mask, predicted IoU};
+    \node[infer, text width=2.3cm] (assembly) at (11.65, 0) {\textbf{Assembly}\\mask $\ge 0.45$, IoU $\ge 0.32$;\\by IoU, keep if $\ge 50\%$\\of pixels are free};
+    \node[infer, text width=2.15cm] (barbs) at (14.25, 0) {\textbf{Barb growth}\\contrast, ridge filter,\\20 px band; long,\\narrow pieces only};
+    \node[infer, text width=0.95cm] (out) at (16.4, 0) {Instance\\masks\\(RLE)};
+
+    \draw[flow] (obs) -- (ensemble);
+    \draw[flow] (ensemble) -- (props);
+    \draw[flow] (props) -- (refiner);
+    \draw[flow] (refiner) -- (assembly);
+    \draw[flow] (assembly) -- (barbs);
+    \draw[flow] (barbs) -- (out);
+
+    % Training
+    \node[train, text width=1.3cm] (ssl) at (0.25, 2.15) {\textbf{SimMIM-style}\\R34 on 1300\\GONG frames};
+    \node[train, text width=2.75cm] (recipe) at (m2 |- ssl) {\textbf{Training recipe}\\40 epochs BCE + Dice, then\\8 epochs + Lovász (zoom: 12)};
+    \node[train, text width=1.95cm] (oof) at (props |- ssl) {\textbf{Out-of-fold maps}\\grid search for\\proposal cuts};
+    \node[train, text width=2.45cm] (rtrain) at (refiner |- ssl) {\textbf{Refiner training}\\on out-of-fold proposals,\\one model per fold};
+    \node[train, text width=2.3cm] (cuts) at (assembly |- ssl) {\textbf{Refined maps}\\grid search for\\mask and IoU cuts};
+
+    \draw[flow] (ssl) -- (recipe);
+    \draw[flow] (recipe) -- node[above, font=\scriptsize] {5 folds} (oof);
+    \draw[flow] (oof) -- (rtrain);
+    \draw[flow] (rtrain) -- (cuts);
+
+    \draw[feed] (recipe) -- node[right, align=left, font=\scriptsize] {retrain on all 707\\observations} (recipe |- ensemble.north);
+    \draw[feed] (oof) -- node[right, font=\scriptsize] {cuts} (props);
+    \draw[feed] (rtrain) -- node[right, font=\scriptsize] {fold 0} (refiner);
+    \draw[feed] (cuts) -- node[right, font=\scriptsize] {cuts} (assembly);
+\end{tikzpicture}

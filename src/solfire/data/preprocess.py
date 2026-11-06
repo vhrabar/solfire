@@ -55,7 +55,7 @@ def preprocessed_dir(images_dir, method) -> Path:
             "checkpoints of the experiments need the solfire-lab command"
         )
     source = Path(images_dir)
-    return CACHE_ROOT / str(method) / source.name
+    return CACHE_ROOT / method / source.name
 
 
 def observation_path(images_dir, file_name) -> Path:

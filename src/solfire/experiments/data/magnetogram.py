@@ -3,6 +3,7 @@ GONG site magnetograms ("bzi") resampled onto the MAGFiLO H-alpha pixel grid.
 """
 
 from pathlib import Path
+from typing import cast
 
 import numpy as np
 from astropy.io import fits
@@ -26,8 +27,9 @@ def read_magnetogram(path) -> tuple[np.ndarray, fits.Header]:
     :return: Tuple of (line-of-sight field in gauss with NaN set to 0, header)
     """
     with fits.open(path) as hdus:
-        data = np.nan_to_num(hdus[0].data.astype(np.float32))
-        return data, hdus[0].header
+        primary = cast(fits.PrimaryHDU, hdus[0])
+        data = np.nan_to_num(primary.data.astype(np.float32))
+        return data, primary.header
 
 
 def disk_coordinates(size, window=None) -> tuple[np.ndarray, np.ndarray]:

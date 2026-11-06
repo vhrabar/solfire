@@ -51,7 +51,7 @@
 #   the full-data retrain are not repeated. That is about 20 GPU-hours on an RTX 5070 Ti, more than one Kaggle
 #   session. Finished runs are skipped, so the notebook can be rerun until it completes.
 #
-# Source: https://github.com/vhrabar/SolarFilamentSegmentationChallenge
+# Source: https://github.com/vhrabar/solfire
 # (this notebook is generated from `notebook/pipeline.py`).
 
 # %%

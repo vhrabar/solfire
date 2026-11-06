@@ -7,14 +7,17 @@ challenge: instance segmentation of solar filaments in GONG H-alpha full-disk ob
 
 ## Results
 
-<!-- TODO: final numbers -->
-
-| Submission | Models | Out-of-fold PQ | Public LB |
-|------------|--------|----------------|-----------|
-| TODO       |        |                |           |
+| Submission | Models                                                             | Out-of-fold PQ | Public LB | s / img | Peak GPU |
+|------------|--------------------------------------------------------------------|----------------|-----------|---------|----------|
+| `final`    | 4 (SSL ResNet34, MiT-B2, HRNet-W32, zoom HRNet) + D4 TTA + refiner | 0.4668         | 0.40      | 10.8    | 4.0 GiB  |
+| `fast`     | the same 4, flips only, + refiner                                  | 0.4642         | 0.40      | 4.1     | 4.0 GiB  |
+| `lite`     | 3 (ImageNet ResNet34, MiT-B2, HRNet-W32) + refiner                 | 0.4614         | 0.39      | 2.0     | 3.9 GiB  |
+| `tiny`     | HRNet-W32                                                          | 0.4508         | 0.39      | 1.2     | 1.8 GiB  |
 
 - Out-of-fold PQ is pooled over all 707 training observations with the organizers' exact scoring
-  (verified identical to `get_pq_score` from their self-evaluation notebook).
+  (verified identical to `get_pq_score` from their self-evaluation notebook). It includes grown barbs, as the
+  submissions do; the table under [Weights](#weights) gives it without them.
+- Timing and peak GPU memory are for the full 180-image test set on an RTX 5070 Ti, including image loading.
 - Annotator-vs-annotator PQ on the training set is 0.34, which bounds what the labels can support.
 
 <!-- TODO: final-rubric metrics (mean Dice, Dice/IoU distributions, 1:n / n:1 relations) from `evaluate`. -->

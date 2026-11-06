@@ -6,6 +6,7 @@ on:
     paths:
       - "paper/**"
       - "!paper/*.pdf"
+      - "!paper/out/**"
       - ".github/workflows/LaTeX-build.yml"
   workflow_dispatch:
 
@@ -36,7 +37,10 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add "paper/${TEX_FILE%.tex}.pdf"
+          # out/ is gitignored for local builds, so the CI copy has to be forced in
+          mkdir -p paper/out
+          cp "paper/${TEX_FILE%.tex}.pdf" paper/out/
+          git add -f "paper/out/${TEX_FILE%.tex}.pdf"
           if git diff --cached --quiet; then
             echo "PDF unchanged, nothing to commit."
             exit 0

@@ -90,7 +90,7 @@
         \caption{Pipeline overview.}\label{fig:pipeline}
     \end{figure}
 
-    \subsection{Preprocessing and Targets}\label{sec:preprocessing}
+    \subsection{Preprocessing and Targets}\label{subsec:preprocessing}
     \textbf{Input.}
     Each $2048\times2048$ JPEG observation is read as one grayscale channel in $[0,1]$ and standardised with the ImageNet statistics used in encoder pretraining.
     No contrast enhancement is applied (Section~\ref{sec:negative}).
@@ -101,9 +101,9 @@
     The target of an observation is the mean of its record masks, so each pixel holds the fraction of annotators who marked it.
     Each observation therefore carries the same weight in training, however many records it has.
 
-    \subsection{Models}\label{sec:models}
+    \subsection{Models}\label{subsec:models}
 
-    \subsection{Training}\label{sec:training}
+    \subsection{Training}\label{subsec:training}
     \textbf{Sampling.}
     Each epoch draws seven $512\times512$ crops per observation at native resolution.
     With probability 0.7, a crop contains a random vertex of a random filament polygon at a random position; otherwise it is placed uniformly.
@@ -121,20 +121,20 @@
     The shipped models repeat both stages on all 707 observations and keep the final epoch, as nothing is held out for selection.
     A control over the fine-tune stage supports this: on OOF, the final epoch scores 0.4602 and the validation-selected epoch 0.4593.
 
-    \subsection{Inference}\label{sec:inference}
+    \subsection{Inference}\label{subsec:inference}
 
-    \subsection{Post-processing and Calibration}\label{sec:calibration}
+    \subsection{Post-processing and Calibration}\label{subsec:calibration}
 
-    \subsection{Crop Refiner}\label{sec:refiner}
+    \subsection{Crop Refiner}\label{subsec:refiner}
 
-    \subsection{Barb Growth}\label{sec:barbs}
+    \subsection{Barb Growth}\label{subsec:barbs}
 
 
 % ==================================== %
 %              EVALUATION              %
 % ==================================== %
 \section{Evaluation}\label{sec:evaluation}
-    \subsection{Released Variants}\label{sec:variants}
+    \subsection{Released Variants}\label{subsec:variants}
     Table~\ref{tab:presets} gives the results of the four released variants.
     The shipped models are retrained on all data, so their quality is measured on the five-fold set of the same recipe.
     Every variant ships with barbs enabled, and barb growth costs about 0.002 PQ in each case.
@@ -162,11 +162,11 @@
         \end{tabular}
     \end{table*}
 
-    \subsection{Qualitative Results}\label{sec:qualitative}
+    \subsection{Qualitative Results}\label{subsec:qualitative}
 
-    \subsection{Model Progression}\label{sec:progression}
+    \subsection{Model Progression}\label{subsec:progression}
 
-    \subsection{Leaderboard Gap}\label{sec:lbgap}
+    \subsection{Leaderboard Gap}\label{subsec:lbgap}
 
 
 % ==================================== %

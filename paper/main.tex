@@ -155,6 +155,20 @@
     All models run in fp16 under autocast.
 
     \subsection{Post-processing and Calibration}\label{subsec:calibration}
+    \textbf{Instances.}
+    The ensemble map is thresholded, grown or shrunk by a signed number of 4-connected steps, and split into 8-connected components.
+    Each component is scored by its mean probability, and components below a minimum score or area are dropped.
+    A low threshold keeps a filament in one piece, and the score cut then removes uncertain ones, since under PQ a false positive costs as much as a miss.
+
+    \textbf{Calibration.}
+    The four parameters are chosen jointly for each variant by grid search on its pooled OOF maps.
+    The grid holds 9 thresholds in $[0.25, 0.65]$, offsets from $-2$ to $+1$, minimum areas of 0--512\,px, and 13 minimum scores in $[0, 0.94]$, 1872 settings in all.
+    Components are labelled once per threshold and offset, as the area and score cuts only remove them.
+
+    \textbf{Chosen cuts.}
+    Every variant settles on one step of erosion, no area cut, a threshold of 0.35 or 0.375, and a minimum score of 0.65 or 0.675.
+    In \texttt{tiny} this is the output.
+    In the other variants, the threshold and offset only cut the proposals, and the refiner sets its own cuts (Section~\ref{subsec:refiner}).
 
     \subsection{Crop Refiner}\label{subsec:refiner}
 

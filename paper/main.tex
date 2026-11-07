@@ -124,6 +124,24 @@
     A control over the fine-tune stage supports this: on OOF, the final epoch scores 0.4602 and the validation-selected epoch 0.4593.
 
     \subsection{Inference}\label{subsec:inference}
+    \textbf{Tiling.}
+    Each model runs on $512\times512$ windows of the full observation, the crop size of training.
+    The last window of each row and column is moved back to the image border, so no window contains padding.
+    Overlapping windows are blended with separable raised-cosine weights, which have a floor of 0.05 at the border.
+    Windows with no pixel above $10/255$ lie off the disk; their probability is set to zero and the model is not run on them.
+
+    \textbf{Test-time augmentation.}
+    The \texttt{final} variant averages all eight views of the dihedral group D4.
+    It does so in two passes per model: the four flips at 50\% window overlap, and the four flips of the quarter-turned image at 25\%.
+    The other variants use the four flips at 25\% overlap.
+
+    \textbf{Zoom member.}
+    The zoom member receives the observation upsampled bilinearly by $2\times$, so that a thin filament covers more pixels.
+    The same tiling is applied, and the output map is downsampled back to native resolution.
+
+    \textbf{Ensemble.}
+    The probability maps of the members are averaged with equal weights.
+    All models run in fp16 under autocast.
 
     \subsection{Post-processing and Calibration}\label{subsec:calibration}
 

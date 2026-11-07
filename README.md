@@ -24,38 +24,56 @@ challenge: instance segmentation of solar filaments in GONG H-alpha full-disk ob
 
 ## Method
 
-<!-- TODO: best pipeline figure (observation → tiles → ensemble → threshold/erode → instances → RLE). -->
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/vhrabar/solfire/raw/paper/paper/out/pipeline-dark.png">
+  <img alt="SOLFIRE pipeline of the final variant: SSL pretraining, two-stage training, out-of-fold calibration and refiner training (top) feed the inference chain of 4-model ensemble, proposals, crop refiner, assembly and barb growth (bottom)" src="https://github.com/vhrabar/solfire/raw/paper/paper/out/pipeline.png">
+</picture>
+
+*Pipeline of the `final` variant, dashed arrows carry training outputs into inference.*
 
 ### Data
 
-- 707 observations, 1,154 annotation sets (up to 3 annotators per image), 2048×2048 grayscale.
+- 707 observations, 1,154 annotation sets (up to 3 annotators per image), 2048×2048 grayscale, read as one channel
+  in [0, 1] and standardised with ImageNet statistics; no contrast enhancement.
 - 5-fold cross-validation grouped by observation.
-- Soft targets: the annotators' masks are averaged, polygons rasterised like pycocotools.
+- Soft targets: polygons are rasterised with pycocotools, as in the evaluator, and the annotators' masks are averaged,
+  so each pixel holds the fraction of annotators who marked it.
 
 ### Models
 
-<!-- TODO: architectures desc -->
+| Member     | Decoder | Encoder   | Pretraining                                      | Input |
+|------------|---------|-----------|--------------------------------------------------|-------|
+| SSL-R34    | U-Net++ | ResNet34  | ImageNet, then SimMIM-style on 1,300 GONG frames | 1×    |
+| MiT-B2     | U-Net   | MiT-B2    | ImageNet                                         | 1×    |
+| HRNet-W32  | U-Net   | HRNet-W32 | ImageNet                                         | 1×    |
+| zoom HRNet | U-Net   | HRNet-W32 | starts from the HRNet-W32 member                 | 2×    |
 
-| Family | Decoder | Encoder                    | Pretraining |
-|--------|---------|----------------------------|-------------|
-| 1      | U-Net++ | ResNet34                   | ImageNet    |
-| 2      | U-Net   | EfficientNet-B3            | ImageNet    |
-| 3      | U-Net   | MiT-B2 (SegFormer encoder) | ImageNet    |
+`lite` uses the ImageNet ResNet34 instead of SSL-R34 and drops the zoom member; `tiny` is the HRNet-W32 alone.
 
 ### Training
 
-<!-- TODO: losses, augmentations, schedule, Lovász fine-tune and why it beats Lovász-from-start. -->
-
-- 512×512 crops at native resolution, foreground-biased sampling.
-- 40 epochs BCE + Dice (positive weight 5), AdamW, warm-up, SWA; encoder at 0.25× learning rate.
-- 8-epoch fine-tune at lr 1e-4 with a Lovász hinge term (weight 0.5).
+- 512×512 crops at native resolution, 7 per observation per epoch; with probability 0.7 a crop is placed on a
+  filament vertex. Flips, quarter turns, gamma, brightness and contrast jitter.
+- Base stage: 40 epochs of BCE (positive weight 5) + soft Dice, AdamW (batch 8, weight decay 0.01), peak lr 4e-4
+  with the encoder at 0.25×, 3 warm-up epochs, cosine decay.
+- Fine-tune: 8 epochs at lr 1e-4 with a Lovász hinge term (weight 0.5). The zoom member is fine-tuned from the base
+  HRNet for 12 epochs at 2× input.
+- The shipped models repeat both stages on all 707 observations and keep the final epoch (on out-of-fold maps the
+  final epoch scores 0.4602 vs 0.4593 for the validation-selected one).
 
 ### Inference and post-processing
 
-<!-- TODO: tiling, TTA, ensembling, calibration on out-of-fold maps, instance extraction. -->
-
-- Tiled 512 windows with overlap, flip TTA, probabilities averaged over the ensemble.
-- Threshold, morphological offset and instance mean-probability cut calibrated on the pooled out-of-fold maps.
+- **Ensemble:** 512 px tiles, probabilities averaged over the members; `final` uses D4 TTA with 50 % tile overlap,
+  the other presets flips with 25 % overlap. fp16, dark (off-disk) tiles skipped.
+- **Proposals:** threshold the mean map (0.35 in `final`), erode 1 px, split into connected components.
+- **Crop refiner** (all presets but `tiny`): for each proposal, a 256 px crop of a window 1.5× its box (image,
+  ensemble map, proposal) goes through a refiner network that predicts the instance mask and its IoU. It is trained
+  on out-of-fold proposals; fold 0's model ships.
+- **Assembly:** refined masks are thresholded (0.45) and filtered by predicted IoU (≥ 0.32), then placed in order
+  of IoU; a mask is kept if at least half of its pixels are still free.
+- **Barb growth:** thin, long side structures are grown from each mask using local contrast and a ridge filter
+  within a 20 px band. It costs about 0.002 PQ but is the only method that adds barbs, which the organisers want.
+- All cuts are grid-searched on pooled out-of-fold maps; the output is one RLE mask per instance.
 
 ### Morphology on H-alpha
 

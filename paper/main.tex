@@ -104,6 +104,17 @@
     Each observation therefore carries the same weight in training, however many records it has.
 
     \subsection{Models}\label{subsec:models}
+    \textbf{Ensemble.} The \texttt{final} variant averages the probabilities of four networks from three encoder families, all built with Segmentation Models PyTorch~\cite{iakubovskii2019smp}:
+    a U-Net++~\cite{zhou2018unetpp} with a ResNet34 encoder~\cite{he2016resnet}, a U-Net~\cite{ronneberger2015unet} with the MiT-B2 encoder of SegFormer~\cite{xie2021segformer}, a U-Net with an HRNet-W32 encoder~\cite{wang2021hrnet}, and a second HRNet-W32 U-Net, the zoom member, that reads the observation at twice its resolution.
+    The zoom member sees thin filaments over more pixels; at inference, the observation is upsampled $2\times$ before tiling and its probabilities are resized back.
+    Encoders start from ImageNet weights, with the first convolution reduced to one input channel.
+    The four networks hold 125.5\,M parameters (26.1, 27.5, 36.0 and 36.0\,M).
+
+    \textbf{Domain pretraining.} In \texttt{final} and \texttt{fast}, the ResNet34 U-Net++ is first pretrained in the style of SimMIM~\cite{xie2022simmim} on 1300 unlabelled GONG H$\alpha$ frames from 2023--2025, which do not overlap the 2011--2022 MAGFiLO observations.
+    The frames are raw FITS from the NSO archive\footnote{\url{https://gong2.nso.edu/HA/haf}}, converted to JPEG with the MLEcoFi FITS2JPEG converter\footnote{\url{https://bitbucket.org/dataresearchlab/mleco-fits2jpegconvertor}} of the MAGFiLO authors' group, and kept only in bursts of five that pass brightness and dark-patch checks; they are published as~\cite{vedran_hrabar_2026}.
+    In each $512\times512$ crop, 60\% of the $32\times32$ patches are replaced by the crop mean, and the whole network learns to reconstruct them with an L1 loss on per-patch normalised targets, as in MAE~\cite{he2022mae}.
+    Unlike SimMIM, the network is convolutional and the hidden patches are filled with the mean rather than a learned token.
+    After 30 epochs, the output layer is dropped and the rest initialises supervised training.
 
     \subsection{Training}\label{subsec:training}
     \textbf{Sampling.}

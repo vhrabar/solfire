@@ -85,11 +85,30 @@ challenge: instance segmentation of solar filaments in GONG H-alpha full-disk ob
 
 ## What didn't work
 
-<!-- TODO: measured effect of each. -->
+Changes that were tested and rejected, as pooled out-of-fold PQ after calibration against a control with the same
+setup. Seeds alone move a five-model set by up to 0.007 and the crop refiner by ±0.001, so a change is adopted only
+if it beats its control by more than 0.002 after the full pipeline, with the nested score agreeing. None did.
 
-Morphology-aware losses??? (clDice, opening/closing), GONG pseudo-labels, hard-negative mining, an auxiliary
-category head, CLAHE preprocessing, instance-segmentation models, Lovász from the first epoch with longer
-training, and further post-processing.
+| Change                             |     PQ | Control |    Gain |
+|------------------------------------|-------:|--------:|--------:|
+| CLAHE contrast enhancement         | 0.4367 |  0.4390 | −0.0023 |
+| GONG pseudo-labels                 | 0.4353 |  0.4390 | −0.0037 |
+| Lovász hinge from scratch          | 0.4446 |  0.4503 | −0.0057 |
+| 1024×1024 training crops           | 0.4458 |  0.4503 | −0.0045 |
+| Ensemble distillation              | 0.4465 |  0.4503 | −0.0038 |
+| Tversky loss in the fine-tune      | 0.4585 |  0.4594 | −0.0009 |
+| Longer fine-tune                   | 0.4589 |  0.4594 | −0.0005 |
+| Thin-aware fine-tune               | 0.4599 |  0.4594 | +0.0005 |
+| 35 models instead of 15            | 0.4558 |  0.4564 | −0.0006 |
+| Magnetogram head, in ensemble      | 0.4550 |  0.4549 | +0.0001 |
+| Watershed instance splitting       |  0.388 |   0.443 |  −0.055 |
+| YOLO26m-seg member, score-ordered  | 0.4521 |  0.4641 | −0.0120 |
+| Spine auxiliary head, with refiner | 0.4650 |  0.4637 | +0.0013 |
+| Second refiner pass                | 0.4692 |  0.4700 | −0.0008 |
+| Other refiner encoders, best       | 0.4692 |  0.4700 | −0.0008 |
+
+Losses with clDice or differentiable morphology terms were also tried and dropped. A dedicated barb head gave no PQ
+gain (best +0.0001) and barely raised thin-structure recall: it extended filament edges rather than adding barbs.
 
 ## Setup
 

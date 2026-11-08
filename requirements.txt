@@ -1,16 +1,22 @@
 -e .
 anyio==4.15.1 ; sys_platform != 'emscripten'
+appnope==1.0.0 ; sys_platform == 'darwin'
 astropy==8.0.2
 astropy-iers-data==0.2026.9.28.0.59.37
+asttokens==3.0.2
 attrs==26.1.0
 bleach==6.4.0
 certifi==2026.10.23
+cffi==2.1.1 ; implementation_name == 'pypy'
 charset-normalizer==3.5.2
 click==8.5.0
 cloudpickle==3.1.2
 colorama==0.4.6 ; sys_platform == 'win32'
+comm==0.2.3
 contourpy==1.4.0
 cycler==0.12.1
+debugpy==1.8.22
+executing==2.3.0
 fastjsonschema==2.22.2
 filelock==4.2.7
 fonttools==4.66.1
@@ -23,40 +29,58 @@ httpx2-jsfetch==1.0 ; sys_platform == 'emscripten'
 huggingface-hub==2.0.0
 idna==3.20
 imageio==2.38.0
+ipykernel==7.4.0
+ipython==9.18.1
+ipython-pygments-lexers==1.1.1
+jedi==0.20.1
 jinja2==3.1.6
 joblib==1.6.0
 jsonschema==4.26.0
 jsonschema-specifications==2025.9.1
+jupyter-client==8.10.0
 jupyter-core==5.9.1
 jupytext==1.19.5
 kaggle==2.2.4
 kagglehub==1.0.2
 kagglesdk==0.1.37
 kiwisolver==1.5.1
+kx-plot==0.6.0
 lazy-loader==0.6
 markdown-it-py==4.2.0
 markupsafe==3.0.4
 matplotlib==3.11.2
+matplotlib-inline==0.2.2
 mdit-py-plugins==0.6.1
 mdurl==0.1.2
 mpmath==1.3.0
 narwhals==2.26.0
 nbformat==5.11.1
+nest-asyncio2==1.7.4
 networkx==3.7
 numpy==2.5.4
 numpy-typing-compat==20260602.2.5
 optype==0.19.0
 packaging==26.3
+pandas==3.1.1
+parso==0.8.7
+pexpect==4.9.0 ; sys_platform != 'emscripten' and sys_platform != 'win32'
 pillow==13.0.0
 platformdirs==4.12.2
+prompt-toolkit==3.0.53
 protobuf==7.36.2
+psutil==7.2.2 ; sys_platform != 'android' and sys_platform != 'cygwin' and sys_platform != 'emscripten'
+ptyprocess==0.7.0 ; sys_platform != 'emscripten' and sys_platform != 'win32'
+pure-eval==0.2.4
 pycocotools==2.0.11
+pycparser==3.12 ; implementation_name == 'pypy'
 pyerfa==2.0.1.5
+pygments==2.21.0
 pyparsing==3.3.3
 python-dateutil==2.9.0.post0
 python-dotenv==1.2.3
 python-slugify==9.1.2
 pyyaml==6.0.3
+pyzmq==27.3.0
 referencing==0.37.0
 requests==2.34.2
 rpds-py==2026.6.3
@@ -69,6 +93,7 @@ segmentation-models-pytorch==0.6.0
 serron==0.5.0
 setuptools==84.2.1
 six==1.17.0
+stack-data==0.6.3
 sympy==1.14.0
 text-unidecode==1.3
 threadpoolctl==3.7.0
@@ -78,9 +103,12 @@ torch==2.15.0 ; sys_platform == 'darwin'
 torch==2.15.0 ; sys_platform != 'darwin'
 torchvision==0.29.2 ; sys_platform == 'darwin'
 torchvision==0.29.2 ; sys_platform != 'darwin'
+tornado==6.6
 tqdm==4.70.1
 traitlets==5.16.1
 truststore==0.10.4 ; sys_platform != 'emscripten'
 typing-extensions==4.16.0
+tzdata==2026.6 ; sys_platform == 'emscripten' or sys_platform == 'win32'
 urllib3==2.8.0
+wcwidth==0.9.4
 webencodings==0.6.1

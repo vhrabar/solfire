@@ -1,4 +1,4 @@
-exclude: ^(Final pipeline\.ipynb|external/|kaggle/.*\.png)$
+exclude: ^(notebook/Final pipeline\.ipynb|external/|kaggle/.*\.png)$
 
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks

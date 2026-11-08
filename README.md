@@ -202,11 +202,26 @@ tests/                 unit tests; tests/experiments/ for the experiments
 uv run --group cuda-134 pytest
 ```
 
-<!-- TODO: list of tests ??? -->
-
 ## Reproducibility
 
-<!-- TODO: seeds, fold assignment, training time per model, Kaggle model link and notebook. -->
+- **Environment:** `uv.lock` pins every package, including the torch build per hardware group ( [Setup](#setup));
+  `requirements.txt` is its export and CI checks that they agree.
+- **Weights:** `weights/final/` (Git LFS) and the Kaggle models `solfire-<preset>/1` are the same fp16 files, one
+  calibration JSON per preset.
+- **Predicting the test set:** `notebook/Final pipeline.ipynb` (`PRESET = "final"`) loads those weights and writes the
+  submission. It gives the same output as `solfire predict` on all 180 test images.
+- **Determinism:** inference is not bit-exact across GPUs; masks can differ by 1–2 px at the borders, which does not
+  change the score at the reported precision.
+- **Retraining:** see [Usage](#usage) and `sweeps/` for the exact configurations.
+- **Seeds:** every shipped model and refiner was trained with seed 1 (`--seed`, the default), which seeds `random`,
+  `numpy` and `torch` (CPU and CUDA) and the augmentation and crop sampling.
+- **Folds:** 5 grouped folds (all records of an observation stay together), observations shuffled by file name with
+  seed 0. The assignment does not depend on `--seed`, so out-of-fold predictions of different seeds can be pooled.
+- **Determinism of training:** cuDNN is not set to deterministic, so retraining with the same seed gives close but not
+  identical weights (refiner runs vary by about ±0.001 PQ).
+- **Training time** (NVIDIA GeForce RTX 5070 Ti): the four shipped models take about 4 h on all 707 observations
+  (SSL-R34 77 min, MiT-B2 61 min, HRNet-W32 88 min, zoom HRNet 22 min), plus about 1.8 h of SSL pretraining. The 5-fold
+  out-of-fold runs used for calibration and for training the refiner cost roughly 5× that per model.
 
 ## Disclaimer on the use of the LLM tools
 

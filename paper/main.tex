@@ -171,6 +171,33 @@
     In the other variants, the threshold and offset only cut the proposals, and the refiner sets its own cuts (Section~\ref{subsec:refiner}).
 
     \subsection{Crop Refiner}\label{subsec:refiner}
+    \textbf{Proposals.}
+    Every component of at least 32\,px in the thresholded, eroded map becomes a proposal; no score cut is applied at this point.
+    Each proposal is cut out in a square window centred on its box, with a side of $1.5\times$ the longer box side (at least 128\,px), and resized to $256\times256$.
+
+    \textbf{Network.}
+    A ResNet34 U-Net (24.4\,M parameters, ImageNet weights) reads the observation, the ensemble map and the binary proposal as three channels.
+    It redraws the mask of that one filament, and a head on the bottleneck predicts the IoU the mask will earn.
+
+    \textbf{Training.}
+    Samples are the components of the variant's pooled OOF maps at thresholds 0.3, 0.375 and 0.45, so the refiner trains on proposals like those it sees at test time; a proposal within IoU 0.85 of one already taken is skipped, leaving 18{,}840 samples for \texttt{final}.
+    In each annotation record, the target is the filament that overlaps the proposal best.
+    The mask loss is BCE plus soft Dice against the mean of these filaments over the records.
+    The IoU head adds a BCE term of weight 0.5 against the earned score, which is the IoU of the mask cut at 0.5 with each record's filament, set to zero if it does not exceed 0.5, and averaged over the records.
+    Training runs for 12 epochs with AdamW, batch size 32, a peak learning rate of $3\times10^{-4}$ ($0.5\times$ on the encoder), one warm-up epoch and cosine decay, with flips, transposes, and gamma and gain jitter on the observation channel.
+    The refiner of a fold trains only on the other folds, and OOF scores use the refiner that did not see the observation.
+    Training needs held-out maps, so there is no full-data retrain; the released variants ship the refiner of fold 0.
+
+    \textbf{Assembly.}
+    Masks and predicted IoUs are averaged over the original window and its two flips, and each mask is resized back to native resolution, cut, and reduced to its largest component.
+    Instances are painted in order of predicted IoU, and only onto free pixels.
+    An instance is dropped if its predicted IoU is below the cut or less than half of its pixels are free, because two fragments of one filament are both redrawn as the whole filament.
+
+    \textbf{Cuts and effect.}
+    The mask and IoU cuts are grid-searched on the refined OOF instances (7 mask cuts in $[0.3, 0.6]$ and 31 IoU cuts in $[0, 0.6]$).
+    The shipped pairs are 0.45 and 0.32 for \texttt{final}, 0.5 and 0.32 for \texttt{fast}, and 0.45 and 0.28 for \texttt{lite}.
+    At its best cuts, the refiner of \texttt{final} reaches 0.4700 against 0.4611 for the same proposals scored by mean probability.
+    Using the predicted IoU alone on the unrefined masks gives 0.4632, so most of the gain comes from the redrawn masks.
 
     \subsection{Barb Growth}\label{subsec:barbs}
 

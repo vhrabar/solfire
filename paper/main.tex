@@ -1,0 +1,273 @@
+% !TeX program = pdflatex
+% =============================================================================
+% COPYRIGHT AND DISCLAIMER
+% =============================================================================
+% This file is provided as a convenience template for competition participants.
+% By using it, you accept full responsibility for compliance with all applicable
+% copyright, licensing, and usage rules of the Association for Computing
+% Machinery (ACM) and of any LaTeX packages you load (including, without
+% limitation, the "acmart" document class and related ACM materials).
+%
+% Consult ACM's official publication, template, and copyright policies before
+% using this setup for any purpose other than this competition. Do not assume
+% that this template may be reused, redistributed, or submitted elsewhere
+% without independently verifying ACM's current rules.
+%
+% Use of the "acmart" class, the "sigconf" option, or ACM-style formatting in
+% this template does NOT mean that this report, this competition, its organizers,
+% or any resulting PDF is sponsored, endorsed, affiliated with, or published by
+% ACM. ACM trademarks and branding remain the property of ACM.
+%
+% Template packages live in preamble.tex.
+% Citations live in main.bib. Edit this file with your paper content.
+% =============================================================================
+
+\documentclass[sigconf]{acmart}
+\input{preamble}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,backgrounds,fit,positioning}
+
+\guideStylefalse
+
+\begin{document}
+
+\title[A Calibrated Three-Family Ensemble with Crop Refinement for Solar Filaments]{Beyond Annotator Agreement: A Calibrated Three-Family Ensemble with Crop Refinement for Solar Filaments}
+\subtitle{A Solution to the Solar Filament Segmentation Challenge 2026}
+
+
+\author{Vedran Hrabar}
+\affiliation{
+  \institution{Faculty of Electrical Engineering and Computing, University of Zagreb}
+  \city{Zagreb}
+  \country{Croatia}
+}
+\email{vedran.hrabar@fer.unizg.hr}
+
+\begin{abstract}
+    This report describes solution to the Solar Filament Segmentation Challenge~2026, a Kaggle competition on automatic segmentation of solar filaments in GONG H-$\alpha$ observations.
+\end{abstract}
+
+\maketitle
+
+
+% ==================================== %
+%              INTRODUCTION            %
+% ==================================== %
+\section{Introduction}\label{sec:introduction}
+    This report goes over the details of the submitted solution to the Solar Filament Segmentation Challenge~2026~\cite{filament-segmentation-2026}.
+    The challenge, launched on July~10,~2026, is organized by the Earth-Space AI Research (ESAIR) Lab\footnote{\href{https://www.esairlab.com/home}{www.esairlab.com/}}.
+    This challenge utilizes the MAGFiLO dataset for evaluation of the segmentation algorithms~\cite{ahmadzadeh2024dataset}.
+
+
+% ==================================== %
+%      DATA AND VALIDATION PROTOCOL    %
+% ==================================== %
+\section{Data and Validation Protocol}\label{sec:data}
+    \textbf{Labels.} The training set contains 707 observations and 1154 annotation records (411 observations with one annotator, 145 with two, 151 with three).
+    Together, these records hold 8199 filament polygons with a median area of 1228 px.
+    Thin structures under about 5 px, i.e.\ barbs, account for only 1.9\% of the annotated area.
+    One annotator's set was scored against another's on the 296 observations with several records.
+    This comparison gives PQ~0.34 (SQ 0.634, RQ 0.54), and annotators agree on barb pixels only 40\% of the time.
+    Most disagreement concerns whether a faint filament exists and where a long one ends.
+    A score of 0.47 is reached by the final model against the same records, so it agrees with each annotator more than the annotators agree with each other.
+
+    \textbf{Scoring.} PQ~\cite{kirillov2019panoptic} matches a prediction to a filament at IoU~$>0.5$ and computes $\mathrm{PQ}=\sum_{\mathrm{TP}}\mathrm{IoU}\,/\,(|\mathrm{TP}|+\tfrac12|\mathrm{FP}|+\tfrac12|\mathrm{FN}|)$.
+    Ground-truth instances are the individual polygons rasterised as COCO RLE~\cite{lin2014coco}, and each record is scored separately.
+
+    \textbf{Protocol.} Five-fold cross-validation grouped by observation is used.
+    The score is out-of-fold (OOF) PQ, with TP, FP, FN and IoU pooled over all 1{,}154 records as the evaluator does.
+    Post-processing is calibrated on the pooled OOF maps.
+    A \emph{nested} score is also reported, with parameters chosen on four folds and applied to the fifth.
+    Seeds alone move a five-model set by up to 0.007 and the crop refiner by $\pm0.001$.
+    A change is therefore adopted only if it beats a matching control by $>0.002$ after the full pipeline, with the nested score agreeing.
+
+
+% ==================================== %
+%              METHODOLOGY             %
+% ==================================== %
+\section{Methodology}\label{sec:methodology}
+    \begin{figure*}[t]
+        \centering
+        \input{figures/pipeline}
+        \caption{Pipeline of the \texttt{final} variant. Dashed arrows carry training outputs into inference.}\label{fig:pipeline}
+    \end{figure*}
+
+    \subsection{Preprocessing and Targets}\label{subsec:preprocessing}
+    \textbf{Input.}
+    Each $2048\times2048$ JPEG observation is read as one grayscale channel in $[0,1]$ and standardised with the ImageNet statistics used in encoder pretraining.
+    No contrast enhancement is applied (Section~\ref{sec:negative}).
+    The same steps are used for training and inference.
+
+    \textbf{Targets.}
+    Each polygon is rasterised with pycocotools, as in the evaluator, and the polygons of one annotation record are merged into a binary mask.
+    The target of an observation is the mean of its record masks, so each pixel holds the fraction of annotators who marked it.
+    Each observation therefore carries the same weight in training, however many records it has.
+
+    \subsection{Models}\label{subsec:models}
+    \textbf{Ensemble.} The \texttt{final} variant averages the probabilities of four networks from three encoder families, all built with Segmentation Models PyTorch~\cite{iakubovskii2019smp}:
+    a U-Net++~\cite{zhou2018unetpp} with a ResNet34 encoder~\cite{he2016resnet}, a U-Net~\cite{ronneberger2015unet} with the MiT-B2 encoder of SegFormer~\cite{xie2021segformer}, a U-Net with an HRNet-W32 encoder~\cite{wang2021hrnet}, and a second HRNet-W32 U-Net, the zoom member, that reads the observation at twice its resolution.
+    The zoom member sees thin filaments over more pixels; at inference, the observation is upsampled $2\times$ before tiling and its probabilities are resized back.
+    Encoders start from ImageNet weights, with the first convolution reduced to one input channel.
+    The four networks hold 125.5\,M parameters (26.1, 27.5, 36.0 and 36.0\,M).
+
+    \textbf{Domain pretraining.} In \texttt{final} and \texttt{fast}, the ResNet34 U-Net++ is first pretrained in the style of SimMIM~\cite{xie2022simmim} on 1300 unlabelled GONG H$\alpha$ frames from 2023--2025, which do not overlap the 2011--2022 MAGFiLO observations.
+    The frames are raw FITS from the NSO archive\footnote{\url{https://gong2.nso.edu/HA/haf}}, converted to JPEG with the MLEcoFi FITS2JPEG converter\footnote{\url{https://bitbucket.org/dataresearchlab/mleco-fits2jpegconvertor}} of the MAGFiLO authors' group, and kept only in bursts of five that pass brightness and dark-patch checks; they are published as~\cite{vedran_hrabar_2026}.
+    In each $512\times512$ crop, 60\% of the $32\times32$ patches are replaced by the crop mean, and the whole network learns to reconstruct them with an L1 loss on per-patch normalised targets, as in MAE~\cite{he2022mae}.
+    Unlike SimMIM, the network is convolutional and the hidden patches are filled with the mean rather than a learned token.
+    After 30 epochs, the output layer is dropped and the rest initialises supervised training.
+
+    \subsection{Training}\label{subsec:training}
+    \textbf{Sampling.}
+    Each epoch draws seven $512\times512$ crops per observation at native resolution.
+    With probability 0.7, a crop contains a random vertex of a random filament polygon at a random position; otherwise it is placed uniformly.
+    Augmentation consists of flips, quarter turns, and gamma, brightness and contrast jitter.
+
+    \textbf{Base stage.}
+    Each model trains for 40 epochs on an equally weighted sum of BCE (positive weight 5) and soft Dice.
+    AdamW is used with batch size 8, weight decay 0.01, and a peak learning rate of $4\times10^{-4}$ ($0.25\times$ on the encoder), with three warm-up epochs and cosine decay.
+
+    \textbf{Fine-tune stage.}
+    Each model then trains for 8 more epochs at $10^{-4}$ with a Lovász hinge~\cite{berman2018lovasz} of weight 0.5 added, which binarises the soft targets at 0.5.
+    The zoom member instead starts from the base HRNet and trains for 12 epochs at $2\times$ input.
+
+    \textbf{Full-data retrain.}
+    The shipped models repeat both stages on all 707 observations and keep the final epoch, as nothing is held out for selection.
+    A control over the fine-tune stage supports this: on OOF, the final epoch scores 0.4602 and the validation-selected epoch 0.4593.
+
+    \subsection{Inference}\label{subsec:inference}
+    \textbf{Tiling.}
+    Each model runs on $512\times512$ windows of the full observation, the crop size of training.
+    The last window of each row and column is moved back to the image border, so no window contains padding.
+    Overlapping windows are blended with separable raised-cosine weights, which have a floor of 0.05 at the border.
+    Windows with no pixel above $10/255$ lie off the disk; their probability is set to zero and the model is not run on them.
+
+    \textbf{Test-time augmentation.}
+    The \texttt{final} variant averages all eight views of the dihedral group D4.
+    It does so in two passes per model: the four flips at 50\% window overlap, and the four flips of the quarter-turned image at 25\%.
+    The other variants use the four flips at 25\% overlap.
+
+    \textbf{Zoom member.}
+    The zoom member receives the observation upsampled bilinearly by $2\times$, so that a thin filament covers more pixels.
+    The same tiling is applied, and the output map is downsampled back to native resolution.
+
+    \textbf{Ensemble.}
+    The probability maps of the members are averaged with equal weights.
+    All models run in fp16 under autocast.
+
+    \subsection{Post-processing and Calibration}\label{subsec:calibration}
+    \textbf{Instances.}
+    The ensemble map is thresholded, grown or shrunk by a signed number of 4-connected steps, and split into 8-connected components.
+    Each component is scored by its mean probability, and components below a minimum score or area are dropped.
+    A low threshold keeps a filament in one piece, and the score cut then removes uncertain ones, since under PQ a false positive costs as much as a miss.
+
+    \textbf{Calibration.}
+    The four parameters are chosen jointly for each variant by grid search on its pooled OOF maps.
+    The grid holds 9 thresholds in $[0.25, 0.65]$, offsets from $-2$ to $+1$, minimum areas of 0--512\,px, and 13 minimum scores in $[0, 0.94]$, 1872 settings in all.
+    Components are labelled once per threshold and offset, as the area and score cuts only remove them.
+
+    \textbf{Chosen cuts.}
+    Every variant settles on one step of erosion, no area cut, a threshold of 0.35 or 0.375, and a minimum score of 0.65 or 0.675.
+    In \texttt{tiny} this is the output.
+    In the other variants, the threshold and offset only cut the proposals, and the refiner sets its own cuts (Section~\ref{subsec:refiner}).
+
+    \subsection{Crop Refiner}\label{subsec:refiner}
+
+    \subsection{Barb Growth}\label{subsec:barbs}
+
+
+% ==================================== %
+%              EVALUATION              %
+% ==================================== %
+\section{Evaluation}\label{sec:evaluation}
+    \subsection{Released Variants}\label{subsec:variants}
+    Table~\ref{tab:presets} gives the results of the four released variants.
+    The shipped models are retrained on all data, so their quality is measured on the five-fold set of the same recipe.
+    Every variant ships with barbs enabled, and barb growth costs about 0.002 PQ in each case.
+    Nested scores without barbs are 0.4655 for \texttt{fast} and 0.4628 for \texttt{lite}.
+    For \texttt{final}, the nested score is 0.4691, but it is measured against the out-of-fold best cut (OOF 0.4700), while the shipped cut is stricter (OOF 0.4692).
+
+    \begin{table*}[t]
+        \caption{
+            Released variants.
+            OOF quality over the 1154 records, with barbs except the no-barbs PQ column; time and peak VRAM over the 180 test observations on an RTX 5070~Ti.
+        }\label{tab:presets}
+        \footnotesize
+        \setlength{\tabcolsep}{2.4pt}
+        \begin{tabular}{llllrrrrrrrrrrrrrr}
+            \toprule
+            & \multicolumn{3}{c}{Configuration} & \multicolumn{3}{c}{Cost} & & \multicolumn{2}{c}{PQ} & & & \multicolumn{2}{c}{Dice} & \multicolumn{4}{c}{Errors (\%)} \\
+            \cmidrule(lr){2-4} \cmidrule(lr){5-7} \cmidrule(lr){9-10} \cmidrule(lr){13-14} \cmidrule(lr){15-18}
+            Variant & Models & Refiner & TTA & \begin{tabular}[b]{@{}r@{}}Time\\(s/img)\end{tabular} & \begin{tabular}[b]{@{}r@{}}VRAM\\(GiB)\end{tabular} & \begin{tabular}[b]{@{}r@{}}Weights\\(MB)\end{tabular} & LB & barbs & no barbs & SQ & RQ & record & matched & missed & split & spurious & merged \\
+            \midrule
+            \texttt{final} & SSL-R34, MiT-B2, HRNet, zoom & yes & D4 & 10.8 & 4.0 & 303 & 0.40 & \textbf{0.4668} & 0.4692 & 0.689 & 0.678 & 0.662 & 0.813 & 24.3 & 2.1 & 11.6 & 2.1 \\
+            \texttt{fast} & same 4 & yes & flips & 4.1 & 4.0 & 303 & 0.40 & \textbf{0.4642} & 0.4664 & 0.688 & 0.675 & 0.660 & 0.812 & 22.9 & 2.6 & 12.1 & 2.0 \\
+            \texttt{lite} & R34, MiT-B2, HRNet & yes & flips & 2.0 & 3.9 & 230 & 0.39 & \textbf{0.4614} & 0.4637 & 0.687 & 0.672 & 0.668 & 0.811 & 21.7 & 2.6 & 13.1 & 2.1 \\
+            \texttt{tiny} & HRNet & no & flips & 1.2 & 1.8 & 73 & 0.39 & \textbf{0.4508} & 0.4531 & 0.679 & 0.664 & 0.667 & 0.806 & 18.2 & 2.9 & 14.8 & 3.0 \\
+            \bottomrule
+        \end{tabular}
+    \end{table*}
+
+    \subsection{Qualitative Results}\label{subsec:qualitative}
+
+    \subsection{Model Progression}\label{subsec:progression}
+
+    \subsection{Leaderboard Gap}\label{subsec:lbgap}
+
+
+% ==================================== %
+%           WHAT DID NOT WORK          %
+% ==================================== %
+\section{What Did Not Work}\label{sec:negative}
+    Table~\ref{tab:negative} lists changes that were tested and rejected.
+    Each is scored after calibration against a control with the same setup, and none passes the adoption rule of Section~\ref{sec:data}.
+    Losses with clDice or differentiable morphology terms were also tried and dropped.
+    A dedicated barb head gave no PQ gain (best +0.0001) and barely raised thin-structure recall, so it extended filament edges rather than adding barbs.
+
+    \begin{table}[H]
+        \caption{Rejected changes, as pooled OOF PQ against the matching control.}\label{tab:negative}
+        \small
+        \begin{tabular}{lrrr}
+            \toprule
+            Change & PQ & Control & Gain \\
+            \midrule
+            CLAHE contrast enhancement & 0.4367 & 0.4390 & $-0.0023$ \\
+            GONG pseudo-labels & 0.4353 & 0.4390 & $-0.0037$ \\
+            Lovász hinge from scratch & 0.4446 & 0.4503 & $-0.0057$ \\
+            $1024\times1024$ training crops & 0.4458 & 0.4503 & $-0.0045$ \\
+            Ensemble distillation & 0.4465 & 0.4503 & $-0.0038$ \\
+            Tversky loss in the fine-tune & 0.4585 & 0.4594 & $-0.0009$ \\
+            Longer fine-tune & 0.4589 & 0.4594 & $-0.0005$ \\
+            Thin-aware fine-tune & 0.4599 & 0.4594 & $+0.0005$ \\
+            35 models instead of 15 & 0.4558 & 0.4564 & $-0.0006$ \\
+            Magnetogram head, in ensemble & 0.4550 & 0.4549 & $+0.0001$ \\
+            Watershed instance splitting & 0.388 & 0.443 & $-0.055$ \\
+            YOLO26m-seg member, score-ordered & 0.4521 & 0.4641 & $-0.0120$ \\
+            Spine auxiliary head, with refiner & 0.4650 & 0.4637 & $+0.0013$ \\
+            Second refiner pass & 0.4692 & 0.4700 & $-0.0008$ \\
+            Other refiner encoders, best & 0.4692 & 0.4700 & $-0.0008$ \\
+            \bottomrule
+        \end{tabular}
+    \end{table}
+
+
+% ==================================== %
+%              CONCLUSION              %
+% ==================================== %
+\section{Conclusion}\label{sec:conclusion}
+
+
+% ==================================== %
+%            ACKNOWLEDGMENT            %
+% ==================================== %
+\section{Acknowledgment}\label{sec:acknowledgment}
+    % Do not change
+    The organization of the Filament Segmentation Challenge 2026 is partially supported by the U.S. National Science Foundation (NSF) under Grant No. 2209912 and 2433781, directorate for Computer and Information Science and Engineering (CSE), and Office of Advanced Cyberinfrastructure (OAC), and Grant No. 2511630, AST Division Of Astronomical Sciences and MPS Directorate for Mathematical and Physical Sciences.
+
+    The Filament Segmentation Challenge 2026 is sponsored by the U.S. National Science Foundation (NSF) National Solar Observatory (NSO).
+
+    This work utilizes GONG data obtained by the NSO Integrated Synoptic Program, managed by the National Solar Observatory, which is operated by the Association of Universities for Research in Astronomy (AURA), Inc.\ under a cooperative agreement with the National Science Foundation and with contribution from the National Oceanic and Atmospheric Administration. The GONG network of instruments is hosted by the Big Bear Solar Observatory, High Altitude Observatory, Learmonth Solar Observatory, Udaipur Solar Observatory, Instituto de Astrofísica de Canarias, and Cerro Tololo Interamerican Observatory.
+
+\bibliographystyle{ACM-Reference-Format}
+\bibliography{main}
+
+\end{document}

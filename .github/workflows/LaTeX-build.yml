@@ -1,0 +1,61 @@
+name: LaTeX-build
+
+on:
+  push:
+    branches: [main, paper]
+    paths:
+      - "paper/**"
+      - "!paper/*.pdf"
+      - "!paper/out/**"
+      - ".github/workflows/LaTeX-build.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TEX_FILE: main.tex
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build PDF
+        uses: xu-cheng/latex-action@v3
+        with:
+          root_file: |
+            ${{ env.TEX_FILE }}
+            figures/pipeline-standalone.tex
+            figures/pipeline-standalone-dark.tex
+          working_directory: paper
+          work_in_root_file_dir: true
+          latexmk_use_lualatex: false
+
+      - name: Render figures
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq poppler-utils
+          mkdir -p paper/out
+          pdftocairo -png -transp -r 300 -singlefile paper/figures/pipeline-standalone.pdf paper/out/pipeline
+          pdftocairo -png -transp -r 300 -singlefile paper/figures/pipeline-standalone-dark.pdf paper/out/pipeline-dark
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # out/ is gitignored for local builds, so the CI copy has to be forced in
+          cp "paper/${TEX_FILE%.tex}.pdf" paper/out/
+          git add -f "paper/out/${TEX_FILE%.tex}.pdf" paper/out/pipeline.png paper/out/pipeline-dark.png
+          if git diff --cached --quiet; then
+            echo "Outputs unchanged, nothing to commit."
+            exit 0
+          fi
+          git commit -m "Build paper PDF and pipeline figure [skip ci]"
+          git pull --rebase origin "${GITHUB_REF_NAME}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"

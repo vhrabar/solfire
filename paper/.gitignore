@@ -13,3 +13,6 @@
 *.synctex.gz
 *.toc
 build/
+out/
+/main.pdf
+figures/*.pdf

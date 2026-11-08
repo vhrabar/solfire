@@ -45,6 +45,11 @@
 
 \begin{abstract}
     This report describes solution to the Solar Filament Segmentation Challenge~2026, a Kaggle competition on automatic segmentation of solar filaments in GONG H-$\alpha$ observations.
+    On the training labels, one annotator scored against another reaches a Panoptic Quality (PQ) of only 0.34, so post-processing is calibrated on pooled out-of-fold maps and each change is compared against a matching control.
+    In the \texttt{final} variant, four networks from three encoder families (ResNet34, MiT-B2 and HRNet-W32, the last also at twice the input resolution) produce a probability map.
+    A crop refiner then redraws and scores every proposal, and barbs are grown from the observation without labels.
+    The variant reaches an out-of-fold PQ of 0.4668 over 1154 annotation records and 0.40 on the public leaderboard.
+    Four released variants span 0.4508 to 0.4668 PQ at 1.2 to 10.8~s per observation.
 \end{abstract}
 
 \maketitle
@@ -57,6 +62,8 @@
     This report goes over the details of the submitted solution to the Solar Filament Segmentation Challenge~2026~\cite{filament-segmentation-2026}.
     The challenge, launched on July~10,~2026, is organized by the Earth-Space AI Research (ESAIR) Lab\footnote{\href{https://www.esairlab.com/home}{www.esairlab.com/}}.
     This challenge utilizes the MAGFiLO dataset for evaluation of the segmentation algorithms~\cite{ahmadzadeh2024dataset}.
+
+    The solution makes four contributions: an ensemble of three encoder families trained on annotator-averaged targets; a crop refiner that redraws each proposal and predicts the IoU it will earn, raising out-of-fold PQ from 0.4611 to 0.4700; a label-free barb growth step; and a validation protocol with pooled and nested scores that separates real gains from seed noise, with the rejected changes reported in Section~\ref{sec:negative}.
 
 
 % ==================================== %

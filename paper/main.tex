@@ -339,6 +339,9 @@
 %              CONCLUSION              %
 % ==================================== %
 \section{Conclusion}\label{sec:conclusion}
+    The \texttt{final} variant combines a three-family ensemble, a crop refiner and label-free barb growth, reaching an out-of-fold PQ of 0.4668 and 0.40 on the public leaderboard; the lighter variants give up at most 0.016 PQ for inference up to nine times faster.
+    The crop refiner was the largest late gain, while most other changes failed the adoption rule, and only the pooled and nested scores could show this, since the rounded leaderboard hid every step after the three-family ensemble.
+    A gap of about 0.07 between the out-of-fold and leaderboard scores remains; the probes point to stricter test labels for faint filaments but do not close it.
 
 
 % ==================================== %

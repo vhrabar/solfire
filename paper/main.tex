@@ -250,10 +250,46 @@
     \end{table*}
 
     \subsection{Qualitative Results}\label{subsec:qualitative}
+    Figure~\ref{fig:qualitative} shows held-out observations at the 90th, 50th and 10th percentiles of per-observation PQ among the 192 that have at least two records and four filaments per record, so the rows are not hand-picked.
+    At the 90th percentile, the instances follow the annotated outlines, and only one filament is missed across three records that hold 5 to 9 filaments each.
+    At the median, the main loss is a long filament drawn as one object (about 13{,}800\,px): it is predicted in two pieces, and its best IoU of 0.35 counts as a miss in both records.
+    At the 10th percentile, the three annotators draw 9, 14 and 16 filaments on the same observation and the model misses 3, 10 and 10 of them, so the score depends strongly on how many filaments a record includes.
+    Barb growth is conservative: it adds 166\,px across the three crops, so the masks hold the filament bodies and only the clearest barbs.
+
+    \begin{figure}[H]
+        \centering
+        \includegraphics[width=\columnwidth]{figures/qualitative}
+        \caption{Held-out observations ($768\times768$ crops) at the 90th, 50th and 10th percentiles of per-observation PQ\@. Annotator outlines are the union of each record's filaments.}\label{fig:qualitative}
+    \end{figure}
 
     \subsection{Model Progression}\label{subsec:progression}
+    Table~\ref{tab:progression} lists the steps that make up \texttt{final}; each row keeps the steps above it.
+    The gain of the Lovász row includes 0.007 from the extra fine-tuning alone.
+    The SimMIM-style pretraining falls below the adoption bar; it is shipped because it does not lower the score and adds no inference cost.
+    The last two rows lower PQ on purpose: the stricter cut follows leaderboard probes (0.40 at a strict cut, 0.37 at a liberal one), which suggest that the test labels keep fewer faint filaments, and barbs are grown for the masks' fine structure.
+    The public leaderboard, rounded to two decimals, stayed at 0.40 from the three-family ensemble onwards, so these steps could only be judged out of fold.
 
-    \subsection{Leaderboard Gap}\label{subsec:lbgap}
+    \begin{table}[H]
+        \caption{Steps of \texttt{final}. Pooled OOF PQ without barbs, except the last row.}\label{tab:progression}
+        \footnotesize
+        \begin{tabular}{lrrr}
+            \toprule
+            Step & PQ & Nested & Gain \\
+            \midrule
+            ResNet34 U-Net++, base stage & 0.4390 & --- & --- \\
+            + Lovász fine-tune & 0.4503 & --- & +0.0113 \\
+            + MiT-B2 family & 0.4539 & --- & +0.0036 \\
+            + HRNet-W32 family & 0.4564 & 0.4548 & +0.0025 \\
+            Finer calibration grid & 0.4594 & 0.4564 & +0.0030 \\
+            + Crop refiner & 0.4637 & 0.4628 & +0.0043 \\
+            + Zoom member & 0.4659 & 0.4653 & +0.0022 \\
+            + SimMIM-style pretraining & 0.4664 & 0.4655 & +0.0005 \\
+            + D4 TTA, refiner retrained on its maps & 0.4700 & 0.4691 & +0.0036 \\
+            Shipped IoU cut 0.32 (OOF best 0.28) & 0.4692 & --- & $-$0.0008 \\
+            + Barb growth & 0.4668 & --- & $-$0.0024 \\
+            \bottomrule
+        \end{tabular}
+    \end{table}
 
 
 % ==================================== %

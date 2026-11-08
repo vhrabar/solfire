@@ -18,7 +18,7 @@ REPO = Path(__file__).resolve().parent.parent
 CARD_DIR = REPO / "kaggle" / "model"
 FRAMEWORK = "pyTorch"
 LICENSE = "Attribution-NonCommercial 4.0 International (CC BY-NC 4.0)"
-NOTEBOOK = "Final pipeline.ipynb"
+NOTEBOOK = "notebook/Final pipeline.ipynb"
 
 
 def variation_slug(preset: str) -> str:

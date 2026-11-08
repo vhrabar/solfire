@@ -7,52 +7,73 @@ challenge: instance segmentation of solar filaments in GONG H-alpha full-disk ob
 
 ## Results
 
-<!-- TODO: final numbers -->
-
-| Submission | Models | Out-of-fold PQ | Public LB |
-|------------|--------|----------------|-----------|
-| TODO       |        |                |           |
+| Submission | Models                                                             | Out-of-fold PQ | Public LB | s / img | Peak GPU |
+|------------|--------------------------------------------------------------------|----------------|-----------|---------|----------|
+| `final`    | 4 (SSL ResNet34, MiT-B2, HRNet-W32, zoom HRNet) + D4 TTA + refiner | 0.4668         | 0.40      | 10.8    | 4.0 GiB  |
+| `fast`     | the same 4, flips only, + refiner                                  | 0.4642         | 0.40      | 4.1     | 4.0 GiB  |
+| `lite`     | 3 (ImageNet ResNet34, MiT-B2, HRNet-W32) + refiner                 | 0.4614         | 0.39      | 2.0     | 3.9 GiB  |
+| `tiny`     | HRNet-W32                                                          | 0.4508         | 0.39      | 1.2     | 1.8 GiB  |
 
 - Out-of-fold PQ is pooled over all 707 training observations with the organizers' exact scoring
-  (verified identical to `get_pq_score` from their self-evaluation notebook).
+  (verified identical to `get_pq_score` from their self-evaluation notebook). It includes grown barbs, as the
+  submissions do; the table under [Weights](#weights) gives it without them.
+- Timing and peak GPU memory are for the full 180-image test set on an RTX 5070 Ti, including image loading.
 - Annotator-vs-annotator PQ on the training set is 0.34, which bounds what the labels can support.
 
 <!-- TODO: final-rubric metrics (mean Dice, Dice/IoU distributions, 1:n / n:1 relations) from `evaluate`. -->
 
 ## Method
 
-<!-- TODO: best pipeline figure (observation → tiles → ensemble → threshold/erode → instances → RLE). -->
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/vhrabar/solfire/raw/paper/paper/out/pipeline-dark.png">
+  <img alt="SOLFIRE pipeline of the final variant: SSL pretraining, two-stage training, out-of-fold calibration and refiner training (top) feed the inference chain of 4-model ensemble, proposals, crop refiner, assembly and barb growth (bottom)" src="https://github.com/vhrabar/solfire/raw/paper/paper/out/pipeline.png">
+</picture>
+
+*Pipeline of the `final` variant, dashed arrows carry training outputs into inference.*
 
 ### Data
 
-- 707 observations, 1,154 annotation sets (up to 3 annotators per image), 2048×2048 grayscale.
+- 707 observations, 1,154 annotation sets (up to 3 annotators per image), 2048×2048 grayscale, read as one channel
+  in [0, 1] and standardised with ImageNet statistics; no contrast enhancement.
 - 5-fold cross-validation grouped by observation.
-- Soft targets: the annotators' masks are averaged, polygons rasterised like pycocotools.
+- Soft targets: polygons are rasterised with pycocotools, as in the evaluator, and the annotators' masks are averaged,
+  so each pixel holds the fraction of annotators who marked it.
 
 ### Models
 
-<!-- TODO: architectures desc -->
+| Member     | Decoder | Encoder   | Pretraining                                      | Input |
+|------------|---------|-----------|--------------------------------------------------|-------|
+| SSL-R34    | U-Net++ | ResNet34  | ImageNet, then SimMIM-style on 1,300 GONG frames | 1×    |
+| MiT-B2     | U-Net   | MiT-B2    | ImageNet                                         | 1×    |
+| HRNet-W32  | U-Net   | HRNet-W32 | ImageNet                                         | 1×    |
+| zoom HRNet | U-Net   | HRNet-W32 | starts from the HRNet-W32 member                 | 2×    |
 
-| Family | Decoder | Encoder                    | Pretraining |
-|--------|---------|----------------------------|-------------|
-| 1      | U-Net++ | ResNet34                   | ImageNet    |
-| 2      | U-Net   | EfficientNet-B3            | ImageNet    |
-| 3      | U-Net   | MiT-B2 (SegFormer encoder) | ImageNet    |
+`lite` uses the ImageNet ResNet34 instead of SSL-R34 and drops the zoom member; `tiny` is the HRNet-W32 alone.
 
 ### Training
 
-<!-- TODO: losses, augmentations, schedule, Lovász fine-tune and why it beats Lovász-from-start. -->
-
-- 512×512 crops at native resolution, foreground-biased sampling.
-- 40 epochs BCE + Dice (positive weight 5), AdamW, warm-up, SWA; encoder at 0.25× learning rate.
-- 8-epoch fine-tune at lr 1e-4 with a Lovász hinge term (weight 0.5).
+- 512×512 crops at native resolution, 7 per observation per epoch; with probability 0.7 a crop is placed on a
+  filament vertex. Flips, quarter turns, gamma, brightness and contrast jitter.
+- Base stage: 40 epochs of BCE (positive weight 5) + soft Dice, AdamW (batch 8, weight decay 0.01), peak lr 4e-4
+  with the encoder at 0.25×, 3 warm-up epochs, cosine decay.
+- Fine-tune: 8 epochs at lr 1e-4 with a Lovász hinge term (weight 0.5). The zoom member is fine-tuned from the base
+  HRNet for 12 epochs at 2× input.
+- The shipped models repeat both stages on all 707 observations and keep the final epoch (on out-of-fold maps the
+  final epoch scores 0.4602 vs 0.4593 for the validation-selected one).
 
 ### Inference and post-processing
 
-<!-- TODO: tiling, TTA, ensembling, calibration on out-of-fold maps, instance extraction. -->
-
-- Tiled 512 windows with overlap, flip TTA, probabilities averaged over the ensemble.
-- Threshold, morphological offset and instance mean-probability cut calibrated on the pooled out-of-fold maps.
+- **Ensemble:** 512 px tiles, probabilities averaged over the members; `final` uses D4 TTA with 50 % tile overlap,
+  the other presets flips with 25 % overlap. fp16, dark (off-disk) tiles skipped.
+- **Proposals:** threshold the mean map (0.35 in `final`), erode 1 px, split into connected components.
+- **Crop refiner** (all presets but `tiny`): for each proposal, a 256 px crop of a window 1.5× its box (image,
+  ensemble map, proposal) goes through a refiner network that predicts the instance mask and its IoU. It is trained
+  on out-of-fold proposals; fold 0's model ships.
+- **Assembly:** refined masks are thresholded (0.45) and filtered by predicted IoU (≥ 0.32), then placed in order
+  of IoU; a mask is kept if at least half of its pixels are still free.
+- **Barb growth:** thin, long side structures are grown from each mask using local contrast and a ridge filter
+  within a 20 px band. It costs about 0.002 PQ but is the only method that adds barbs, which the organisers want.
+- All cuts are grid-searched on pooled out-of-fold maps; the output is one RLE mask per instance.
 
 ### Morphology on H-alpha
 
@@ -64,11 +85,30 @@ challenge: instance segmentation of solar filaments in GONG H-alpha full-disk ob
 
 ## What didn't work
 
-<!-- TODO: measured effect of each. -->
+Changes that were tested and rejected, as pooled out-of-fold PQ after calibration against a control with the same
+setup. Seeds alone move a five-model set by up to 0.007 and the crop refiner by ±0.001, so a change is adopted only
+if it beats its control by more than 0.002 after the full pipeline, with the nested score agreeing. None did.
 
-Morphology-aware losses??? (clDice, opening/closing), GONG pseudo-labels, hard-negative mining, an auxiliary
-category head, CLAHE preprocessing, instance-segmentation models, Lovász from the first epoch with longer
-training, and further post-processing.
+| Change                             |     PQ | Control |    Gain |
+|------------------------------------|-------:|--------:|--------:|
+| CLAHE contrast enhancement         | 0.4367 |  0.4390 | −0.0023 |
+| GONG pseudo-labels                 | 0.4353 |  0.4390 | −0.0037 |
+| Lovász hinge from scratch          | 0.4446 |  0.4503 | −0.0057 |
+| 1024×1024 training crops           | 0.4458 |  0.4503 | −0.0045 |
+| Ensemble distillation              | 0.4465 |  0.4503 | −0.0038 |
+| Tversky loss in the fine-tune      | 0.4585 |  0.4594 | −0.0009 |
+| Longer fine-tune                   | 0.4589 |  0.4594 | −0.0005 |
+| Thin-aware fine-tune               | 0.4599 |  0.4594 | +0.0005 |
+| 35 models instead of 15            | 0.4558 |  0.4564 | −0.0006 |
+| Magnetogram head, in ensemble      | 0.4550 |  0.4549 | +0.0001 |
+| Watershed instance splitting       |  0.388 |   0.443 |  −0.055 |
+| YOLO26m-seg member, score-ordered  | 0.4521 |  0.4641 | −0.0120 |
+| Spine auxiliary head, with refiner | 0.4650 |  0.4637 | +0.0013 |
+| Second refiner pass                | 0.4692 |  0.4700 | −0.0008 |
+| Other refiner encoders, best       | 0.4692 |  0.4700 | −0.0008 |
+
+Losses with clDice or differentiable morphology terms were also tried and dropped. A dedicated barb head gave no PQ
+gain (best +0.0001) and barely raised thin-structure recall: it extended filament edges rather than adding barbs.
 
 ## Setup
 

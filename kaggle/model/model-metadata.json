@@ -5,5 +5,5 @@
   "subtitle": "SOLar FIlament Refined Ensemble for GONG H-alpha instance segmentation",
   "isPrivate": true,
   "description": "",
-  "provenanceSources": "Trained on MAGFiLO 1.0, the training set of the IEEE BigData Cup 2026 Solar Filament Segmentation challenge (https://www.kaggle.com/competitions/filament-segmentation-2026). Encoders start from ImageNet weights (timm / segmentation_models_pytorch); the ResNet34 U-Net++ of final and fast was further pretrained by masked-image modelling on 1,300 unlabelled GONG H-alpha frames of 2023-2025 from the NSO archive (https://gong.nso.edu), none of them a training or test observation. Code and training recipe: https://github.com/vhrabar/SolarFilamentSegmentationChallenge"
+  "provenanceSources": "Trained on MAGFiLO 1.0, the training set of the IEEE BigData Cup 2026 Solar Filament Segmentation challenge (https://www.kaggle.com/competitions/filament-segmentation-2026). Encoders start from ImageNet weights (timm / segmentation_models_pytorch); the ResNet34 U-Net++ of final and fast was further pretrained by masked-image modelling on 1,300 unlabelled GONG H-alpha frames of 2023-2025 from the NSO archive (https://gong.nso.edu), none of them a training or test observation. Code and training recipe: https://github.com/vhrabar/solfire"
 }

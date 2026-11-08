@@ -3,7 +3,7 @@
 **SOLFIRE** (SOLar FIlament Refined Ensemble) is the solution to the IEEE BigData Cup 2026 Solar Filament Segmentation
 challenge. It does instance segmentation of solar filaments in GONG H-alpha full-disk observations (MAGFiLO 1.0).
 Code, training recipe and the same weights (Git LFS, `weights/final/`):
-https://github.com/vhrabar/SolarFilamentSegmentationChallenge
+https://github.com/vhrabar/solfire
 
 ## Method
 

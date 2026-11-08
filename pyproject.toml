@@ -24,6 +24,9 @@ dependencies = [
     "scikit-learn==1.9.1",
     "astropy==8.0.2",
     "kagglehub==1.0.2",
+    "kx-plot==0.6.0",
+    "pandas==3.1.1",
+    "ipykernel==7.4.0",
 ]
 
 [project.scripts]

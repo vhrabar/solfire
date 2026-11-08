@@ -1,5 +1,5 @@
 """
-Build ``Final pipeline.ipynb`` from ``notebook/pipeline.py``.
+Build ``notebook/Final pipeline.ipynb`` from ``notebook/pipeline.py``.
 
 """
 
@@ -10,7 +10,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 SOURCE = REPO / "notebook" / "pipeline.py"
-NOTEBOOK = REPO / "Final pipeline.ipynb"
+NOTEBOOK = REPO / "notebook" / "Final pipeline.ipynb"
 MARKDOWN = "# %% [markdown]"
 CODE = "# %%"
 
@@ -85,15 +85,16 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--check", action="store_true", help="fail if the notebook differs from what would be built")
     args = parser.parse_args()
-    text = render(build())
+    notebook = build()
+    text = render(notebook)
     if args.check:
         if not NOTEBOOK.is_file() or NOTEBOOK.read_text(encoding="utf-8") != text:
-            print(f"{NOTEBOOK.name} is out of date; run `python scripts/build_notebook.py`", file=sys.stderr)
+            print(f"{NOTEBOOK.relative_to(REPO)} is out of date; run `python scripts/build_notebook.py`", file=sys.stderr)
             return 1
-        print(f"{NOTEBOOK.name} is up to date")
+        print(f"{NOTEBOOK.relative_to(REPO)} is up to date")
         return 0
     NOTEBOOK.write_text(text, encoding="utf-8")
-    print(f"wrote {NOTEBOOK.name}: {len(build()['cells'])} cells from {SOURCE.relative_to(REPO)}")
+    print(f"wrote {NOTEBOOK.relative_to(REPO)}: {len(notebook['cells'])} cells from {SOURCE.relative_to(REPO)}")
     return 0
 
 

@@ -200,6 +200,21 @@
     Using the predicted IoU alone on the unrefined masks gives 0.4632, so most of the gain comes from the redrawn masks.
 
     \subsection{Barb Growth}\label{subsec:barbs}
+    \textbf{Candidates.}
+    Barbs are too thin and too rarely annotated to learn (Section~\ref{sec:negative}), so every variant grows them from the observation as its last step, without labels.
+    The contrast of a pixel is $(B-I)/B$, where $I$ is the observation and $B$ a median over about 60\,px, smoothed with a Gaussian of $\sigma=1$.
+    In a 20\,px band around each instance, a pixel is a candidate if its contrast exceeds 0.05 and a Sato ridge filter~\cite{sato1998line} with $\sigma\in\{1,2\}$ exceeds 0.025.
+
+    \textbf{Selection.}
+    Only the 8-connected candidate pieces that touch the instance are considered.
+    The length of a piece is the distance from its point nearest the instance to its farthest point, and its mean width is its area over this length.
+    A piece is kept if its length is at least four times its mean width and that width is at most 4\,px.
+    Kept pixels only fill background, so instances never take pixels from each other.
+
+    \textbf{Trade-off.}
+    PQ cannot select these settings: every contrast and ridge cut tried lowers it, by 0.0006 to 0.047 before the shape filter.
+    The shipped setting adds 49{,}000 pixels over the OOF observations and moves \texttt{final} from 0.4692 to 0.4668.
+    About 31\% of pixels grown this way lie inside some annotator's mask, against 6.7\% by chance, so they follow real dark structure, which annotators mostly skip.
 
 
 % ==================================== %

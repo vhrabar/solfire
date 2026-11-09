@@ -44,8 +44,8 @@
 \email{vedran.hrabar@fer.unizg.hr}
 
 \begin{abstract}
-    This report describes solution to the Solar Filament Segmentation Challenge~2026, a Kaggle competition on automatic segmentation of solar filaments in GONG H-$\alpha$ observations.
-    On the training labels, one annotator scored against another reaches a Panoptic Quality (PQ) of only 0.34, so post-processing is calibrated on pooled out-of-fold maps and each change is compared against a matching control.
+    This report describes a solution to the Solar Filament Segmentation Challenge~2026, a Kaggle competition on automatic segmentation of solar filaments in GONG H-$\alpha$ observations.
+    On the training labels, one annotator scored against another reaches a Panoptic Quality (PQ) of only 0.34, so post-processing is calibrated on pooled out-of-fold maps, apart from one cut set by leaderboard probes, and each change is compared against a matching control.
     In the \texttt{final} variant, four networks from three encoder families (ResNet34, MiT-B2 and HRNet-W32, the last also at twice the input resolution) produce a probability map.
     A crop refiner then redraws and scores every proposal, and barbs are grown from the observation without labels.
     The variant reaches an out-of-fold PQ of 0.4668 over 1154 annotation records and 0.40 on the public leaderboard.
@@ -61,7 +61,7 @@
 %              INTRODUCTION            %
 % ==================================== %
 \section{Introduction}\label{sec:introduction}
-    This report goes over the details of the submitted solution to the Solar Filament Segmentation Challenge~2026~\cite{filament-segmentation-2026}.
+    This report goes over the details of the submitted solution\footnote{Code and weights: \url{https://github.com/vhrabar/solfire}} to the Solar Filament Segmentation Challenge~2026~\cite{filament-segmentation-2026}.
     The challenge, launched on July~10,~2026, is organized by the Earth-Space AI Research (ESAIR) Lab\footnote{\href{https://www.esairlab.com/home}{www.esairlab.com/}}.
     This challenge utilizes the MAGFiLO dataset for evaluation of the segmentation algorithms~\cite{ahmadzadeh2024dataset}.
 
@@ -74,21 +74,22 @@
 \section{Data and Validation Protocol}\label{sec:data}
     \textbf{Labels.} The training set contains 707 observations and 1154 annotation records (411 observations with one annotator, 145 with two, 151 with three).
     Together, these records hold 8199 filament polygons with a median area of 1228 px.
-    Thin structures under about 5 px, i.e.\ barbs, account for only 1.9\% of the annotated area.
+    Thin structures under about 5 px account for only 1.9\% of the annotated area.
     One annotator's set was scored against another's on the 296 observations with several records.
-    This comparison gives PQ~0.34 (SQ 0.634, RQ 0.54), and annotators agree on barb pixels only 40\% of the time.
+    This comparison gives PQ~0.34 (SQ 0.634, RQ 0.54), and annotators agree on these thin pixels only 40\% of the time.
     Most disagreement concerns whether a faint filament exists and where a long one ends.
-    A score of 0.47 is reached by the final model against the same records, so it agrees with each annotator more than the annotators agree with each other.
+    The final model reaches 0.47 out of fold over all 1154 records; this covers more records than the annotator comparison and uses cuts tuned on them, so it suggests, but does not prove, agreement above that of the annotators.
 
     \textbf{Scoring.} PQ~\cite{kirillov2019panoptic} matches a prediction to a filament at IoU~$>0.5$ and computes $\mathrm{PQ}=\sum_{\mathrm{TP}}\mathrm{IoU}\,/\,(|\mathrm{TP}|+\tfrac12|\mathrm{FP}|+\tfrac12|\mathrm{FN}|)$.
     Ground-truth instances are the individual polygons rasterised as COCO RLE~\cite{lin2014coco}, and each record is scored separately.
 
     \textbf{Protocol.} Five-fold cross-validation grouped by observation is used.
-    The score is out-of-fold (OOF) PQ, with TP, FP, FN and IoU pooled over all 1{,}154 records as the evaluator does.
+    Folds are not separated in time: the median out-of-fold observation lies 2.0 days from a training one and the median test observation 1.5 days, so neither score covers unseen periods.
+    The score is out-of-fold (OOF) PQ, with TP, FP, FN and IoU pooled over all 1154 records as the evaluator does.
     Post-processing is calibrated on the pooled OOF maps.
     A \emph{nested} score is also reported, with parameters chosen on four folds and applied to the fifth.
     Seeds alone move a five-model set by up to 0.007 and the crop refiner by $\pm0.001$.
-    A change is therefore adopted only if it beats a matching control by $>0.002$ after the full pipeline, with the nested score agreeing.
+    A change is therefore compared with a control on the same seed and folds, and adopted only if it beats that control by $>0.002$ after the full pipeline, with the nested score agreeing.
 
 
 % ==================================== %
@@ -118,7 +119,6 @@
     \subsection{Models}\label{subsec:models}
     \textbf{Ensemble.} The \texttt{final} variant averages the probabilities of four networks from three encoder families, all built with Segmentation Models PyTorch~\cite{iakubovskii2019smp}:
     a U-Net++~\cite{zhou2018unetpp} with a ResNet34 encoder~\cite{he2016resnet}, a U-Net~\cite{ronneberger2015unet} with the MiT-B2 encoder of SegFormer~\cite{xie2021segformer}, a U-Net with an HRNet-W32 encoder~\cite{wang2021hrnet}, and a second HRNet-W32 U-Net, the zoom member, that reads the observation at twice its resolution.
-    The zoom member sees thin filaments over more pixels; at inference, the observation is upsampled $2\times$ before tiling and its probabilities are resized back.
     Encoders start from ImageNet weights, with the first convolution reduced to one input channel.
     The four networks hold 125.5\,M parameters (26.1, 27.5, 36.0 and 36.0\,M).
 
@@ -207,13 +207,13 @@
 
     \textbf{Cuts and effect.}
     The mask and IoU cuts are grid-searched on the refined OOF instances (7 mask cuts in $[0.3, 0.6]$ and 31 IoU cuts in $[0, 0.6]$).
-    The shipped pairs are 0.45 and 0.32 for \texttt{final}, 0.5 and 0.32 for \texttt{fast}, and 0.45 and 0.28 for \texttt{lite}.
-    At its best cuts, the refiner of \texttt{final} reaches 0.4700 against 0.4611 for the same proposals scored by mean probability.
+    The shipped pairs are 0.45 and 0.32 for \texttt{final}, 0.5 and 0.32 for \texttt{fast}, and 0.45 and 0.28 for \texttt{lite}; the IoU cut of \texttt{final} is stricter than its OOF best of 0.28 because of leaderboard probes (Section~\ref{subsec:progression}).
+    At its best cuts, the refiner of \texttt{final} reaches 0.4700 against 0.4611 for the same proposals scored by mean probability; the smaller gain in Table~\ref{tab:progression} was measured when the refiner was first added, on the 15-model ensemble.
     Using the predicted IoU alone on the unrefined masks gives 0.4632, so most of the gain comes from the redrawn masks.
 
     \subsection{Barb Growth}\label{subsec:barbs}
     \textbf{Candidates.}
-    Barbs are too thin and too rarely annotated to learn (Section~\ref{sec:negative}), so every variant grows them from the observation as its last step, without labels.
+    Barbs not mostly not labelled in the annotations, and a dedicated head failed to learn them (Section~\ref{sec:negative}), so every variant grows them from the observation as its last step, without labels.
     The contrast of a pixel is $(B-I)/B$, where $I$ is the observation and $B$ a median over about 60\,px, smoothed with a Gaussian of $\sigma=1$.
     In a 20\,px band around each instance, a pixel is a candidate if its contrast exceeds 0.05 and a Sato ridge filter~\cite{sato1998line} with $\sigma\in\{1,2\}$ exceeds 0.025.
 
@@ -226,7 +226,6 @@
     \textbf{Trade-off.}
     PQ cannot select these settings: every contrast and ridge cut tried lowers it, by 0.0006 to 0.047 before the shape filter.
     The shipped setting adds 49{,}000 pixels over the OOF observations and moves \texttt{final} from 0.4692 to 0.4668.
-    About 31\% of pixels grown this way lie inside some annotator's mask, against 6.7\% by chance, so they follow real dark structure, which annotators mostly skip.
 
 
 % ==================================== %
@@ -243,7 +242,9 @@
     \begin{table*}[t]
         \caption{
             Released variants.
-            OOF quality over the 1154 records, with barbs except the no-barbs PQ column; time and peak VRAM over the 180 test observations on a NVIDIA GeForce RTX 5070~Ti.
+            OOF quality over the 1154 records, with barbs except the no-barbs PQ column; time and peak VRAM over the 180 test observations on an NVIDIA GeForce RTX 5070~Ti.
+            Dice is per record and over matched pairs.
+            Errors: a filament (missed) or prediction (spurious) touching nothing, a filament (split) or prediction (merged) touching two or more; overlaps below the IoU match are in no column.
         }\label{tab:presets}
         \footnotesize
         \setlength{\tabcolsep}{2.4pt}
@@ -278,9 +279,9 @@
     \subsection{Model Progression}\label{subsec:progression}
     Table~\ref{tab:progression} lists the steps that make up \texttt{final}; each row keeps the steps above it.
     The gain of the Lovász row includes 0.007 from the extra fine-tuning alone.
-    The SimMIM-style pretraining falls below the adoption bar; it is shipped because it does not lower the score and adds no inference cost.
-    The last two rows lower PQ on purpose: the stricter cut follows leaderboard probes (0.40 at a strict cut, 0.37 at a liberal one), which suggest that the test labels keep fewer faint filaments, and barbs are grown for the masks' fine structure.
-    The public leaderboard, rounded to two decimals, stayed at 0.40 from the three-family ensemble onwards, so these steps could only be judged out of fold.
+    The finer grid and the SimMIM-style pretraining fall below the adoption bar on the nested score (+0.0016 and +0.0002); both are kept because they do not lower the score and add no inference cost.
+    The last two rows lower PQ on purpose: the stricter cut follows leaderboard probes (0.40 at two strict cuts, 0.37 at a liberal one, 0.36 and 0.37 with fattened and thinned masks), which suggest that the test labels keep fewer faint filaments, although IoU cuts of 0.28 and 0.32 both score 0.40; barbs are grown for the additional barb score.
+    A ten-model ensemble first reached 0.40 (OOF 0.4507) before any second encoder family was added; every later model scored 0.39 or 0.40 at its calibrated cuts on the two-decimal public leaderboard, so the later steps could only be judged out of fold.
 
     \begin{table}[t]
         \caption{Steps of \texttt{final}. Pooled OOF PQ without barbs, except the last row.}\label{tab:progression}
@@ -346,7 +347,7 @@
 % ==================================== %
 \section{Conclusion}\label{sec:conclusion}
     The \texttt{final} variant combines a three-family ensemble, a crop refiner and label-free barb growth, reaching an out-of-fold PQ of 0.4668 and 0.40 on the public leaderboard; the lighter variants give up at most 0.016 PQ for inference up to nine times faster.
-    The crop refiner was the largest late gain, while most other changes failed the adoption rule, and only the pooled and nested scores could show this, since the rounded leaderboard hid every step after the three-family ensemble.
+    The crop refiner was the largest late gain, while most other changes failed the adoption rule, and only the pooled and nested scores could show this, since a further 0.019 of OOF PQ after the first 0.40 submission left the rounded leaderboard at 0.39 to 0.40.
     A gap of about 0.07 between the out-of-fold and leaderboard scores remains; the probes point to stricter test labels for faint filaments but do not close it.
 
 

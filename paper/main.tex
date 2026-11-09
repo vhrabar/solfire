@@ -1,4 +1,3 @@
-% !TeX program = pdflatex
 % =============================================================================
 % COPYRIGHT AND DISCLAIMER
 % =============================================================================
@@ -21,13 +20,14 @@
 % Template packages live in preamble.tex.
 % Citations live in main.bib. Edit this file with your paper content.
 % =============================================================================
+% cSpell:words pdflatex acmart sigconf Kaggle ESAIR grayscale pretraining pretrained pycocotools
+% cSpell:words Lovász binarises bilinearly autocast thresholded CLAHE Tversky Magnetogram
+% cSpell:words Learmonth Udaipur Instituto Astrofísica Canarias Tololo Interamerican
 
-\documentclass[sigconf]{acmart}
+\documentclass[sigconf,pbalance]{acmart}
 \input{preamble}
 \usepackage{tikz}
 \usetikzlibrary{arrows.meta,backgrounds,fit,positioning}
-
-\guideStylefalse
 
 \begin{document}
 
@@ -51,6 +51,8 @@
     The variant reaches an out-of-fold PQ of 0.4668 over 1154 annotation records and 0.40 on the public leaderboard.
     Four released variants span 0.4508 to 0.4668 PQ at 1.2 to 10.8~s per observation.
 \end{abstract}
+
+\keywords{solar filaments, H-alpha, instance segmentation, panoptic quality, U-Net, ensemble learning, crop refinement}
 
 \maketitle
 
@@ -93,15 +95,18 @@
 %              METHODOLOGY             %
 % ==================================== %
 \section{Methodology}\label{sec:methodology}
+    Figure~\ref{fig:pipeline} shows the pipeline of the \texttt{final} variant.
+
     \begin{figure*}[t]
         \centering
         \input{figures/pipeline}
         \caption{Pipeline of the \texttt{final} variant. Dashed arrows carry training outputs into inference.}\label{fig:pipeline}
+        \Description{Flow diagram of the final variant. The inference row runs left to right: a 2048 by 2048 pixel observation enters four segmentation networks, which form the ensemble; proposals are cut from the mean map, redrawn and scored by the crop refiner, assembled into instances, extended by barb growth, and written as instance masks. A training row above it covers SimMIM-style pretraining, the training recipe, out-of-fold maps, refiner training and refined maps, and dashed arrows carry the retrained models, the refiner of fold 0 and the calibrated cuts down into inference.}
     \end{figure*}
 
     \subsection{Preprocessing and Targets}\label{subsec:preprocessing}
     \textbf{Input.}
-    Each $2048\times2048$ JPEG observation is read as one grayscale channel in $[0,1]$ and standardised with the ImageNet statistics used in encoder pretraining.
+    Each $2048\times2048$ JPEG observation is read as one grayscale channel in $[0,1]$ and standardised with the ImageNet~\cite{deng2009imagenet} statistics used in encoder pretraining.
     No contrast enhancement is applied (Section~\ref{sec:negative}).
     The same steps are used for training and inference.
 
@@ -117,7 +122,7 @@
     Encoders start from ImageNet weights, with the first convolution reduced to one input channel.
     The four networks hold 125.5\,M parameters (26.1, 27.5, 36.0 and 36.0\,M).
 
-    \textbf{Domain pretraining.} In \texttt{final} and \texttt{fast}, the ResNet34 U-Net++ is first pretrained in the style of SimMIM~\cite{xie2022simmim} on 1300 unlabelled GONG H$\alpha$ frames from 2023--2025, which do not overlap the 2011--2022 MAGFiLO observations.
+    \textbf{Domain pretraining.} In \texttt{final} and \texttt{fast}, the ResNet34 U-Net++ is first pretrained in the style of SimMIM~\cite{xie2022simmim} on 1300 unlabelled GONG~\cite{harvey1996gong} H$\alpha$ frames from 2023--2025, which do not overlap the 2011--2022 MAGFiLO observations.
     The frames are raw FITS from the NSO archive\footnote{\url{https://gong2.nso.edu/HA/haf}}, converted to JPEG with the MLEcoFi FITS2JPEG converter\footnote{\url{https://bitbucket.org/dataresearchlab/mleco-fits2jpegconvertor}} of the MAGFiLO authors' group, and kept only in bursts of five that pass brightness and dark-patch checks; they are published as~\cite{vedran_hrabar_2026}.
     In each $512\times512$ crop, 60\% of the $32\times32$ patches are replaced by the crop mean, and the whole network learns to reconstruct them with an L1 loss on per-patch normalised targets, as in MAE~\cite{he2022mae}.
     Unlike SimMIM, the network is convolutional and the hidden patches are filled with the mean rather than a learned token.
@@ -130,8 +135,8 @@
     Augmentation consists of flips, quarter turns, and gamma, brightness and contrast jitter.
 
     \textbf{Base stage.}
-    Each model trains for 40 epochs on an equally weighted sum of BCE (positive weight 5) and soft Dice.
-    AdamW is used with batch size 8, weight decay 0.01, and a peak learning rate of $4\times10^{-4}$ ($0.25\times$ on the encoder), with three warm-up epochs and cosine decay.
+    Each model trains for 40 epochs on an equally weighted sum of BCE (positive weight 5) and a soft Dice loss~\cite{milletari2016vnet}.
+    AdamW~\cite{loshchilov2019adamw} is used with batch size 8, weight decay 0.01, and a peak learning rate of $4\times10^{-4}$ ($0.25\times$ on the encoder), with three warm-up epochs and cosine decay.
 
     \textbf{Fine-tune stage.}
     Each model then trains for 8 more epochs at $10^{-4}$ with a Lovász hinge~\cite{berman2018lovasz} of weight 0.5 added, which binarises the soft targets at 0.5.
@@ -238,7 +243,7 @@
     \begin{table*}[t]
         \caption{
             Released variants.
-            OOF quality over the 1154 records, with barbs except the no-barbs PQ column; time and peak VRAM over the 180 test observations on an RTX 5070~Ti.
+            OOF quality over the 1154 records, with barbs except the no-barbs PQ column; time and peak VRAM over the 180 test observations on a NVIDIA GeForce RTX 5070~Ti.
         }\label{tab:presets}
         \footnotesize
         \setlength{\tabcolsep}{2.4pt}
@@ -263,10 +268,11 @@
     At the 10th percentile, the three annotators draw 9, 14 and 16 filaments on the same observation and the model misses 3, 10 and 10 of them, so the score depends strongly on how many filaments a record includes.
     Barb growth is conservative: it adds 166\,px across the three crops, so the masks hold the filament bodies and only the clearest barbs.
 
-    \begin{figure}[H]
+    \begin{figure}[t]
         \centering
         \includegraphics[width=\columnwidth]{figures/qualitative}
         \caption{Held-out observations ($768\times768$ crops) at the 90th, 50th and 10th percentiles of per-observation PQ\@. Annotator outlines are the union of each record's filaments.}\label{fig:qualitative}
+        \Description{Three rows of 768 by 768 pixel GONG H-alpha crops, taken at the 90th, 50th and 10th percentiles of per-observation Panoptic Quality, comparing the filament outlines drawn by the annotators with the predicted instance masks. Agreement is close in the top row, a long filament is split in two in the middle row, and many annotated filaments are missed in the bottom row.}
     \end{figure}
 
     \subsection{Model Progression}\label{subsec:progression}
@@ -276,7 +282,7 @@
     The last two rows lower PQ on purpose: the stricter cut follows leaderboard probes (0.40 at a strict cut, 0.37 at a liberal one), which suggest that the test labels keep fewer faint filaments, and barbs are grown for the masks' fine structure.
     The public leaderboard, rounded to two decimals, stayed at 0.40 from the three-family ensemble onwards, so these steps could only be judged out of fold.
 
-    \begin{table}[H]
+    \begin{table}[t]
         \caption{Steps of \texttt{final}. Pooled OOF PQ without barbs, except the last row.}\label{tab:progression}
         \footnotesize
         \begin{tabular}{lrrr}
@@ -305,28 +311,28 @@
 \section{What Did Not Work}\label{sec:negative}
     Table~\ref{tab:negative} lists changes that were tested and rejected.
     Each is scored after calibration against a control with the same setup, and none passes the adoption rule of Section~\ref{sec:data}.
-    Losses with clDice or differentiable morphology terms were also tried and dropped.
+    Losses with clDice~\cite{shit2021cldice} or differentiable morphology terms were also tried and dropped.
     A dedicated barb head gave no PQ gain (best +0.0001) and barely raised thin-structure recall, so it extended filament edges rather than adding barbs.
 
-    \begin{table}[H]
+    \begin{table}[t]
         \caption{Rejected changes, as pooled OOF PQ against the matching control.}\label{tab:negative}
-        \small
+        \footnotesize
         \begin{tabular}{lrrr}
             \toprule
             Change & PQ & Control & Gain \\
             \midrule
-            CLAHE contrast enhancement & 0.4367 & 0.4390 & $-0.0023$ \\
+            CLAHE~\cite{zuiderveld1994clahe} contrast enhancement & 0.4367 & 0.4390 & $-0.0023$ \\
             GONG pseudo-labels & 0.4353 & 0.4390 & $-0.0037$ \\
             Lovász hinge from scratch & 0.4446 & 0.4503 & $-0.0057$ \\
             $1024\times1024$ training crops & 0.4458 & 0.4503 & $-0.0045$ \\
             Ensemble distillation & 0.4465 & 0.4503 & $-0.0038$ \\
-            Tversky loss in the fine-tune & 0.4585 & 0.4594 & $-0.0009$ \\
+            Tversky loss~\cite{salehi2017tversky} in the fine-tune & 0.4585 & 0.4594 & $-0.0009$ \\
             Longer fine-tune & 0.4589 & 0.4594 & $-0.0005$ \\
             Thin-aware fine-tune & 0.4599 & 0.4594 & $+0.0005$ \\
             35 models instead of 15 & 0.4558 & 0.4564 & $-0.0006$ \\
             Magnetogram head, in ensemble & 0.4550 & 0.4549 & $+0.0001$ \\
             Watershed instance splitting & 0.388 & 0.443 & $-0.055$ \\
-            YOLO26m-seg member, score-ordered & 0.4521 & 0.4641 & $-0.0120$ \\
+            YOLO26m-seg~\cite{jocher2026yolo26} member, score-ordered & 0.4521 & 0.4641 & $-0.0120$ \\
             Spine auxiliary head, with refiner & 0.4650 & 0.4637 & $+0.0013$ \\
             Second refiner pass & 0.4692 & 0.4700 & $-0.0008$ \\
             Other refiner encoders, best & 0.4692 & 0.4700 & $-0.0008$ \\

@@ -1,4 +1,4 @@
-# Solar Filament Segmentation Challenge
+# SOLFIRE: Solar Filament Instance Segmentation in GONG H-alpha
 
 <!-- TODO: summary -->
 

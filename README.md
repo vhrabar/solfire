@@ -6,8 +6,8 @@
 
 SOLFIRE segments solar filaments in GONG H-alpha full-disk observations (MAGFiLO 1.0). It is a solution to the
 [IEEE BigData Cup 2026 — Solar Filament Segmentation](https://www.kaggle.com/competitions/filament-segmentation-2026)
-challenge. One annotator scored against another reaches a Panoptic Quality (PQ) of only 0.34 on the training
-labels, so each change is judged against a matching control on pooled out-of-fold maps.
+challenge. One annotator scored against another reaches a Panoptic Quality (PQ) of only 0.34 on the 296 training
+observations with several records, so each change is judged against a matching control on pooled out-of-fold maps.
 
 The `final` variant averages four networks from three encoder families (ResNet34, MiT-B2, HRNet-W32, the last also
 at twice the input resolution). A crop refiner then redraws and scores every proposal, and barbs, which the
@@ -28,7 +28,8 @@ over 1154 annotation records and 0.40 on the public leaderboard. Four released v
   (verified identical to `get_pq_score` from their self-evaluation notebook). It includes grown barbs, as the
   submissions do; the table under [Weights](#weights) gives it without them.
 - Timing and peak GPU memory are for the full 180-image test set on an RTX 5070 Ti, including image loading.
-- Annotator-vs-annotator PQ on the training set is 0.34, which bounds what the labels can support.
+- Annotator-vs-annotator PQ is 0.34 on the 296 training observations with several records. On the same observations
+  the final model scores 0.468 out of fold against those records, and higher than the other annotators on 82 % of them.
 
 Quality of the released presets beyond PQ, over the 1154 records of the training set (out-of-fold):
 
@@ -334,7 +335,7 @@ It was used for:
 ## License
 
 - **Code:** MIT License. See [`LICENSE`](https://github.com/vhrabar/solfire/blob/main/LICENSE).
-- **Model weights:**  MIT License. See [`LICENSE`](https://github.com/vhrabar/solfire/blob/main/LICENSE). 
+- **Model weights:**  MIT License. See [`LICENSE`](https://github.com/vhrabar/solfire/blob/main/LICENSE).
 - **Paper (text and figures):** CC BY 4.0. See [`LICENSE-paper`](https://github.com/vhrabar/solfire/blob/main/LICENSE-paper).
 
 - **Pretraining frames:** published separately as [GONG Multi-Channel Data for Solaar Filaments](https://doi.org/10.34740/KAGGLE/DSV/21047890) under its own terms.

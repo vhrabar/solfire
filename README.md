@@ -235,6 +235,10 @@ It was used for:
 
 ## License
 
-Released under the MIT License. See [`LICENSE`](LICENSE).
+- **Code:** MIT License. See [`LICENSE`](https://github.com/vhrabar/solfire/blob/main/LICENSE).
+- **Model weights:**  MIT License. See [`LICENSE`](https://github.com/vhrabar/solfire/blob/main/LICENSE). 
+- **Paper (text and figures):** CC BY 4.0. See [`LICENSE-paper`](https://github.com/vhrabar/solfire/blob/main/LICENSE-paper).
+
+- **Pretraining frames:** published separately as [GONG Multi-Channel Data for Solaar Filaments](https://doi.org/10.34740/KAGGLE/DSV/21047890) under its own terms.
 
 Copyright © 2026 Vedran Hrabar

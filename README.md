@@ -81,7 +81,21 @@ challenge: instance segmentation of solar filaments in GONG H-alpha full-disk ob
 
 ### Efficiency
 
-<!-- TODO: measured per-image inference time and peak memory; the models-vs-accuracy trade-off. -->
+Measured over the 180 test images, including image loading, on an NVIDIA GeForce RTX 5070 Ti.
+The same runs on a Kaggle Tesla T4 reproduce the predictions (99.8 % of masks have
+IoU ≥ 0.99 against the local ones) but are about 4.5× slower per image.
+
+| Preset  | s / img (5070 Ti) | s / img (T4) | Peak GPU | Out-of-fold PQ |
+|---------|------------------:|-------------:|---------:|---------------:|
+| `final` |              10.8 |         50.6 |  4.0 GiB |         0.4668 |
+| `fast`  |               4.1 |         17.7 |  4.0 GiB |         0.4642 |
+| `lite`  |               2.0 |          7.8 |  3.9 GiB |         0.4614 |
+| `tiny`  |               1.2 |          4.0 |  1.8 GiB |         0.4508 |
+
+Accuracy is cheap at the bottom and expensive at the top: one HRNet-W32 gets 0.4508, three models plus the refiner
+add 0.0106 for 1.7× the time, and the zoom member with D4 TTA at 50 % overlap adds another 0.0054 for 5.4× the
+time of `lite`. The gap between `fast` and `final` is the same four models run with D4 TTA and 50 % tile overlap instead of
+flips and 25 %: 2.6× the time for 0.0026 PQ.
 
 ## What didn't work
 

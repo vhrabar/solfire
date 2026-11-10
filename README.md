@@ -1,9 +1,19 @@
-# Solar Filament Segmentation Challenge
+# SOLFIRE: Solar Filament Instance Segmentation in GONG H-alpha
 
-<!-- TODO: summary -->
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE)
+[![Python 3.15](https://img.shields.io/badge/python-3.15-blue.svg?style=flat-square)](pyproject.toml)
+<!-- DOI badge-->
 
-Solution to the [IEEE BigData Cup 2026 — Solar Filament Segmentation](https://www.kaggle.com/competitions/filament-segmentation-2026)
-challenge: instance segmentation of solar filaments in GONG H-alpha full-disk observations (MAGFiLO 1.0).
+SOLFIRE segments solar filaments in GONG H-alpha full-disk observations (MAGFiLO 1.0). It is a solution to the
+[IEEE BigData Cup 2026 — Solar Filament Segmentation](https://www.kaggle.com/competitions/filament-segmentation-2026)
+challenge. One annotator scored against another reaches a Panoptic Quality (PQ) of only 0.34 on the training
+labels, so each change is judged against a matching control on pooled out-of-fold maps.
+
+The `final` variant averages four networks from three encoder families (ResNet34, MiT-B2, HRNet-W32, the last also
+at twice the input resolution). A crop refiner then redraws and scores every proposal, and barbs, which the
+organisers want in the masks, are grown from the observation without labels. It reaches an out-of-fold PQ of 0.4668
+over 1154 annotation records and 0.40 on the public leaderboard. Four released variants span 0.4508 to 0.4668 PQ at
+1.2 to 10.8 s per observation; see [Usage](#usage) to run them.
 
 ## Results
 
@@ -20,7 +30,19 @@ challenge: instance segmentation of solar filaments in GONG H-alpha full-disk ob
 - Timing and peak GPU memory are for the full 180-image test set on an RTX 5070 Ti, including image loading.
 - Annotator-vs-annotator PQ on the training set is 0.34, which bounds what the labels can support.
 
-<!-- TODO: final-rubric metrics (mean Dice, Dice/IoU distributions, 1:n / n:1 relations) from `evaluate`. -->
+Quality of the released presets beyond PQ, over the 1154 records of the training set (out-of-fold):
+
+| Preset  | PQ with barbs | PQ without barbs |    SQ |    RQ | Dice per record | Dice per matched pair | Missed | Split | Spurious | Merged |
+|---------|--------------:|-----------------:|------:|------:|----------------:|----------------------:|-------:|------:|---------:|-------:|
+| `final` |        0.4668 |           0.4692 | 0.689 | 0.678 |           0.662 |                 0.813 | 24.3 % | 2.1 % |   11.6 % | 2.1 %  |
+| `fast`  |        0.4642 |           0.4664 | 0.688 | 0.675 |           0.660 |                 0.812 | 22.9 % | 2.6 % |   12.1 % | 2.0 %  |
+| `lite`  |        0.4614 |           0.4637 | 0.687 | 0.672 |           0.668 |                 0.811 | 21.7 % | 2.6 % |   13.1 % | 2.1 %  |
+| `tiny`  |        0.4508 |           0.4531 | 0.679 | 0.664 |           0.667 |                 0.806 | 18.2 % | 2.9 % |   14.8 % | 3.0 %  |
+
+- A filament is *missed* or a prediction *spurious* when it touches nothing; a filament is *split* when several
+  predictions touch it and a prediction *merged* when it touches several filaments. Overlaps below the IoU match
+  are in no column.
+- Dice is averaged per record and over matched pairs (IoU > 0.5) only.
 
 ## Method
 
@@ -77,11 +99,46 @@ challenge: instance segmentation of solar filaments in GONG H-alpha full-disk ob
 
 ### Morphology on H-alpha
 
-<!-- TODO: qualitative examples and discus -->
+![Three held-out observations: H-alpha image, the annotators' outlines, the `final` instances with grown barbs in orange, and a 12× zoom on the barbs](https://github.com/vhrabar/solfire/raw/paper/paper/out/qualitative.png)
+
+*Held-out observations with at least two annotator records. They were chosen for their grown barbs (among those
+whose barb pixels mostly fall inside the annotators' masks, the ones that read clearly at 12×), so they are not
+typical; their PQ (0.38, 0.62, 0.54) is printed beside each.
+
+- **What the model gets right.** Long, dark, well-contrasted filaments are found and outlined close to where the
+  annotators put them, and the refiner gives smooth contours, as in all three rows. Where annotators draw one
+  filament as several pieces or split a long one differently, one prediction can match only part of them.
+- **Barbs are the weak spot, and the labels do not settle them.** Pixels thinner than about 5 px (barbs) are 1.9 %
+  of the annotated pixels. A model's recall on them is 0.38, against 0.67 on the body of a filament. One annotator's
+  thin pixels fall inside another's mask only 0.40 of the time (0.54 within 2 px), so the model is already at the
+  level of a second annotator. Filling in every missed thin pixel would raise PQ by only 0.015.
+  (Measured on the out-of-fold maps of the three-family fine-tuned ensemble, before the zoom model and the refiner.)
+- **Barb growth** adds the structures in orange. They are short, about 50–120 px per observation in the examples
+  above, and the figure shows them only in the 12× column. Growing them costs about 0.002 PQ, so it is on because the
+  organisers want barbs in the masks, not because it scores.
+- **Where hits are lost.** On the same maps the hit rate is lowest for small, barb-heavy filaments (0.60, mean best
+  IoU 0.45) and next lowest for the largest ones (0.62, IoU 0.49), against 0.65–0.68 and about 0.51 in between.
+  For the largest the problem is where a filament ends, not whether it is found.
+- **Chirality** (left, right, unidentifiable) is read from the barbs, and annotators agree on it for 69 % of matched
+  pairs. A straight left/right flip happens in 14 % of the left/right pairs.
 
 ### Efficiency
 
-<!-- TODO: measured per-image inference time and peak memory; the models-vs-accuracy trade-off. -->
+Measured over the 180 test images, including image loading, on an NVIDIA GeForce RTX 5070 Ti.
+The same runs on a Kaggle Tesla T4 reproduce the predictions (99.8 % of masks have
+IoU ≥ 0.99 against the local ones) but are about 4.5× slower per image.
+
+| Preset  | s / img (5070 Ti) | s / img (T4) | Peak GPU | Out-of-fold PQ |
+|---------|------------------:|-------------:|---------:|---------------:|
+| `final` |              10.8 |         50.6 |  4.0 GiB |         0.4668 |
+| `fast`  |               4.1 |         17.7 |  4.0 GiB |         0.4642 |
+| `lite`  |               2.0 |          7.8 |  3.9 GiB |         0.4614 |
+| `tiny`  |               1.2 |          4.0 |  1.8 GiB |         0.4508 |
+
+Accuracy is cheap at the bottom and expensive at the top: one HRNet-W32 gets 0.4508, three models plus the refiner
+add 0.0106 for 1.7× the time, and the zoom member with D4 TTA at 50 % overlap adds another 0.0054 for 5.4× the
+time of `lite`. The gap between `fast` and `final` is the same four models run with D4 TTA and 50 % tile overlap instead of
+flips and 25 %: 2.6× the time for 0.0026 PQ.
 
 ## What didn't work
 
@@ -146,24 +203,65 @@ data/
 
 ## Usage
 
+`uv run --group cuda-134` below stands for any dependency group from [Setup](#setup). Every sweep spec in `sweeps/`
+(see `sweeps/README.md`) is run with `scripts/sweep.py`; `--dry-run` prints the commands without running them.
+
+### Predict with the shipped weights
+
+```bash
+uv run --group cuda-134 solfire predict \
+  --calibration weights/final/final.calibration.json \
+  --checkpoint weights/final/c02_full-lovasz-ssl-r34_seed1-best.pt weights/final/c04_full-lovasz-mitb2_seed1-best.pt \
+               weights/final/c06_full-lovasz-hrnet32_seed1-best.pt weights/final/c01_full-zoom-hrnet32_seed1-best.pt \
+  --output-dir out/final
+```
+
+The calibration holds the cut-offs, TTA variants, fp16, barbs and the refiner; `fast`, `lite` and `tiny` work the same way
+with their own calibration. `notebook/Final pipeline.ipynb` does the same on Kaggle.
+
+### Reproduce the `final` preset from scratch
+
+Place the data as in [Setup](#setup).
+
+```bash
+# 1. SSL pretraining of the ResNet34 encoder on unlabelled GONG frames -> runs/ssl/mim-unetpp-r34/
+#    needs the unlabelled GONG H-alpha frames of the Kaggle dataset vhrabar/gong-solar-filaments,
+#    Training only: nothing external is used at inference.
+uv run --group cuda-134 python scripts/pretrain_mim.py --output runs/ssl/mim-unetpp-r34
+
+# 2. five-fold models: 40 epochs of BCE + Dice, then 8 epochs with the Lovász hinge, then the 2x zoom HRNet
+for spec in cv5_ssl cv5_mitb2 cv5_hrnet finetune_ssl finetune_mitb2 finetune_hrnet finetune_zoom_hrnet; do
+  uv run --group cuda-134 python scripts/sweep.py sweeps/$spec.json
+done
+
+# 3. calibrate on the pooled out-of-fold maps of the 20 fold checkpoints (D4-style TTA: overlap 0.5 and turned)
+uv run --group cuda-134 solfire calibrate --variants o0.5 turned \
+  --checkpoint runs/finetune_{ssl,mitb2,hrnet,zoom_hrnet}/*/best.pt \
+  --output runs/ensembles/cv20-zoom-ssl-tta.calibration.json
+
+# 4. crop refiner, trained on the held-out proposals of that ensemble (one model per fold)
+uv run --group cuda-134 python scripts/refine.py all --calibration runs/ensembles/cv20-zoom-ssl-tta.calibration.json \
+  --name zoom-ssl-tta-rt --crops crops-zoom-ssl-tta
+
+# 5. full-data models (every record, final epoch kept)
+for spec in full_ssl full full_zoom; do uv run --group cuda-134 python scripts/sweep.py sweeps/$spec.json; done
+
+# 6. float16 weights, one calibration per preset in weights/final
+uv run --group cuda-134 python scripts/release_weights.py
+```
+
+### Other commands
+
 ```bash
 # train one fold
 uv run --group cuda-134 solfire train --arch pretrained --decoder unetplusplus --encoder resnet34 --fold 0 ...
 
-# run a sweep spec (train + calibrate every config)
-uv run --group cuda-134 python scripts/sweep.py sweeps/cv5_hrnet.json --only fold
-
-# calibrate post-processing on the pooled out-of-fold maps of several checkpoints
-uv run --group cuda-134 solfire calibrate --checkpoint runs/<sweep>/*/best.pt --output runs/ensembles/<name>.calibration.json
-
 # final-rubric metrics
 uv run --group cuda-134 solfire evaluate --checkpoint ...
 
-# predict the test set (and submit)
-uv run --group cuda-134 python scripts/submit.py <checkpoints> --calibration runs/ensembles/<name>.calibration.json --no-submit
+# predict the test set and submit it to Kaggle (credentials must be cached)
+uv run --group cuda-134 python scripts/submit.py <checkpoints> --calibration <calibration.json>
 ```
-
-<!-- TODO: exact commands to reproduce the final submission from scratch+ notebook for it-->
 
 ## Weights
 
@@ -202,11 +300,26 @@ tests/                 unit tests; tests/experiments/ for the experiments
 uv run --group cuda-134 pytest
 ```
 
-<!-- TODO: list of tests ??? -->
-
 ## Reproducibility
 
-<!-- TODO: seeds, fold assignment, training time per model, Kaggle model link and notebook. -->
+- **Environment:** `uv.lock` pins every package, including the torch build per hardware group ( [Setup](#setup));
+  `requirements.txt` is its export and CI checks that they agree.
+- **Weights:** `weights/final/` (Git LFS) and the Kaggle models `solfire-<preset>/1` are the same fp16 files, one
+  calibration JSON per preset.
+- **Predicting the test set:** `notebook/Final pipeline.ipynb` (`PRESET = "final"`) loads those weights and writes the
+  submission. It gives the same output as `solfire predict` on all 180 test images.
+- **Determinism:** inference is not bit-exact across GPUs; masks can differ by 1–2 px at the borders, which does not
+  change the score at the reported precision.
+- **Retraining:** see [Usage](#usage) and `sweeps/` for the exact configurations.
+- **Seeds:** every shipped model and refiner was trained with seed 1 (`--seed`, the default), which seeds `random`,
+  `numpy` and `torch` (CPU and CUDA) and the augmentation and crop sampling.
+- **Folds:** 5 grouped folds (all records of an observation stay together), observations shuffled by file name with
+  seed 0. The assignment does not depend on `--seed`, so out-of-fold predictions of different seeds can be pooled.
+- **Determinism of training:** cuDNN is not set to deterministic, so retraining with the same seed gives close but not
+  identical weights (refiner runs vary by about ±0.001 PQ).
+- **Training time** (NVIDIA GeForce RTX 5070 Ti): the four shipped models take about 4 h on all 707 observations
+  (SSL-R34 77 min, MiT-B2 61 min, HRNet-W32 88 min, zoom HRNet 22 min), plus about 1.8 h of SSL pretraining. The 5-fold
+  out-of-fold runs used for calibration and for training the refiner cost roughly 5× that per model.
 
 ## Disclaimer on the use of the LLM tools
 

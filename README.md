@@ -77,7 +77,28 @@ challenge: instance segmentation of solar filaments in GONG H-alpha full-disk ob
 
 ### Morphology on H-alpha
 
-<!-- TODO: qualitative examples and discus -->
+![Three held-out observations: H-alpha image, the annotators' outlines, the `final` instances with grown barbs in orange, and a 12× zoom on the barbs](https://github.com/vhrabar/solfire/raw/paper/paper/out/qualitative.png)
+
+*Held-out observations with at least two annotator records. They were chosen for their grown barbs (among those
+whose barb pixels mostly fall inside the annotators' masks, the ones that read clearly at 12×), so they are not
+typical; their PQ (0.38, 0.62, 0.54) is printed beside each.
+
+- **What the model gets right.** Long, dark, well-contrasted filaments are found and outlined close to where the
+  annotators put them, and the refiner gives smooth contours, as in all three rows. Where annotators draw one
+  filament as several pieces or split a long one differently, one prediction can match only part of them.
+- **Barbs are the weak spot, and the labels do not settle them.** Pixels thinner than about 5 px (barbs) are 1.9 %
+  of the annotated pixels. A model's recall on them is 0.38, against 0.67 on the body of a filament. One annotator's
+  thin pixels fall inside another's mask only 0.40 of the time (0.54 within 2 px), so the model is already at the
+  level of a second annotator. Filling in every missed thin pixel would raise PQ by only 0.015.
+  (Measured on the out-of-fold maps of the three-family fine-tuned ensemble, before the zoom model and the refiner.)
+- **Barb growth** adds the structures in orange. They are short, about 50–120 px per observation in the examples
+  above, and the figure shows them only in the 12× column. Growing them costs about 0.002 PQ, so it is on because the
+  organisers want barbs in the masks, not because it scores.
+- **Where hits are lost.** On the same maps the hit rate is lowest for small, barb-heavy filaments (0.60, mean best
+  IoU 0.45) and next lowest for the largest ones (0.62, IoU 0.49), against 0.65–0.68 and about 0.51 in between.
+  For the largest the problem is where a filament ends, not whether it is found.
+- **Chirality** (left, right, unidentifiable) is read from the barbs, and annotators agree on it for 69 % of matched
+  pairs. A straight left/right flip happens in 14 % of the left/right pairs.
 
 ### Efficiency
 

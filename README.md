@@ -146,24 +146,65 @@ data/
 
 ## Usage
 
+`uv run --group cuda-134` below stands for any dependency group from [Setup](#setup). Every sweep spec in `sweeps/`
+(see `sweeps/README.md`) is run with `scripts/sweep.py`; `--dry-run` prints the commands without running them.
+
+### Predict with the shipped weights
+
+```bash
+uv run --group cuda-134 solfire predict \
+  --calibration weights/final/final.calibration.json \
+  --checkpoint weights/final/c02_full-lovasz-ssl-r34_seed1-best.pt weights/final/c04_full-lovasz-mitb2_seed1-best.pt \
+               weights/final/c06_full-lovasz-hrnet32_seed1-best.pt weights/final/c01_full-zoom-hrnet32_seed1-best.pt \
+  --output-dir out/final
+```
+
+The calibration holds the cut-offs, TTA variants, fp16, barbs and the refiner; `fast`, `lite` and `tiny` work the same way
+with their own calibration. `notebook/Final pipeline.ipynb` does the same on Kaggle.
+
+### Reproduce the `final` preset from scratch
+
+Place the data as in [Setup](#setup).
+
+```bash
+# 1. SSL pretraining of the ResNet34 encoder on unlabelled GONG frames -> runs/ssl/mim-unetpp-r34/
+#    needs the unlabelled GONG H-alpha frames of the Kaggle dataset vhrabar/gong-solar-filaments,
+#    Training only: nothing external is used at inference.
+uv run --group cuda-134 python scripts/pretrain_mim.py --output runs/ssl/mim-unetpp-r34
+
+# 2. five-fold models: 40 epochs of BCE + Dice, then 8 epochs with the Lovász hinge, then the 2x zoom HRNet
+for spec in cv5_ssl cv5_mitb2 cv5_hrnet finetune_ssl finetune_mitb2 finetune_hrnet finetune_zoom_hrnet; do
+  uv run --group cuda-134 python scripts/sweep.py sweeps/$spec.json
+done
+
+# 3. calibrate on the pooled out-of-fold maps of the 20 fold checkpoints (D4-style TTA: overlap 0.5 and turned)
+uv run --group cuda-134 solfire calibrate --variants o0.5 turned \
+  --checkpoint runs/finetune_{ssl,mitb2,hrnet,zoom_hrnet}/*/best.pt \
+  --output runs/ensembles/cv20-zoom-ssl-tta.calibration.json
+
+# 4. crop refiner, trained on the held-out proposals of that ensemble (one model per fold)
+uv run --group cuda-134 python scripts/refine.py all --calibration runs/ensembles/cv20-zoom-ssl-tta.calibration.json \
+  --name zoom-ssl-tta-rt --crops crops-zoom-ssl-tta
+
+# 5. full-data models (every record, final epoch kept)
+for spec in full_ssl full full_zoom; do uv run --group cuda-134 python scripts/sweep.py sweeps/$spec.json; done
+
+# 6. float16 weights, one calibration per preset in weights/final
+uv run --group cuda-134 python scripts/release_weights.py
+```
+
+### Other commands
+
 ```bash
 # train one fold
 uv run --group cuda-134 solfire train --arch pretrained --decoder unetplusplus --encoder resnet34 --fold 0 ...
 
-# run a sweep spec (train + calibrate every config)
-uv run --group cuda-134 python scripts/sweep.py sweeps/cv5_hrnet.json --only fold
-
-# calibrate post-processing on the pooled out-of-fold maps of several checkpoints
-uv run --group cuda-134 solfire calibrate --checkpoint runs/<sweep>/*/best.pt --output runs/ensembles/<name>.calibration.json
-
 # final-rubric metrics
 uv run --group cuda-134 solfire evaluate --checkpoint ...
 
-# predict the test set (and submit)
-uv run --group cuda-134 python scripts/submit.py <checkpoints> --calibration runs/ensembles/<name>.calibration.json --no-submit
+# predict the test set and submit it to Kaggle (credentials must be cached)
+uv run --group cuda-134 python scripts/submit.py <checkpoints> --calibration <calibration.json>
 ```
-
-<!-- TODO: exact commands to reproduce the final submission from scratch+ notebook for it-->
 
 ## Weights
 

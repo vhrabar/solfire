@@ -18,13 +18,6 @@
 %
 % Do not use \guide{...} for \email{...}.
 \usepackage{xcolor}
-\newif\ifguideStyle
-\guideStyletrue
-\newcommand{\guide}[1]{%
-  \ifguideStyle
-    {\color{gray!65}\itshape #1}%
-  \fi
-}
 
 % --- Math ------------------------------------------------------------------
 % Do NOT load amssymb (or amsfonts): acmart already loads newtxmath, which

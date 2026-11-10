@@ -1,9 +1,19 @@
 # SOLFIRE: Solar Filament Instance Segmentation in GONG H-alpha
 
-<!-- TODO: summary -->
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE)
+[![Python 3.15](https://img.shields.io/badge/python-3.15-blue.svg?style=flat-square)](pyproject.toml)
+<!-- DOI badge-->
 
-Solution to the [IEEE BigData Cup 2026 — Solar Filament Segmentation](https://www.kaggle.com/competitions/filament-segmentation-2026)
-challenge: instance segmentation of solar filaments in GONG H-alpha full-disk observations (MAGFiLO 1.0).
+SOLFIRE segments solar filaments in GONG H-alpha full-disk observations (MAGFiLO 1.0). It is a solution to the
+[IEEE BigData Cup 2026 — Solar Filament Segmentation](https://www.kaggle.com/competitions/filament-segmentation-2026)
+challenge. One annotator scored against another reaches a Panoptic Quality (PQ) of only 0.34 on the training
+labels, so each change is judged against a matching control on pooled out-of-fold maps.
+
+The `final` variant averages four networks from three encoder families (ResNet34, MiT-B2, HRNet-W32, the last also
+at twice the input resolution). A crop refiner then redraws and scores every proposal, and barbs, which the
+organisers want in the masks, are grown from the observation without labels. It reaches an out-of-fold PQ of 0.4668
+over 1154 annotation records and 0.40 on the public leaderboard. Four released variants span 0.4508 to 0.4668 PQ at
+1.2 to 10.8 s per observation; see [Usage](#usage) to run them.
 
 ## Results
 
@@ -20,7 +30,19 @@ challenge: instance segmentation of solar filaments in GONG H-alpha full-disk ob
 - Timing and peak GPU memory are for the full 180-image test set on an RTX 5070 Ti, including image loading.
 - Annotator-vs-annotator PQ on the training set is 0.34, which bounds what the labels can support.
 
-<!-- TODO: final-rubric metrics (mean Dice, Dice/IoU distributions, 1:n / n:1 relations) from `evaluate`. -->
+Quality of the released presets beyond PQ, over the 1154 records of the training set (out-of-fold):
+
+| Preset  | PQ with barbs | PQ without barbs |    SQ |    RQ | Dice per record | Dice per matched pair | Missed | Split | Spurious | Merged |
+|---------|--------------:|-----------------:|------:|------:|----------------:|----------------------:|-------:|------:|---------:|-------:|
+| `final` |        0.4668 |           0.4692 | 0.689 | 0.678 |           0.662 |                 0.813 | 24.3 % | 2.1 % |   11.6 % | 2.1 %  |
+| `fast`  |        0.4642 |           0.4664 | 0.688 | 0.675 |           0.660 |                 0.812 | 22.9 % | 2.6 % |   12.1 % | 2.0 %  |
+| `lite`  |        0.4614 |           0.4637 | 0.687 | 0.672 |           0.668 |                 0.811 | 21.7 % | 2.6 % |   13.1 % | 2.1 %  |
+| `tiny`  |        0.4508 |           0.4531 | 0.679 | 0.664 |           0.667 |                 0.806 | 18.2 % | 2.9 % |   14.8 % | 3.0 %  |
+
+- A filament is *missed* or a prediction *spurious* when it touches nothing; a filament is *split* when several
+  predictions touch it and a prediction *merged* when it touches several filaments. Overlaps below the IoU match
+  are in no column.
+- Dice is averaged per record and over matched pairs (IoU > 0.5) only.
 
 ## Method
 

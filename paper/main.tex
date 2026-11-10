@@ -26,6 +26,13 @@
 
 \documentclass[sigconf,pbalance]{acmart}
 \input{preamble}
+
+\ifdefined\placeholders
+  \newsavebox{\phbox}
+  \newcommand{\figbox}[2]{\savebox{\phbox}{#2}\fbox{\parbox[c][\dimexpr\ht\phbox+\dp\phbox-2\fboxsep-2\fboxrule\relax][c]{\dimexpr\wd\phbox-2\fboxsep-2\fboxrule\relax}{\centering\small\textsf{[#1]}}}}
+\else
+  \newcommand{\figbox}[2]{#2}
+\fi
 \usepackage{tikz}
 \usetikzlibrary{arrows.meta,backgrounds,fit,positioning}
 
@@ -271,7 +278,7 @@
 
     \begin{figure}[t]
         \centering
-        \includegraphics[width=\columnwidth]{figures/qualitative}
+        \figbox{Qualitative figure}{\includegraphics[width=\columnwidth]{figures/qualitative}}
         \caption{Held-out observations ($768\times768$ crops) at the 90th, 50th and 10th percentiles of per-observation PQ\@. Annotator outlines are the union of each record's filaments.}\label{fig:qualitative}
         \Description{Three rows of 768 by 768 pixel GONG H-alpha crops, taken at the 90th, 50th and 10th percentiles of per-observation Panoptic Quality, comparing the filament outlines drawn by the annotators with the predicted instance masks. Agreement is close in the top row, a long filament is split in two in the middle row, and many annotated filaments are missed in the bottom row.}
     \end{figure}

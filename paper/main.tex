@@ -85,7 +85,10 @@
     One annotator's set was scored against another's on the 296 observations with several records.
     This comparison gives PQ~0.34 (SQ 0.634, RQ 0.54), and annotators agree on these thin pixels only 40\% of the time.
     Most disagreement concerns whether a faint filament exists and where a long one ends.
-    The final model reaches 0.47 out of fold over all 1154 records; this covers more records than the annotator comparison and uses cuts tuned on them, so it suggests, but does not prove, agreement above that of the annotators.
+    The 0.34 is annotator against annotator on these 296 observations.
+    The 0.47 above is the model against all 1154 records, with cuts tuned on them.
+    Scored on the same 296 observations, the final model reaches 0.468 out of fold (0.470 at the shipped cuts).
+    Record by record, the model's PQ against a record exceeds that of the other annotators of the observation against it on 82\% of the 743 records (median gain 0.12), and for each of the 14 record-ID prefixes with at least 15 records.
 
     \textbf{Scoring.} PQ~\cite{kirillov2019panoptic} matches a prediction to a filament at IoU~$>0.5$ and computes $\mathrm{PQ}=\sum_{\mathrm{TP}}\mathrm{IoU}\,/\,(|\mathrm{TP}|+\tfrac12|\mathrm{FP}|+\tfrac12|\mathrm{FN}|)$.
     Ground-truth instances are the individual polygons rasterised as COCO RLE~\cite{lin2014coco}, and each record is scored separately.
@@ -355,6 +358,7 @@
 \section{Conclusion}\label{sec:conclusion}
     The \texttt{final} variant combines a three-family ensemble, a crop refiner and label-free barb growth, reaching an out-of-fold PQ of 0.4668 and 0.40 on the public leaderboard; the lighter variants give up at most 0.016 PQ for inference up to nine times faster.
     The crop refiner was the largest late gain, while most other changes failed the adoption rule, and only the pooled and nested scores could show this, since a further 0.019 of OOF PQ after the first 0.40 submission left the rounded leaderboard at 0.39 to 0.40.
+    On the 296 observations with several records, the final model scores 0.468 against them, where one annotator scored against another reaches 0.34, and it scores higher than the other annotators on 82\% of records.
     A gap of about 0.07 between the out-of-fold and leaderboard scores remains; the probes point to stricter test labels for faint filaments but do not close it.
 
 

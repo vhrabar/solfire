@@ -272,6 +272,12 @@
         \end{tabular}
     \end{table*}
 
+    \textbf{Confidence intervals.}
+    PQ with barbs has 95\,\% percentile bootstrap intervals over the 707 observations (2000 draws, whole observations resampled because their records are not independent): \texttt{final} 0.4668 [0.4581, 0.4758], \texttt{fast} 0.4642 [0.4556, 0.4731], \texttt{lite} 0.4614 [0.4528, 0.4705] and \texttt{tiny} 0.4508 [0.4416, 0.4602].
+    Differences are paired on the same resampled observations: \texttt{final} beats \texttt{lite} by 0.0054 [0.0021, 0.0086] and \texttt{tiny} by 0.0160 [0.0115, 0.0207], and \texttt{fast} beats \texttt{tiny} by 0.0134 [0.0089, 0.0182].
+    \texttt{final} against \texttt{fast} (+0.0026 [$-$0.0005, 0.0056]) and \texttt{fast} against \texttt{lite} (+0.0028 [$-$0.0003, 0.0059]) are not resolved, so the gains of D4 TTA and the zoom model are not established on this set.
+    The intervals cover evaluation-set sampling only; each variant is one full-data training, and training seeds alone move a five-model set by up to 0.007.
+
     \subsection{Qualitative Results}\label{subsec:qualitative}
     Figure~\ref{fig:qualitative} shows held-out observations at the 90th, 50th and 10th percentiles of per-observation PQ among the 192 that have at least two records and four filaments per record, so the rows are not hand-picked.
     At the 90th percentile, the instances follow the annotated outlines, and only one filament is missed across three records that hold 5 to 9 filaments each.

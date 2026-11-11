@@ -26,6 +26,7 @@
 
 \documentclass[sigconf,pbalance]{acmart}
 \input{preamble}
+\captionsetup{font=footnotesize}
 
 \ifdefined\placeholders
   \newsavebox{\phbox}
@@ -69,8 +70,7 @@
 % ==================================== %
 \section{Introduction}\label{sec:introduction}
     This report goes over the details of the submitted solution\footnote{Code and weights: \url{https://github.com/vhrabar/solfire}} to the Solar Filament Segmentation Challenge~2026~\cite{filament-segmentation-2026}.
-    The challenge, launched on July~10,~2026, is organized by the Earth-Space AI Research (ESAIR) Lab\footnote{\href{https://www.esairlab.com/home}{www.esairlab.com/}}.
-    This challenge utilizes the MAGFiLO dataset for evaluation of the segmentation algorithms~\cite{ahmadzadeh2024dataset}.
+    The challenge, organized by the Earth-Space AI Research (ESAIR) Lab\footnote{\href{https://www.esairlab.com/home}{www.esairlab.com/}}, evaluates segmentation algorithms on the MAGFiLO dataset~\cite{ahmadzadeh2024dataset}.
 
     The solution makes four contributions: an ensemble of three encoder families trained on annotator-averaged targets; a crop refiner that redraws each proposal and predicts the IoU it will earn, raising out-of-fold PQ from 0.4611 to 0.4700; a label-free barb growth step; and a validation protocol with pooled and nested scores that separates real gains from seed noise, with the rejected changes reported in Section~\ref{sec:negative}.
 
@@ -84,11 +84,8 @@
     Thin structures under about 5 px account for only 1.9\% of the annotated area.
     One annotator's set was scored against another's on the 296 observations with several records.
     This comparison gives PQ~0.34 (SQ 0.634, RQ 0.54), and annotators agree on these thin pixels only 40\% of the time.
-    Most disagreement concerns whether a faint filament exists and where a long one ends.
-    The 0.34 is annotator against annotator on these 296 observations.
-    The 0.47 above is the model against all 1154 records, with cuts tuned on them.
     Scored on the same 296 observations, the final model reaches 0.468 out of fold (0.470 at the shipped cuts).
-    Record by record, the model's PQ against a record exceeds that of the other annotators of the observation against it on 82\% of the 743 records (median gain 0.12), and for each of the 14 record-ID prefixes with at least 15 records.
+    Record by record, the model's PQ against a record exceeds that of the other annotators of the observation on 82\% of the 743 records (median gain 0.12), and for each of the 14 record-ID prefixes with at least 15 records.
 
     \textbf{Scoring.} PQ~\cite{kirillov2019panoptic} matches a prediction to a filament at IoU~$>0.5$ and computes $\mathrm{PQ}=\sum_{\mathrm{TP}}\mathrm{IoU}\,/\,(|\mathrm{TP}|+\tfrac12|\mathrm{FP}|+\tfrac12|\mathrm{FN}|)$.
     Ground-truth instances are the individual polygons rasterised as COCO RLE~\cite{lin2014coco}, and each record is scored separately.
@@ -96,9 +93,8 @@
     \textbf{Protocol.} Five-fold cross-validation grouped by observation is used.
     Folds are not separated in time: the median out-of-fold observation lies 2.0 days from a training one and the median test observation 1.5 days, so neither score covers unseen periods.
     The score is out-of-fold (OOF) PQ, with TP, FP, FN and IoU pooled over all 1154 records as the evaluator does.
-    Post-processing is calibrated on the pooled OOF maps.
     A \emph{nested} score is also reported, with parameters chosen on four folds and applied to the fifth.
-    Seeds alone move a five-model set by up to 0.007 and the crop refiner by $\pm0.001$.
+    Seeds alone move a five-model set by up to 0.007 and the refiner by $\pm0.001$.
     A change is therefore compared with a control on the same seed and folds, and adopted only if it beats that control by $>0.002$ after the full pipeline, with the nested score agreeing.
 
 
@@ -246,7 +242,7 @@
     \subsection{Released Variants}\label{subsec:variants}
     Table~\ref{tab:presets} gives the results of the four released variants.
     The shipped models are retrained on all data, so their quality is measured on the five-fold set of the same recipe; Section~\ref{sec:limitations} states what this does and does not show.
-    Every variant ships with barbs enabled, and barb growth costs about 0.002 PQ in each case.
+    Every variant ships with barbs enabled, which costs about 0.002 PQ\@.
     Nested scores without barbs are 0.4655 for \texttt{fast} and 0.4628 for \texttt{lite}.
     For \texttt{final}, the nested score is 0.4691, but it is measured against the out-of-fold best cut (OOF 0.4700), while the shipped cut is stricter (OOF 0.4692).
 
@@ -275,20 +271,19 @@
 
     \textbf{Confidence intervals.}
     PQ with barbs has 95\,\% percentile bootstrap intervals over the 707 observations (2000 draws, whole observations resampled because their records are not independent): \texttt{final} 0.4668 [0.4581, 0.4758], \texttt{fast} 0.4642 [0.4556, 0.4731], \texttt{lite} 0.4614 [0.4528, 0.4705] and \texttt{tiny} 0.4508 [0.4416, 0.4602].
-    Differences are paired on the same resampled observations: \texttt{final} beats \texttt{lite} by 0.0054 [0.0021, 0.0086] and \texttt{tiny} by 0.0160 [0.0115, 0.0207], and \texttt{fast} beats \texttt{tiny} by 0.0134 [0.0089, 0.0182].
-    \texttt{final} against \texttt{fast} (+0.0026 [$-$0.0005, 0.0056]) and \texttt{fast} against \texttt{lite} (+0.0028 [$-$0.0003, 0.0059]) are not resolved, so the gains of D4 TTA and the zoom model are not established on this set.
+    Paired, \texttt{final} beats \texttt{lite} by 0.0054 [0.0021, 0.0086] and \texttt{tiny} by 0.0160 [0.0115, 0.0207]; \texttt{final} against \texttt{fast} (+0.0026 [$-$0.0005, 0.0056]) and \texttt{fast} against \texttt{lite} (+0.0028 [$-$0.0003, 0.0059]) are not resolved, so the gains of D4 TTA and the zoom model are not established.
     The intervals cover evaluation-set sampling only; each variant is one full-data training, and training seeds alone move a five-model set by up to 0.007.
 
     \subsection{Qualitative Results}\label{subsec:qualitative}
     Figure~\ref{fig:qualitative} shows held-out observations at the 90th, 50th and 10th percentiles of per-observation PQ among the 192 that have at least two records and four filaments per record, so the rows are not hand-picked.
-    At the 90th percentile, the instances follow the annotated outlines, and only one filament is missed across three records that hold 5 to 9 filaments each.
-    At the median, the main loss is a long filament drawn as one object (about 13{,}800\,px): it is predicted in two pieces, and its best IoU of 0.35 counts as a miss in both records.
-    At the 10th percentile, the three annotators draw 9, 14 and 16 filaments on the same observation and the model misses 3, 10 and 10 of them, so the score depends strongly on how many filaments a record includes.
+    At the 90th percentile, the instances follow the annotated outlines and one filament is missed across three records.
+    At the median, a long filament (about 13{,}800\,px) is predicted in two pieces, and its best IoU of 0.35 counts as a miss.
+    At the 10th percentile, the annotators draw 9, 14 and 16 filaments and the model misses 3, 10 and 10, so the score depends strongly on how many filaments a record includes.
     Barb growth is conservative: it adds 166\,px across the three crops, so the masks hold the filament bodies and only the clearest barbs.
 
     \begin{figure}[t]
         \centering
-        \figbox{Qualitative figure}{\includegraphics[width=\columnwidth]{figures/qualitative}}
+        \figbox{Qualitative figure}{\includegraphics[width=0.82\columnwidth]{figures/qualitative}}
         \caption{Held-out observations ($768\times768$ crops) at the 90th, 50th and 10th percentiles of per-observation PQ\@. Annotator outlines are the union of each record's filaments.}\label{fig:qualitative}
         \Description{Three rows of 768 by 768 pixel GONG H-alpha crops, taken at the 90th, 50th and 10th percentiles of per-observation Panoptic Quality, comparing the filament outlines drawn by the annotators with the predicted instance masks. Agreement is close in the top row, a long filament is split in two in the middle row, and many annotated filaments are missed in the bottom row.}
     \end{figure}
@@ -296,9 +291,9 @@
     \subsection{Model Progression}\label{subsec:progression}
     Table~\ref{tab:progression} lists the steps that make up \texttt{final}; each row keeps the steps above it.
     The gain of the Lovász row includes 0.007 from the extra fine-tuning alone.
-    The finer grid and the SimMIM-style pretraining fall below the adoption bar on the nested score (+0.0016 and +0.0002); both are kept because they do not lower the score and add no inference cost.
-    The last two rows lower PQ on purpose: the stricter cut follows leaderboard probes (0.40 at two strict cuts, 0.37 at a liberal one, 0.36 and 0.37 with fattened and thinned masks), which suggest that the test labels keep fewer faint filaments, although IoU cuts of 0.28 and 0.32 both score 0.40; barbs are grown for the additional barb score.
-    A ten-model ensemble first reached 0.40 (OOF 0.4507) before any second encoder family was added; every later model scored 0.39 or 0.40 at its calibrated cuts on the two-decimal public leaderboard, so the later steps could only be judged out of fold.
+    The finer grid and the SimMIM-style pretraining fall below the adoption bar on the nested score (+0.0016, +0.0002) but are kept, as they add no inference cost.
+    The last two rows lower PQ on purpose: the stricter cut follows leaderboard probes (0.40 at two strict cuts, 0.37 at a liberal one, 0.36 and 0.37 with fattened and thinned masks), which suggest that the test labels keep fewer faint filaments, and barbs are grown for the additional barb score.
+    A ten-model ensemble first reached 0.40 (OOF 0.4507); every later model scored 0.39 or 0.40 on the two-decimal leaderboard, so later steps could only be judged out of fold.
 
     \begin{table}[t]
         \caption{Steps of \texttt{final}. Pooled OOF PQ without barbs, except the last row.}\label{tab:progression}
@@ -327,10 +322,10 @@
 %           WHAT DID NOT WORK          %
 % ==================================== %
 \section{What Did Not Work}\label{sec:negative}
+    \small
     Table~\ref{tab:negative} lists changes that were tested and rejected.
-    Each is scored after calibration against a control with the same setup, and none passes the adoption rule of Section~\ref{sec:data}.
-    Losses with clDice~\cite{shit2021cldice} or differentiable morphology terms were also tried and dropped.
-    A dedicated barb head gave no PQ gain (best +0.0001) and barely raised thin-structure recall, so it extended filament edges rather than adding barbs.
+    Each is scored after calibration against a matching control; none passes the adoption rule of Section~\ref{sec:data}.
+    clDice~\cite{shit2021cldice} and differentiable morphology losses were also dropped, and a dedicated barb head gave no PQ gain (best +0.0001): it extended filament edges rather than adding barbs.
 
     \begin{table}[t]
         \caption{Rejected changes, as pooled OOF PQ against the matching control.}\label{tab:negative}
@@ -352,8 +347,7 @@
             Watershed instance splitting & 0.388 & 0.443 & $-0.055$ \\
             YOLO26m-seg~\cite{jocher2026yolo26} member, score-ordered & 0.4521 & 0.4641 & $-0.0120$ \\
             Spine auxiliary head, with refiner & 0.4650 & 0.4637 & $+0.0013$ \\
-            Second refiner pass & 0.4692 & 0.4700 & $-0.0008$ \\
-            Other refiner encoders, best & 0.4692 & 0.4700 & $-0.0008$ \\
+            Second refiner pass or other encoders, best & 0.4692 & 0.4700 & $-0.0008$ \\
             \bottomrule
         \end{tabular}
     \end{table}
@@ -363,32 +357,26 @@
 %              LIMITATIONS             %
 % ==================================== %
 \section{Limitations}\label{sec:limitations}
+    \small
     \textbf{Validated and shipped systems differ.}
-    Every out-of-fold (OOF) score in this report, including the intervals, belongs to the five-fold system: models that each saw about 80\% of the observations, one crop refiner per fold, and cuts tuned on the pooled maps of those models.
-    The released variants are a different system: the same recipe retrained once on all 707 observations, with the final epoch kept, and the refiner of fold 0 alone, which saw four fifths of the held-out proposals and reads maps from models it was not trained on.
-    The cuts, tuned on the fold models' maps, are applied unchanged to the full-data models, whose maps may be distributed slightly differently.
-    No labelled data can score the shipped models without leakage, since every observation is in their training set, so their quality relative to the five-fold system is not measured.
-    Two indirect observations bear on it: keeping the final epoch rather than the validation-selected one changed OOF PQ by $+0.0009$, and every candidate, five-fold or full-data, scored 0.39 or 0.40 on the public leaderboard, which rounds to two decimals and cannot resolve differences below about 0.005.
-    We expect the difference to be small, but a nested check, training without fold 0 and scoring it with cuts tuned on the other four folds, was not run.
-    The released variants are therefore reported with the OOF score of their recipe and, separately, their rounded leaderboard score.
+    All OOF scores and intervals belong to the five-fold system (models on about 80\% of the observations, one refiner per fold).
+    The released variants are the same recipe retrained once on all 707 observations, with the final epoch kept and the refiner of fold 0, and with the cuts applied unchanged.
+    No labelled data can score them without leakage, so their quality relative to the five-fold system is not measured; keeping the final epoch rather than the validation-selected one changed OOF PQ by only $+0.0009$.
+    A nested check without fold 0 was not run.
 
-    \textbf{Use of the test set.}
-    No test image or label enters any training stage: training, calibration and refiner training read only the 707 labelled observations and, for pretraining, the unlabelled GONG frames of 2023--2025, none of which is a test observation.
-    The test set did influence one released setting: the IoU cut of \texttt{final} (0.32 against an OOF best of 0.28) follows leaderboard probes (Section~\ref{subsec:progression}).
+    \textbf{Test set and other limits.}
+    No test image or label enters any training stage; only the IoU cut of \texttt{final} (0.32 against an OOF best of 0.28) follows leaderboard probes (Section~\ref{subsec:progression}).
+    Each configuration is one training run, and the unexplained OOF-to-leaderboard gap of about 0.07 means the OOF figures rank methods rather than forecast the test score.
 
-    \textbf{Other limits.}
-    Folds are not separated in time (Section~\ref{sec:data}), so neither the OOF nor the test score covers unseen periods.
-    Each configuration is one training run, so the intervals leave out seed variation of up to 0.007, and the unexplained gap of about 0.07 between OOF and leaderboard PQ means the OOF figures should be read as a ranking of methods on this data rather than a forecast of the test score.
 
+    \normalsize
 
 % ==================================== %
 %              CONCLUSION              %
 % ==================================== %
 \section{Conclusion}\label{sec:conclusion}
     The \texttt{final} variant combines a three-family ensemble, a crop refiner and label-free barb growth, reaching an out-of-fold PQ of 0.4668 and 0.40 on the public leaderboard; the lighter variants give up at most 0.016 PQ for inference up to nine times faster.
-    The crop refiner was the largest late gain, while most other changes failed the adoption rule, and only the pooled and nested scores could show this, since a further 0.019 of OOF PQ after the first 0.40 submission left the rounded leaderboard at 0.39 to 0.40.
-    On the 296 observations with several records, the final model scores 0.468 against them, where one annotator scored against another reaches 0.34, and it scores higher than the other annotators on 82\% of records.
-    A gap of about 0.07 between the out-of-fold and leaderboard scores remains; the probes point to stricter test labels for faint filaments but do not close it.
+    The crop refiner was the largest late gain; most other changes failed the adoption rule.
 
 
 % ==================================== %

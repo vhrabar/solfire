@@ -1,0 +1,18 @@
+{
+  "id": "vhrabar/solfire-final-pipeline",
+  "title": "SOLFIRE Final Pipeline",
+  "code_file": "../../notebook/Final pipeline.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_tpu": false,
+  "enable_internet": true,
+  "keywords": ["gpu"],
+  "machine_shape": "NvidiaTeslaT4",
+  "docker_image_pinning_type": "original",
+  "competition_sources": ["filament-segmentation-2026"],
+  "dataset_sources": ["vhrabar/kx-plot", "vhrabar/gong-solar-filaments"],
+  "kernel_sources": [],
+  "model_sources": ["vhrabar/filament-segmentation-2026/PyTorch/solfire-final/1"]
+}

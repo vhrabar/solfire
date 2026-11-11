@@ -45,14 +45,32 @@
 # IoU it will earn, which replaces the mean probability as the keep/drop score (see *Crop refiner*). Last, the
 # visible barbs are grown into every instance.
 #
+# **Where it runs.** The notebook detects its environment: with `/kaggle/input` and `/kaggle/working` present it is in
+# *Kaggle mode*, otherwise in *local mode*.
+# - Kaggle mode reads the competition data, the weights (Models `vhrabar/filament-segmentation-2026`), the figure
+#   package (Dataset `vhrabar/kx-plot`) and the GONG data (Dataset `vhrabar/gong-solar-filaments`) from
+#   `/kaggle/input`, so attach all four with *Add Input*; a missing one stops the notebook with a message saying which.
+#   It writes to `/kaggle/working`.
+# - Local mode uses the repository checkout: `data/` (or `$FILAMENT_DATA_ROOT`), `weights/final`, kx-plot from the
+#   `uv` environment and the GONG downloads in `runs/external` (GONG figures and pretraining are skipped when that
+#   folder is absent). It writes to `build/notebook`.
+#
 # **Running it.**
 # - `TRAIN = False` (default): loads the `PRESET` weights and their calibration, then predicts the test set. They
 #   are looked for in `WEIGHTS_DIR`, then in `weights/final` of a repository checkout, then among the attached Kaggle
 #   inputs, and last downloaded with `kagglehub` from `MODEL_HANDLE`.
-# - `TRAIN = True`: trains the 5-fold ImageNet recipe of the three families (30 runs) and the 5 refiners,
-#   calibrates, then predicts with those 15 models (0.4637 out-of-fold); the GONG pretraining, the zoom family and
-#   the full-data retrain are not repeated. That is about 20 GPU-hours on an RTX 5070 Ti, more than one Kaggle
+# - `TRAIN = True`: trains the 5-fold recipe of the three families (30 runs) and the 5 refiners, calibrates, then
+#   predicts with those 15 models (0.4637 out-of-fold). With the GONG frames available and `SSL = True`, the
+#   ResNet-34 first learns masked-image reconstruction on them (*Masked-image pretraining*) and starts from that
+#   instead of ImageNet; the zoom family and the full-data retrain are not repeated. That is about 20 GPU-hours on an RTX 5070 Ti, more than one Kaggle
 #   session. Finished runs are skipped, so the notebook can be rerun until it completes.
+#
+# - `TRAIN` is the only switch for training: it trains the models and the crop refiners together. Whether
+#   inference refines is read from the calibration (a preset with a refiner, or the one `TRAIN` just made).
+# - A finished prediction is not repeated: when `submission.csv` and `inference.json` of this `PRESET` (or of
+#   `TRAIN`) are in the working folder, the notebook reads them, runs the pipeline again only on the few observations
+#   the figures show, and keeps the self-evaluation overlaps. Set `RERUN = True` (in the prediction cell) to predict
+#   everything again.
 #
 # Source: https://github.com/vhrabar/solfire
 # (this notebook is generated from `notebook/pipeline.py` by `scripts/build_notebook.py`).
@@ -71,9 +89,15 @@ import time
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
-TRAIN = False  # True: train every model from the competition data; False: fetch the published checkpoints
+TRAIN = False  # True: train the models and the crop refiners from the competition data; False: fetch the published ones
 SEED = 1
 FOLDS = 5  # grouped by observation, the assignment is fixed (seed 0) whatever SEED is
+
+# Kaggle mode when the Kaggle mounts exist, local mode otherwise
+KAGGLE = Path("/kaggle/input").is_dir() and Path("/kaggle/working").is_dir()
+SSL = True  # with TRAIN: start the ResNet-34 family from masked-image pretraining on the GONG H-alpha frames
+SSL_EPOCHS = 30
+SSL_PATCH, SSL_MASK_RATIO = 32, 0.6  # side of a hidden square (px) and the share of squares hidden
 
 PRESET = "final"  # final, fast, lite or tiny (see the table above)
 MODEL_HANDLE = f"vhrabar/filament-segmentation-2026/pyTorch/solfire-{PRESET}/1"  # Kaggle Models variation
@@ -117,7 +141,7 @@ CALIBRATION_GRID = {
     "min_score": (0.0, 0.6, 0.625, 0.65, 0.675, 0.7, 0.725, 0.75, 0.8, 0.85, 0.88, 0.91, 0.94),
 }
 
-REFINE = True  # redraw and rescore every instance with the crop refiner (needs its checkpoints)
+# %%
 REFINER = {
     "crop": 256,  # edge the refiner works at
     "context": 1.5,  # window edge as a multiple of the instance's longer box side
@@ -139,7 +163,7 @@ REFINE_GRID = {
 
 SUBMISSION_SIZE = 2048
 WORKERS = min(8, os.cpu_count() or 1)
-WORK = Path("/kaggle/working") if Path("/kaggle/working").is_dir() else REPO / "build" / "notebook"
+WORK = Path("/kaggle/working") if KAGGLE else REPO / "build" / "notebook"
 WORK.mkdir(parents=True, exist_ok=True)
 
 # %%
@@ -178,35 +202,33 @@ def set_seeds(seed: int) -> None:
 set_seeds(SEED)
 print(f"torch {torch.__version__}, smp {smp.__version__}, device {DEVICE}, workers {WORKERS}")
 
-# %% [markdown]
-# Figures use [kx-plot](https://github.com/vhrabar/kx-plot) on matplotlib. They never touch the submission: without
-# kx-plot (no internet and no attached `vhrabar/kx-plot` dataset), they are skipped. Each one is also saved to
-# `FIGURES`.
-
 
 # %%
-PLOTS = True  # False skips every figure
 FIGURES = WORK / "figures"
-try:
-    import kx
-except ImportError:
-    attached = Path("/kaggle/input/datasets/vhrabar/kx-plot")  # Add Input -> Datasets -> vhrabar/kx-plot
-    if attached.is_dir():
-        sys.path.append(str(attached))
-    else:
-        subprocess.run([sys.executable, "-m", "pip", "install", "-q", "kx-plot==0.6.0"], check=False)
+
+
+def import_kx():
+    """
+    :return: The kx module: installed in the environment, else from the attached Kaggle Dataset vhrabar/kx-plot
+    """
     try:
         import kx
-    except ImportError:
-        kx = None
-PLOTS = PLOTS and kx is not None
-if PLOTS:
-    import matplotlib.pyplot as plt
-    import pandas as pd
 
-    kx.use("light")
-else:
-    print("no figures: kx-plot is not available")
+        return kx
+    except ImportError:
+        package = next(Path("/kaggle/input").rglob("kx/__init__.py"), None) if KAGGLE else None
+        sys.path.append(str(package.parent.parent))
+        import kx
+
+        return kx
+
+
+kx = import_kx()
+import matplotlib.pyplot as plt
+import pandas as pd
+
+kx.use("light")
+print(f"{'Kaggle' if KAGGLE else 'local'} mode, kx-plot {kx.__version__}, figures -> {FIGURES}")
 
 
 def figure(name: str) -> None:
@@ -430,27 +452,244 @@ def polygon_area(polygon) -> float:
     return 0.5 * abs(float(np.dot(x, np.roll(y, 1)) - np.dot(y, np.roll(x, 1))))
 
 
-if PLOTS:
-    annotators = pd.Series([record["file_name"] for record in RECORDS.values()]).value_counts()
-    per_record = np.array([len(BY_RECORD[image_id]) for image_id in RECORDS])
-    areas = np.array([polygon_area(annotation["segmentation"][0]) for annotation in raw["annotations"]])
-    axs = kx.grid(3)
-    kx.plot(annotators.to_numpy(), spec="count-ann", ax=axs[0], title="annotators per observation")
-    kx.plot(per_record, spec="hist", ax=axs[1], bins=np.arange(per_record.max() + 2) - 0.5, title="filaments per record")
-    kx.plot(
-        areas,
-        spec="hist-logx-median-ann",
-        ax=axs[2],
-        bins=np.geomspace(max(areas.min(), 1), areas.max(), 40),
-        title="filament area (px)",
-    )
-    figure("annotations")
+annotators = pd.Series([record["file_name"] for record in RECORDS.values()]).value_counts()
+per_record = np.array([len(BY_RECORD[image_id]) for image_id in RECORDS])
+areas = np.array([polygon_area(annotation["segmentation"][0]) for annotation in raw["annotations"]])
+axs = kx.grid(3)
+kx.plot(annotators.to_numpy(), spec="count-ann", ax=axs[0], title="annotators per observation")
+kx.plot(per_record, spec="hist", ax=axs[1], bins=np.arange(per_record.max() + 2) - 0.5, title="filaments per record")
+kx.plot(
+    areas,
+    spec="hist-logx-median-ann",
+    ax=axs[2],
+    bins=np.geomspace(max(areas.min(), 1), areas.max(), 40),
+    title="filament area (px)",
+)
+figure("annotations")
 
-    random.seed(SEED)
-    windows = FilamentWindows(list(RECORDS), TRAINING["crop"], 1, foreground_prob=1.0)
-    samples = [windows[index] for index in random.sample(range(len(windows)), 4)]
-    kx.plot([image[0].numpy() for image, _ in samples], [(target > 0).numpy() for _, target in samples], "segmask")
-    figure("training-windows")
+random.seed(SEED)
+windows = FilamentWindows(list(RECORDS), TRAINING["crop"], 1, foreground_prob=1.0)
+samples = [windows[index] for index in random.sample(range(len(windows)), 4)]
+kx.plot([image[0].numpy() for image, _ in samples], [(target > 0).numpy() for _, target in samples], "segmask")
+figure("training-windows")
+
+# %% [markdown]
+# Where the observations come from: GONG has six sites and the file name carries the year and the site letter
+# (B Big Bear, C Cerro Tololo, L Learmonth, M Mauna Loa, T El Teide, U Udaipur; A and Z appear from 2023). The
+# test set follows the training set's years and sites, shown as the share of each set.
+
+# %%
+SITES = {"B": "Big Bear", "C": "Cerro Tololo", "L": "Learmonth", "M": "Mauna Loa", "T": "El Teide", "U": "Udaipur"}
+
+
+def year_site(name: str) -> tuple[int, str]:
+    """:return: (year, site letter) of a file name such as 20110109104734Ch.jpeg"""
+    return int(name[:4]), name[14]
+
+
+train_names = sorted({record["file_name"] for record in RECORDS.values()})
+origin = pd.DataFrame(
+    [
+        (*year_site(name), part)
+        for part, names in (("train", train_names), ("test", [p.name for p in TEST_FILES]))
+        for name in names
+    ],
+    columns=["year", "site", "set"],
+)
+axs = kx.grid(2)
+by_year = origin.groupby(["year", "set"]).size().unstack(fill_value=0)
+kx.plot(
+    (100 * by_year / by_year.sum()).reset_index(),
+    "year",
+    "train",
+    "test",
+    spec="bar-leg",
+    ax=axs[0],
+    title="observations per year (%)",
+)
+by_site = origin.groupby(["site", "set"]).size().unstack(fill_value=0)
+kx.plot(
+    (100 * by_site / by_site.sum()).reset_index(),
+    "site",
+    "train",
+    "test",
+    spec="bar-leg",
+    ax=axs[1],
+    title="observations per GONG site (%)",
+)
+figure("observations")
+
+# %% [markdown]
+# ## GONG data
+#
+# Organisers allowed GONG data beyond MAGFiLO as long as the submitted model sees only H-alpha. The Kaggle Dataset
+# `vhrabar/gong-solar-filaments` (and `runs/external` locally) holds 1,300 unlabelled 2023-2025 H-alpha frames, used
+# for the masked-image pretraining below, and `bzi` line-of-sight magnetograms matched to the training
+# observations, used only to look at the data here (a magnetogram auxiliary head did not improve the ensemble).
+
+
+# %%
+def find_gong() -> dict | None:
+    """
+    :return: Paths of the GONG data (frames, bursts, bzi, matches), or None locally when it was not downloaded.
+        In Kaggle mode a missing Dataset is an error.
+    """
+    if KAGGLE:
+        bursts = next(Path("/kaggle/input").rglob("halpha_bursts.json"), None)
+        if bursts is None:
+            raise FileNotFoundError("attach the Dataset vhrabar/gong-solar-filaments (Add Input)")
+        root = bursts.parent
+        return {
+            "frames": root / "halpha_2023_2025",
+            "bursts": bursts,
+            "bzi": root / "bzi_fits",
+            "matches": root / "bzi_matches.json",
+        }
+    root = REPO / "runs" / "external"
+    if not (root / "gong" / "manifest.json").is_file():
+        return None
+    return {
+        "frames": root / "gong" / "jpeg",
+        "bursts": root / "gong" / "manifest.json",
+        "bzi": root / "gong_bzi" / "fits",
+        "matches": root / "gong_bzi" / "manifest.json",
+    }
+
+
+def burst_frames(gong: dict) -> list[list[Path]]:
+    """:return: The H-alpha frames of every burst (five frames, 2 min apart) that exist on disk"""
+    bursts = json.loads(gong["bursts"].read_text(encoding="utf-8"))["bursts"]
+    found = [[gong["frames"] / f"{stem}.jpeg" for stem in burst] for burst in bursts]
+    return [burst for burst in found if all(path.is_file() for path in burst)]
+
+
+# %%
+def read_bzi(gong: dict, stem: str):
+    """
+    :param stem: Training observation name without extension
+    :return: (field in gauss, FITS header) of its matched bzi magnetogram, files are .fits.gz or gunzipped by Kaggle
+    """
+    from astropy.io import fits
+
+    path = next(iter(sorted(gong["bzi"].glob(f"{stem}.fits*"))))
+    if path.is_dir():
+        path = next(iter(sorted(path.iterdir())))
+    with fits.open(path) as hdus:
+        return np.nan_to_num(hdus[0].data.astype(np.float32)), hdus[0].header
+
+
+def bzi_on_halpha(field: np.ndarray, header, size: int = 512) -> tuple[np.ndarray, np.ndarray]:
+    """
+    The magnetogram on the H-alpha grid (disk centre 1024, radius 900, north up) at size x size: the site image is
+    a constant quarter-turn away, and the FNDLMB* keys give its disk centre and radius.
+    :return: (field in gauss, on-disk mask)
+    """
+    steps = (np.arange(size) + 0.5) * 2048 / size
+    v, u = np.meshgrid((steps - 1024) / 900, (steps - 1024) / 900, indexing="ij")
+    turned_u, turned_v = -v, u  # rotation by 90 degrees
+    radius = (header["FNDLMBMI"] + header["FNDLMBMA"]) / 2
+    rows = header["FNDLMBYC"] + radius * turned_v
+    columns = header["FNDLMBXC"] + radius * turned_u
+    resampled = ndimage.map_coordinates(field, [rows, columns], order=1, cval=0.0)
+    valid = u**2 + v**2 < 0.97**2
+    return np.where(valid, resampled, 0.0), valid
+
+
+# %%
+def pil_proximity(field: np.ndarray, valid: np.ndarray, size: int = 512, smooth_mm=12.0, decay_mm=10.0) -> np.ndarray:
+    """
+    :return: exp(-d / decay) to the nearest polarity inversion line of the smoothed field (d in Mm)
+    """
+    mm = 696.0 / 900.0 * 2048 / size  # Mm per pixel at disk centre
+    smooth = ndimage.gaussian_filter(field, smooth_mm / mm)
+    positive = smooth > 0
+    line = np.zeros_like(positive)
+    line[:, :-1] |= positive[:, :-1] != positive[:, 1:]
+    line[:-1, :] |= positive[:-1, :] != positive[1:, :]
+    line &= np.hypot(*np.gradient(smooth)) >= 1.0
+    line &= ndimage.binary_erosion(valid, iterations=int(2 * smooth_mm / mm) + 2)
+    return np.exp(-ndimage.distance_transform_edt(~line) * mm / decay_mm) if line.any() else np.zeros_like(smooth)
+
+
+# %%
+GONG = find_gong()
+if GONG is None:
+    print("no GONG data under runs/external: GONG figures and pretraining are skipped")
+else:
+    bursts = burst_frames(GONG)
+    matches = pd.DataFrame(json.loads(GONG["matches"].read_text(encoding="utf-8"))["images"])
+    print(
+        f"GONG: {len(bursts)} H-alpha bursts ({sum(map(len, bursts))} frames), {(matches.status == 'ok').sum()} magnetograms ({GONG['frames']})"
+    )
+
+
+# %% [markdown]
+# How well the magnetograms match the training observations: the time between the two (minutes) and the plage
+# correlation, i.e. how well |B| lines up with the H-alpha activity after registration (a registration and timing
+# check; the median is about 0.67).
+
+# %%
+if GONG is not None:
+    ok = matches[matches.status == "ok"]
+    axs = kx.grid(2)
+    kx.plot(
+        ok.gap_minutes.to_numpy(float),
+        spec="hist-median-ann",
+        ax=axs[0],
+        bins=np.linspace(0, 60, 31),
+        title="time to the H-alpha observation (min)",
+    )
+    kx.plot(
+        ok.plage_correlation.to_numpy(float),
+        spec="hist-median-ann",
+        ax=axs[1],
+        bins=np.linspace(-0.2, 1, 37),
+        title="plage correlation |B| vs H-alpha",
+    )
+    figure("gong-matches")
+
+
+# %% [markdown]
+# The best-registered training observations with annotations: H-alpha with every annotator's filaments, then the
+# unsigned magnetogram |B| and the proximity to its polarity inversion lines laid over the same frame (each map
+# scaled to 0-1). Filaments lie along the inversion lines.
+
+# %%
+if GONG is not None:
+    names = {record["file_name"]: image_id for image_id, record in RECORDS.items() if BY_RECORD[image_id]}
+    best = ok[ok.image.isin(names)].sort_values("plage_correlation", ascending=False).image.head(2)
+    for name in best:
+        stem = Path(name).stem
+        field, header = bzi_on_halpha(*read_bzi(GONG, stem))
+        proximity = pil_proximity(field, field != 0)
+        image = load_image(TRAIN_IMAGES / name)[0].numpy()
+        truth = np.zeros((2048, 2048), bool)
+        for image_id, record in RECORDS.items():
+            if record["file_name"] == name:
+                for annotation in BY_RECORD[image_id]:
+                    truth |= polygon_mask(annotation["segmentation"][0], 2048, 2048)
+        kx.plot([image], [truth], "segmask", title=stem)
+        figure(f"gong-filaments-{stem}")
+        limit = float(np.percentile(np.abs(field), 99.5)) or 1.0
+        kx.plot(
+            [image, image],
+            [np.minimum(np.abs(field), limit), proximity],
+            ["|B| of the magnetogram", "proximity to inversion lines"],
+            "saliency",
+            title=stem,
+        )
+        figure(f"gong-registration-{stem}")
+
+
+# %% [markdown]
+# One unlabelled burst: five frames two minutes apart, the material of the pretraining.
+
+# %%
+if GONG is not None:
+    burst = bursts[len(bursts) // 2]
+    kx.plot([load_image(path)[0].numpy()[::4, ::4] for path in burst], "imgrid")
+    figure("gong-burst")
+
 
 # %% [markdown]
 # ## Model
@@ -707,6 +946,130 @@ def panoptic_quality(terms) -> float:
 
 
 # %% [markdown]
+# ## Masked-image pretraining
+#
+# With `TRAIN = True`, `SSL = True` and the GONG frames available, the ResNet-34 family does not start from ImageNet
+# alone. SimMIM-style: random 32 px squares (60 %) of a native-resolution crop of an unlabelled H-alpha frame are
+# replaced by the crop's mean, and the whole encoder-decoder reconstructs them. The target is standardised per square, so the
+# loss rewards the dark filament and plage structure rather than limb darkening. The reconstruction head is dropped
+# and the rest initialises the stage 1 runs of that family. The released `final` and `fast` presets were pretrained
+# this way (on a dedicated GPU run of 30 epochs).
+
+
+# %%
+# %%
+class MaskedCrops(Dataset):
+    """Native-resolution crops centred on a random on-disk point of an H-alpha frame, flipped and turned."""
+
+    def __init__(self, paths, crop=512, repeat=8, disk_level=0.1):
+        self.paths, self.crop, self.repeat = list(paths), crop, repeat
+        self.disk_level = round(disk_level * 255)
+
+    def __len__(self) -> int:
+        return len(self.paths) * self.repeat
+
+    def __getitem__(self, index: int) -> Tensor:
+        with Image.open(self.paths[index % len(self.paths)]) as handle:
+            image = np.asarray(handle.convert("L"), dtype=np.uint8)
+        limit = image.shape[0] - self.crop
+        ys, xs = np.nonzero(image[::8, ::8] >= self.disk_level)
+        pick = random.randrange(len(ys))
+        x = min(max(int(xs[pick]) * 8 - self.crop // 2, 0), limit)
+        y = min(max(int(ys[pick]) * 8 - self.crop // 2, 0), limit)
+        window = torch.from_numpy(image[y : y + self.crop, x : x + self.crop].copy()).float().div_(255.0)
+        if random.random() < 0.5:
+            window = window.flip(-1)
+        return torch.rot90(window, random.randint(0, 3), (-2, -1)).unsqueeze(0)
+
+
+# %%
+def hide_patches(batch: int, size: int, patch: int, ratio: float, device) -> Tensor:
+    """:return: (B, 1, size, size) float mask, 1 where a square is hidden"""
+    cells = size // patch
+    hidden = torch.rand(batch, cells * cells, device=device).argsort(dim=1) < round(ratio * cells * cells)
+    return F.interpolate(hidden.view(batch, 1, cells, cells).float(), scale_factor=patch, mode="nearest")
+
+
+def patch_standardised(image: Tensor, patch: int) -> Tensor:
+    """Each patch x patch square standardised on its own (the reconstruction target)."""
+    mean = F.avg_pool2d(image, patch)
+    std = (F.avg_pool2d(image**2, patch) - mean**2).clamp_min(0).add(1e-6).sqrt()
+    return (image - F.interpolate(mean, scale_factor=patch, mode="nearest")) / F.interpolate(
+        std, scale_factor=patch, mode="nearest"
+    )
+
+
+# %%
+def pretrain_ssl(family: str) -> Path | None:
+    """
+    Masked-image pretraining of a family on the GONG frames; a finished run is reused.
+    :param family: Key of FAMILIES
+    :return: Checkpoint of the encoder and decoder without the reconstruction head, or None without GONG frames
+    """
+    if GONG is None:
+        return None
+    output = WORK / "runs" / f"{family}-ssl-pretrain"
+    result = output / "encoder.pt"
+    if result.is_file():
+        return result
+    output.mkdir(parents=True, exist_ok=True)
+    set_seeds(SEED)
+    used = {stem for burst in json.loads(GONG["bursts"].read_text(encoding="utf-8"))["bursts"] for stem in burst}
+    frames = sorted(path for path in GONG["frames"].glob("*.jpeg") if path.stem in used)
+    dataset = MaskedCrops(frames, TRAINING["crop"])
+    loader = DataLoader(
+        dataset,
+        batch_size=TRAINING["batch_size"],
+        shuffle=True,
+        drop_last=True,
+        num_workers=WORKERS,
+        pin_memory=DEVICE.type == "cuda",
+        persistent_workers=WORKERS > 0,
+        multiprocessing_context="fork" if WORKERS > 0 else None,
+    )
+    model = Pretrained(**FAMILIES[family], encoder_weights="imagenet").to(DEVICE)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4, weight_decay=0.05)
+    steps, warmup = SSL_EPOCHS * len(loader), len(loader)
+    scheduler = torch.optim.lr_scheduler.LambdaLR(
+        optimizer, lambda step: min(1.0, (step + 1) / warmup) * 0.5 * (1 + math.cos(math.pi * min(step, steps) / steps))
+    )
+    history = []
+    for epoch in range(1, SSL_EPOCHS + 1):
+        model.train()
+        total = 0.0
+        for image in tqdm(loader, desc=f"mim epoch {epoch}/{SSL_EPOCHS}", mininterval=2.0):
+            image = image.to(DEVICE, non_blocking=True)
+            hidden = hide_patches(image.shape[0], TRAINING["crop"], SSL_PATCH, SSL_MASK_RATIO, DEVICE)
+            masked = image * (1 - hidden) + image.mean(dim=(-2, -1), keepdim=True) * hidden
+            with torch.autocast(DEVICE.type, dtype=torch.bfloat16, enabled=DEVICE.type == "cuda"):
+                prediction = model(masked)
+            loss = ((prediction.float() - patch_standardised(image, SSL_PATCH)).abs() * hidden).sum() / hidden.sum().clamp_min(1)
+            optimizer.zero_grad(set_to_none=True)
+            loss.backward()
+            nn.utils.clip_grad_norm_(model.parameters(), TRAINING["grad_clip"])
+            optimizer.step()
+            scheduler.step()
+            total += loss.item()
+        history.append({"epoch": epoch, "loss": total / len(loader)})
+        print(f"mim epoch {epoch}/{SSL_EPOCHS}  loss {history[-1]['loss']:.4f}")
+    state = {k: v for k, v in model.state_dict().items() if "segmentation_head" not in k}
+    torch.save({"model_state": state, "model_config": {**FAMILIES[family], "encoder_weights": None}}, result)
+    (output / "history.json").write_text(json.dumps(history, indent=2), encoding="utf-8")
+    return result
+
+
+# %%
+SSL_FAMILY = "unetpp-r34"  # the family that starts from the pretraining
+SSL_START = None  # its checkpoint, set before the training runs
+
+
+def run_dir(family: str, stage: str, fold: int) -> Path:
+    """:return: Folder of one training run; the pretrained family has its own, so the two starts never mix"""
+    suffix = "-ssl" if SSL_START is not None and family == SSL_FAMILY else ""
+    return WORK / "runs" / f"{family}{suffix}-{stage}-fold{fold}"
+
+
+# %% [markdown]
 # ## Training
 #
 # AdamW without decay on biases and norms, linear warm-up then cosine decay, float16 autocast. After every epoch,
@@ -874,10 +1237,10 @@ def train_run(family: str, stage: str, fold: int, init=None) -> Path:
     :param family: Key of FAMILIES
     :param stage: Key of STAGES
     :param fold: Fold held out
-    :param init: Checkpoint to start from, or None to start from ImageNet
+    :param init: Checkpoint to start from, or None to start from ImageNet (or SSL_START for SSL_FAMILY)
     :return: Path to the best checkpoint
     """
-    output = WORK / "runs" / f"{family}-{stage}-fold{fold}"
+    output = run_dir(family, stage, fold)
     best_path = output / "best.pt"
     if (output / "history.json").is_file():
         return best_path
@@ -899,6 +1262,8 @@ def train_run(family: str, stage: str, fold: int, init=None) -> Path:
         multiprocessing_context="fork" if WORKERS > 0 else None,
     )
     model = Pretrained(**FAMILIES[family], encoder_weights="imagenet").to(DEVICE)
+    if init is None and SSL_START is not None and family == SSL_FAMILY:
+        model.load_state_dict(torch.load(SSL_START, map_location=DEVICE, weights_only=False)["model_state"], strict=False)
     if init is not None:
         model.load_state_dict(torch.load(init, map_location=DEVICE, weights_only=False)["model_state"])
     optimizer = build_optimizer(model, settings["lr"])
@@ -1166,14 +1531,19 @@ def assemble(refined, threshold: float, min_score=0.0) -> tuple[np.ndarray, int,
     return labels, len(scores), np.asarray(scores)
 
 
-def refine_observation(refiners, image: np.ndarray, probabilities: np.ndarray, settings: dict) -> tuple[np.ndarray, int]:
-    """The instances of one observation the way the refined submission is written."""
+def refine_observation(refiners, image: np.ndarray, probabilities: np.ndarray, settings: dict) -> tuple[np.ndarray, int, dict]:
+    """
+    The instances of one observation the way the refined submission is written.
+    :return: Tuple of (labels, number of instances, details): the proposals the refiner started from and the
+        predicted IoU of the kept instances and of every candidate (the ones under the cut are dropped)
+    """
     proposals = apply_offset(probabilities >= settings["proposal_threshold"], settings["proposal_offset"])
-    labels, n_labels = connected_components(proposals)
+    proposed, n_proposed = connected_components(proposals)
     context = settings.get("context", REFINER["context"])
-    refined = refine_components(refiners, image, probabilities, labels, n_labels, context)
-    labels, n_labels, _ = assemble(refined, settings["threshold"], settings["min_score"])
-    return labels, n_labels
+    refined = refine_components(refiners, image, probabilities, proposed, n_proposed, context)
+    labels, n_labels, scores = assemble(refined, settings["threshold"], settings["min_score"])
+    details = {"proposals": proposed, "kept": scores, "candidates": np.array([item[2] for item in refined])}
+    return labels, n_labels, details
 
 
 # %% [markdown]
@@ -1570,16 +1940,17 @@ def verify(weights: Path, paths) -> None:
 
 # %%
 if TRAIN:
+    SSL_START = pretrain_ssl(SSL_FAMILY) if SSL else None
+    print(f"{SSL_FAMILY} starts from {'masked-image pretraining' if SSL_START else 'ImageNet'}")
     checkpoints = []
     for family in FAMILIES:
         for fold in range(FOLDS):
             first = train_run(family, "stage1", fold)
             checkpoints.append(train_run(family, "stage2", fold, init=first))
     calibration = calibrate(checkpoints)
-    if REFINE:
-        meta = collect_refiner_samples(calibration["offset"])
-        refiner_paths = [train_refiner(fold, meta) for fold in range(FOLDS)]
-        calibration["refiner"] = calibrate_refiner(refiner_paths, calibration)
+    meta = collect_refiner_samples(calibration["offset"])  # the refiners are part of TRAIN
+    refiner_paths = [train_refiner(fold, meta) for fold in range(FOLDS)]
+    calibration["refiner"] = calibrate_refiner(refiner_paths, calibration)
     (WORK / CALIBRATION_NAME).write_text(json.dumps(calibration, indent=2), encoding="utf-8")
 else:
     weights = find_weights()
@@ -1595,27 +1966,30 @@ else:
 
 
 # %% [markdown]
-# The training curves, when the models were trained here: the held-out PQ proxy of every fold, stage 2 after
-# stage 1.
+# The training curves, when the models were trained here: the held-out PQ proxy of every fold, stage 2 (from epoch 41)
+# after stage 1.
 
 
 # %%
-if PLOTS and TRAIN:
+if TRAIN:
     axs = kx.grid(len(FAMILIES))
     for ax, family in zip(axs, FAMILIES):
         for fold in range(FOLDS):
             epochs, pq = [], []
             for stage, shift in (("stage1", 0), ("stage2", STAGES["stage1"]["epochs"])):
-                history_path = WORK / "runs" / f"{family}-{stage}-fold{fold}" / "history.json"
+                history_path = run_dir(family, stage, fold) / "history.json"
                 for row in json.loads(history_path.read_text()) if history_path.is_file() else []:
                     epochs.append(row["epoch"] + shift)
                     pq.append(row["pq"])
             if epochs:
-                kx.plot(np.array(epochs), np.array(pq), "line", ax=ax, label=f"fold {fold}")
-        ax.axvline(STAGES["stage1"]["epochs"] + 0.5, color="grey", linestyle=":", linewidth=1)
-        ax.set(title=family, xlabel="epoch", ylabel="held-out PQ (proxy)")
-        ax.legend(fontsize="small")
+                curve = pd.DataFrame({"epoch": epochs, f"fold {fold}": pq})
+                kx.plot(curve, "epoch", f"fold {fold}", spec="line-leg", ax=ax, title=f"{family}: held-out PQ (proxy)")
     figure("training")
+
+if TRAIN and SSL_START is not None:
+    history = pd.DataFrame(json.loads((SSL_START.parent / "history.json").read_text(encoding="utf-8")))
+    kx.plot(history, "epoch", "loss", "line", title="masked-image pretraining: L1 on the hidden squares")
+    figure("pretraining")
 
 
 # %% [markdown]
@@ -1630,7 +2004,7 @@ print(
     f"{len(checkpoints)} checkpoints; out-of-fold PQ {calibration['pq']:.4f} at threshold {calibration['threshold']}, "
     f"offset {calibration['offset']:+d}, min_area {calibration['min_area']}, min_score {calibration['min_score']}"
 )
-REFINE = REFINE and bool(calibration.get("refiner", {}).get("checkpoints"))
+REFINE = bool(calibration.get("refiner", {}).get("checkpoints"))  # the preset has a crop refiner (TRAIN always trains one)
 if REFINE:
     refiner_settings = calibration["refiner"]
     print(
@@ -1675,26 +2049,32 @@ half = calibration.get("precision") == "fp16" and DEVICE.type == "cuda"
 skip_dark = bool(calibration.get("skip_dark"))
 barbs = calibration.get("barbs") if BARBS is None else ((calibration.get("barbs") or {}) if BARBS else None)
 print("barbs grown into the instances" if barbs is not None else "no barbs grown")
-models = []
-for path in checkpoints:
-    model, meta = load_model(path)
-    models.append((model, meta.get("input_scale") or 1.0))  # the zoom family predicts at 2x
-refiners = [load_refiner(path) for path in refiner_settings["checkpoints"]] if REFINE else []
-print(f"{len(models)} models x {len(variants)} variants, {len(refiners)} refiners, {'fp16' if half else 'fp32'}")
+models, refiners = [], []
+
+
+def load_inference() -> None:
+    """Load the ensemble and the refiners on first use, so a finished prediction run does not need them."""
+    if models:
+        return
+    for path in checkpoints:
+        model, meta = load_model(path)
+        models.append((model, meta.get("input_scale") or 1.0))  # the zoom family predicts at 2x
+    if REFINE:
+        refiners.extend(load_refiner(path) for path in refiner_settings["checkpoints"])
+    print(f"{len(models)} models x {len(variants)} variants, {len(refiners)} refiners, {'fp16' if half else 'fp32'}")
 
 
 # %% [markdown]
-# Every test observation: averaged probabilities, refined instances, barbs, one row per filament. The first `SHOW`
-# observations are kept for the figures.
+# One observation through the pipeline, keeping every stage the figures below show: the ensemble's probabilities
+# and how much the models disagree, the proposals the refiner starts from, the refined instances, and the final
+# instances with their barbs. The refiner's predicted IoU is each instance's confidence (the mean probability
+# without a refiner).
 
 
 # %%
-SHOW = 2
-examples = []
-started = time.time()
-rows = []
-for path in tqdm(TEST_FILES, desc="predict", mininterval=2.0):
-    image = load_image(path)
+def infer(image: Tensor) -> dict:
+    """:return: The stages of one observation: probabilities, spread, proposals, refined, labels, n_labels, scores, candidates"""
+    load_inference()
     with torch.autocast(DEVICE.type, dtype=torch.float16, enabled=half):
         maps = [
             predict_tiled(model, image, scale=scale, skip_dark=skip_dark, **variant)
@@ -1704,17 +2084,103 @@ for path in tqdm(TEST_FILES, desc="predict", mininterval=2.0):
         probabilities = (sum(maps) / len(maps)).numpy()
         refined = refine_observation(refiners, image.numpy()[0], probabilities, refiner_settings) if REFINE else None
     if refined is not None:
-        labels, n_labels = refined
+        labels, n_labels, details = refined
     else:
         labels, n_labels = label_instances(
             probabilities, calibration["threshold"], calibration["offset"], calibration["min_area"], calibration["min_score"]
         )
+        mean = ndimage.mean(probabilities, labels, range(1, n_labels + 1)) if n_labels else []
+        details = {"proposals": labels, "kept": np.asarray(mean, float), "candidates": np.asarray(mean, float)}
+    per_model = [sum(maps[i : i + len(variants)]) / len(variants) for i in range(0, len(maps), len(variants))]
+    result = {
+        "probabilities": probabilities,
+        "spread": torch.stack(per_model).std(dim=0).numpy(),  # standard deviation between the models
+        "refined": labels,
+        "n_labels": n_labels,
+        **details,
+    }
     if barbs is not None:
         labels = grow_barbs(labels, n_labels, image.numpy()[0], barbs)
-    rows += [(f"{path.stem}_{label}", encode_rle(labels == label)) for label in range(1, n_labels + 1)]
-    if PLOTS and len(examples) < SHOW:
-        examples.append({"name": path.stem, "image": image.numpy()[0], "probabilities": probabilities, "labels": labels})
-seconds = time.time() - started
+    result["labels"] = labels
+    return result
+
+
+# %% [markdown]
+# Every test observation: averaged probabilities, refined instances, barbs, one row per filament. The first `SHOW`
+# observations are kept for the figures, and so are the extremes: the most and least confident observation (mean
+# confidence of its filaments), the one with the most filaments, and one without any.
+
+
+# %%
+SHOW = 2
+RERUN = False  # True: predict again even when a finished prediction of this PRESET is in WORK
+SUBMISSION = WORK / "submission.csv"
+SUMMARY = WORK / "inference.json"  # what the figures need from a finished prediction, next to the submission
+RUN_TAG = "trained" if TRAIN else PRESET
+examples, extremes, summary = [], {}, []
+
+
+def roles_of(n: int, confidence) -> list:
+    """:return: (role, value) pairs: an observation holds a role when it has the highest value so far"""
+    return [
+        ("most confident", confidence),
+        ("least confident", None if confidence is None else -confidence),
+        ("most filaments", n),
+        ("no filaments", 0 if n == 0 else None),
+    ]
+
+
+def remember(name: str, image: np.ndarray, result: dict, count: bool = True) -> None:
+    """Keep the stages of an observation when it is one of the first SHOW or sets an extreme."""
+    n = result["n_labels"]
+    confidence = float(result["kept"].mean()) if n else None
+    if count:
+        summary.append({"name": name, "filaments": n, "confidence": confidence, "candidates": result["candidates"]})
+    entry = {"name": name, "image": image, **result}
+    if len(examples) < SHOW and name in names_shown:
+        examples.append(entry)
+    for role, value in roles_of(n, confidence):
+        if value is not None and (role not in extremes or value > extremes[role][0]):
+            extremes[role] = (value, entry)
+
+
+def finished_run() -> dict | None:
+    """:return: The summary of a finished prediction of this PRESET over these test files, or None"""
+    if RERUN or not (SUBMISSION.is_file() and SUMMARY.is_file()):
+        return None
+    data = json.loads(SUMMARY.read_text(encoding="utf-8"))
+    return data if data["tag"] == RUN_TAG and data["files"] == [path.stem for path in TEST_FILES] else None
+
+
+names_shown = {path.stem for path in TEST_FILES[:SHOW]}
+finished = finished_run()
+started = time.time()
+if finished is None:
+    rows = []
+    for path in tqdm(TEST_FILES, desc="predict", mininterval=2.0):
+        image = load_image(path)
+        result = infer(image)
+        labels = result["labels"]
+        rows += [(f"{path.stem}_{label}", encode_rle(labels == label)) for label in range(1, result["n_labels"] + 1)]
+        remember(path.stem, image.numpy()[0], result)
+    seconds = time.time() - started
+else:
+    # no new prediction: the rows come from the submission, and only the few observations the figures show are run again
+    print(f"{SUBMISSION} is a finished {RUN_TAG} prediction; not predicted again (RERUN = True to override)")
+    with open(SUBMISSION, encoding="utf-8", newline="") as handle:
+        rows = [tuple(line.rstrip("\r\n").split(",", 1)) for line in handle][1:]
+    seconds = finished["seconds"]
+    summary = [{**row, "candidates": np.asarray(row["candidates"], float)} for row in finished["summary"]]
+    best: dict = {}
+    for row in summary:
+        for role, value in roles_of(row["filaments"], row["confidence"]):
+            if value is not None and (role not in best or value > best[role][0]):
+                best[role] = (value, row["name"])
+    figure_names = names_shown | {name for _, name in best.values()}
+    for path in TEST_FILES:
+        if path.stem in figure_names:
+            image = load_image(path)
+            remember(path.stem, image.numpy()[0], infer(image), count=False)
 
 
 # %% [markdown]
@@ -1722,18 +2188,23 @@ seconds = time.time() - started
 
 
 # %%
-submission = WORK / "submission.csv"
-with open(submission, "w", encoding="utf-8", newline="") as handle:
-    writer = csv.writer(handle, quoting=csv.QUOTE_NONE, quotechar=None)
-    writer.writerow(["filament_id", "segmentation_rle"])
-    writer.writerows(rows)
+submission = SUBMISSION
+if finished is None:
+    with open(submission, "w", encoding="utf-8", newline="") as handle:
+        writer = csv.writer(handle, quoting=csv.QUOTE_NONE, quotechar=None)
+        writer.writerow(["filament_id", "segmentation_rle"])
+        writer.writerows(rows)
+    state = {"tag": RUN_TAG, "files": [path.stem for path in TEST_FILES], "seconds": seconds}
+    state["summary"] = [{**row, "candidates": [float(x) for x in row["candidates"]]} for row in summary]
+    SUMMARY.write_text(json.dumps(state), encoding="utf-8")
 
 observations = {row[0].rsplit("_", 1)[0] for row in rows}
 assert observations <= {path.stem for path in TEST_FILES}
 assert all(coco_mask.area({"size": [SUBMISSION_SIZE] * 2, "counts": counts.encode()}) for _, counts in rows)
 print(f"{len(rows)} filaments over {len(observations)}/{len(TEST_FILES)} observations -> {submission}")
 print(
-    f"{seconds:.0f} s, {seconds / len(TEST_FILES):.1f} s per observation on {torch.cuda.get_device_name() if DEVICE.type == 'cuda' else 'cpu'}"
+    f"{seconds:.0f} s{' (first run)' if finished else ''}, {seconds / len(TEST_FILES):.1f} s per observation on "
+    f"{torch.cuda.get_device_name() if DEVICE.type == 'cuda' else 'cpu'}"
 )
 
 
@@ -1745,7 +2216,7 @@ print(
 
 
 # %%
-if PLOTS and rows:
+if rows:
     found = pd.Series([name.rsplit("_", 1)[0] for name, _ in rows]).value_counts()
     per_observation = found.reindex([path.stem for path in TEST_FILES], fill_value=0).to_numpy()
     sizes = np.array([coco_mask.area({"size": [SUBMISSION_SIZE] * 2, "counts": counts.encode()}) for _, counts in rows], float)
@@ -1766,38 +2237,273 @@ if PLOTS and rows:
     )
     figure("submission")
 
-if PLOTS and examples:
+    boxes = np.array([coco_mask.toBbox({"size": [SUBMISSION_SIZE] * 2, "counts": counts.encode()}) for _, counts in rows])
+    submitted = np.c_[boxes[:, 0] + boxes[:, 2] / 2, boxes[:, 1] + boxes[:, 3] / 2]
+    corners = [np.asarray(a["segmentation"][0]).reshape(-1, 2) for a in raw["annotations"]]
+    drawn = np.array([(points.min(axis=0) + points.max(axis=0)) / 2 for points in corners])
+    axs = kx.grid(2)
+    for ax, points, title in (
+        (axs[0], drawn, "annotated filaments (training)"),
+        (axs[1], submitted, "submitted filaments (test)"),
+    ):
+        positions = pd.DataFrame({"x (px)": points[:, 0], "y (px, north up)": SUBMISSION_SIZE - points[:, 1]})
+        kx.plot(
+            positions,
+            "x (px)",
+            "y (px, north up)",
+            "hexbin-eq",
+            ax=ax,
+            title=title,
+            gridsize=24,
+            extent=(0, 2048, 0, 2048),
+            mincnt=1,
+        )
+    figure("filament-positions")
+
+if examples:
     kx.plot([example["image"] for example in examples], [example["labels"] > 0 for example in examples], "segmask")
     figure("test-observations")
 
 
 # %% [markdown]
-# Close-ups of the (up to) three largest filaments of the first observation with any: the ensemble's cut (the
-# proposals the refiner starts from; the `mask` column) against the submitted instance, refined and with its barbs,
-# then the ensemble's probabilities over the observation (the colour scale is the probability, 0 to 1).
+# The ranked observations whole, with the submitted outlines. Without ground truth, "best" and "worst" mean the
+# model's own confidence, the refiner's predicted IoU averaged over the observation's filaments.
 
 
 # %%
-example = next((example for example in examples if example["labels"].max() > 0), None)
-if PLOTS and example is not None:
-    cut = refiner_settings if REFINE else {}
-    proposals = apply_offset(
-        example["probabilities"] >= cut.get("proposal_threshold", calibration["threshold"]),
-        cut.get("proposal_offset", calibration["offset"]),
-    )
-    boxes = ndimage.find_objects(example["labels"])
-    largest = [int(k) for k in np.argsort(np.bincount(example["labels"].ravel())[1:])[::-1][:3]]
-    windows = [component_window(boxes[k]) for k in largest]
-    image_crops = [window_of(example["image"], window) for window in windows]
-    axs = kx.plot(
-        image_crops,
-        [window_of(proposals, window) for window in windows],
-        [window_of(example["labels"] == k + 1, window) for k, window in zip(largest, windows)],
+roles = [role for role in ("most confident", "least confident", "most filaments", "no filaments") if role in extremes]
+for role in roles:
+    entry = extremes[role][1]
+    kx.plot([entry["image"]], [entry["labels"] > 0], "segmask", title=f"{role}: {entry['name']}, {entry['n_labels']} filaments")
+    figure(f"ranked-{role.replace(' ', '-')}")
+
+
+# %% [markdown]
+# Confidence of every candidate the refiner scored, against the cut that decides which are kept, and each
+# observation's filament count against its mean confidence.
+
+
+# %%
+cut = refiner_settings["min_score"] if REFINE else calibration["min_score"]
+candidates = np.concatenate([row["candidates"] for row in summary] or [np.zeros(0)])
+axs = kx.grid(2)
+split = pd.DataFrame(
+    {f"kept (>= {cut:g})": pd.Series(candidates[candidates >= cut]), "dropped": pd.Series(candidates[candidates < cut])}
+)
+kx.plot(split, split.columns[0], "dropped", "hist-leg", ax=axs[0], bins=np.linspace(0, 1, 41), title="candidate confidence")
+scored = pd.DataFrame(summary).dropna(subset=["confidence"])[["filaments", "confidence"]].astype(float)
+kx.plot(scored, "filaments", "confidence", "scatter", ax=axs[1], title="observations: filaments and mean confidence")
+figure("confidence")
+
+
+# %% [markdown]
+# Close-ups of the (up to) three largest filaments of an observation. kx-plot's segmask draws the first mask solid
+# (legend `true`) and the second dashed (`predicted`); here those are the earlier and the later stage, and the IoU
+# between them heads each row (title: observation and instance numbers). Rows: the ensemble's cut and the refined
+# instance.
+
+
+# %%
+def largest(labels: np.ndarray, count: int = 3, key=None) -> tuple[list, list]:
+    """:return: The ids of the `count` instances with the biggest key (area by default) and their windows"""
+    size = np.bincount(labels.ravel() if key is None else key.ravel(), minlength=labels.max() + 1)[1:]
+    boxes = ndimage.find_objects(labels)
+    ids = [int(k) + 1 for k in np.argsort(size)[::-1][:count] if size[k] and boxes[k]]
+    return ids, [component_window(boxes[k - 1]) for k in ids]
+
+
+def compare(entry: dict, ids: list, windows: list, before: np.ndarray, after: np.ndarray, title: str, figure_name: str) -> None:
+    """One row per filament: the image, the `before` mask (solid outline) and the `after` mask (dashed); the IoU between them heads the row."""
+    kx.plot(
+        [window_of(entry["image"], window) for window in windows],
+        [window_of(before, window) for window in windows],
+        [window_of(after, window) for window in windows],
         "segmask",
+        title=f"{entry['name']} {ids}",
     )
-    legend = next((ax.get_legend() for ax in axs if ax.get_legend() is not None), None)
-    for text, name in zip(legend.get_texts() if legend else [], ("ensemble cut", "submitted")):
-        text.set_text(name)
-    figure("refined-instances")
-    kx.plot(image_crops, [window_of(example["probabilities"], window) for window in windows], "saliency")
-    figure("probabilities")
+    figure(figure_name)
+
+
+for role in ("most filaments", "least confident"):
+    if role in extremes:
+        entry = extremes[role][1]
+        ids, windows = largest(entry["labels"])
+        if ids:
+            compare(
+                entry,
+                ids,
+                windows,
+                entry["proposals"] > 0,
+                entry["refined"] > 0,
+                "ensemble cut (solid) vs refined (dashed)",
+                f"refinement-{role.replace(' ', '-')}",
+            )
+
+
+# %% [markdown]
+# The barbs: refined (`true`, solid) against with barbs (`predicted`, dashed), on the filaments that gained the most
+# pixels.
+
+
+# %%
+if barbs is not None:
+    entry = max(extremes.values(), key=lambda item: int(((item[1]["labels"] > 0) & (item[1]["refined"] == 0)).sum()))[1]
+    added = (entry["labels"] > 0) & (entry["refined"] == 0)
+    ids, windows = largest(entry["labels"], key=np.where(added, entry["labels"], 0))
+    if ids:
+        compare(entry, ids, windows, entry["refined"] > 0, entry["labels"] > 0, "refined (solid) vs with barbs (dashed)", "barbs")
+        print(f"{entry['name']}: {int(added.sum())} barb pixels added over {entry['n_labels']} filaments")
+
+
+# %% [markdown]
+# One observation through every stage: the image, the ensemble's probability, how much its models disagree (the
+# standard deviation between the models, large where thin filaments are found by some and missed by others), the
+# proposals, the refined instances and the final ones with barbs. In the second figure the first row compares the
+# proposals (`true`, solid) with the refined instances (`predicted`, dashed), the second row the refined instances with
+# the final ones.
+
+
+# %%
+entry = extremes["most filaments"][1] if "most filaments" in extremes else examples[0]
+kx.plot(
+    [entry["image"], entry["image"]],
+    [entry["probabilities"], entry["spread"]],
+    ["ensemble probability", "model disagreement (std)"],
+    "saliency",
+    title=f"{entry['name']}",
+)
+figure("pipeline-probabilities")
+kx.plot(
+    [entry["image"], entry["image"]],
+    [entry["proposals"] > 0, entry["refined"] > 0],
+    [entry["refined"] > 0, entry["labels"] > 0],
+    "segmask",
+    title=f"{entry['name']}: proposals to refined to final",
+)
+figure("pipeline-instances")
+
+
+# %% [markdown]
+# ## Self-evaluation on training observations
+#
+# The organizers' self-evaluation notebook scores a prediction file against the ground truth and draws the IoU and
+# Dice distributions of every (annotated, predicted) pair and the many-to-one / one-to-many matches. Here the same
+# is done for `SELF_EVAL` training observations, run through the pipeline above. The Panoptic Quality is the
+# organizers' formula (checked against their notebook on 40 observations with perturbed annotations: the two agree to
+# 1e-9). **The released models were trained on these observations**, so the scores are optimistic: they check that
+# the pipeline and the scoring work, not how well it generalises (that is the out-of-fold PQ above).
+
+
+# %%
+SELF_EVAL = 10
+rng = random.Random(0)
+chosen = rng.sample(sorted({record["file_name"] for record in RECORDS.values()}), min(SELF_EVAL, len(RECORDS)))
+SELF_CACHE = WORK / f"self_evaluation-{RUN_TAG}.json"  # labels and overlaps per observation, reused unless RERUN
+done = json.loads(SELF_CACHE.read_text(encoding="utf-8")) if SELF_CACHE.is_file() and not RERUN else {}
+scored_runs = []  # per observation: name, image, final labels, union of the annotated filaments, IoU matrix per record
+for name in tqdm(chosen, desc="self-evaluation", mininterval=2.0):
+    image = load_image(TRAIN_IMAGES / name)
+    records = [image_id for image_id, record in RECORDS.items() if record["file_name"] == name]
+    if name not in done:
+        result = infer(image)
+        done[name] = {
+            "n_labels": result["n_labels"],
+            "rle": [encode_rle(result["labels"] == k) for k in range(1, result["n_labels"] + 1)],
+        }
+    labels = np.zeros((SUBMISSION_SIZE, SUBMISSION_SIZE), np.int16)
+    for k, counts in enumerate(done[name]["rle"], start=1):
+        labels[coco_mask.decode({"size": [SUBMISSION_SIZE] * 2, "counts": counts.encode()}).astype(bool)] = k
+    matrices = [instance_iou(annotation_pixels(BY_RECORD[i]), labels, done[name]["n_labels"]) for i in records]
+    truth = np.zeros((SUBMISSION_SIZE, SUBMISSION_SIZE), bool)
+    for i in records:
+        for annotation in BY_RECORD[i]:
+            truth |= polygon_mask(annotation["segmentation"][0], SUBMISSION_SIZE, SUBMISSION_SIZE)
+    scored_runs.append({"name": name, "image": image.numpy()[0], "labels": labels, "truth": truth, "matrices": matrices})
+SELF_CACHE.write_text(json.dumps(done), encoding="utf-8")
+
+per_observation_terms = [sum(pq_terms(matrix) for matrix in run["matrices"]) for run in scored_runs]
+total = sum(per_observation_terms)
+
+
+def strict_terms(iou: np.ndarray) -> np.ndarray:
+    """PQ terms with one-to-one matching: each annotated and each predicted filament takes part in at most one match."""
+    from scipy.optimize import linear_sum_assignment
+
+    rows, columns = linear_sum_assignment(-(iou * (iou > 0.5)))
+    hit = iou[rows, columns] > 0.5
+    return np.array([iou[rows, columns][hit].sum(), hit.sum(), iou.shape[1] - hit.sum(), iou.shape[0] - hit.sum()], float)
+
+
+strict = sum(strict_terms(matrix) for run in scored_runs for matrix in run["matrices"])
+print(
+    f"strict one-to-one PQ {panoptic_quality(strict):.4f}: equal to the PQ below unless a prediction matches two annotated filaments"
+)
+print(
+    f"PQ {panoptic_quality(total):.4f} over {len(scored_runs)} training observations (in-sample); TP {total[1]:.0f}, FP {total[2]:.0f}, FN {total[3]:.0f}"
+)
+
+
+# %% [markdown]
+# Distributions of the overlap of every annotated filament with every predicted one that touches it (pairs with no
+# overlap are left out): IoU, then Dice (= 2 IoU / (1 + IoU)). A pair counts as a match above IoU 0.5.
+
+
+# %%
+iou_pairs = np.concatenate([matrix.ravel() for run in scored_runs for matrix in run["matrices"]] or [np.zeros(0)])
+iou_pairs = iou_pairs[iou_pairs > 0]
+axs = kx.grid(2)
+for ax, scores, title in ((axs[0], iou_pairs, "IoU"), (axs[1], 2 * iou_pairs / (1 + iou_pairs), "Dice")):
+    kx.plot(scores, spec="hist-mean-ann", ax=ax, bins=np.linspace(0, 1, 51), title=f"{title} distribution")
+figure("self-evaluation-overlap")
+
+
+# %% [markdown]
+# Many-to-one and one-to-many: how many predictions touch each annotated filament (`annotated` bars) and how many
+# annotated filaments each prediction touches (`predicted` bars). 0 touched are missed filaments and predictions
+# with no filament under them; 1 is the clean one-to-one case.
+
+
+# %%
+gt_degree = np.concatenate([(matrix > 0).sum(axis=1) for run in scored_runs for matrix in run["matrices"]] or [np.zeros(0, int)])
+pred_degree = np.concatenate(
+    [(matrix > 0).sum(axis=0) for run in scored_runs for matrix in run["matrices"]] or [np.zeros(0, int)]
+)
+cases = ["0", "1", "2", "3+"]
+
+
+def tally(degrees: np.ndarray) -> list:
+    return [int((degrees == k).sum()) for k in range(3)] + [int((degrees >= 3).sum())]
+
+
+matches = pd.DataFrame({"touching": cases, "annotated": tally(gt_degree), "predicted": tally(pred_degree)})
+kx.plot(
+    matches,
+    "touching",
+    "annotated",
+    "predicted",
+    "bar-ann-leg",
+    title="how many predictions touch an annotated filament, and how many annotated ones a prediction (0 = missed, spurious)",
+)
+figure("self-evaluation-matches")
+
+
+# %% [markdown]
+# The best and the worst of these observations by their own Panoptic Quality, with the annotated filaments (any
+# annotator, `true`, solid) against the submitted ones (`predicted`, dashed); the IoU of the two unions heads the row.
+
+
+# %%
+quality = [panoptic_quality(terms) for terms in per_observation_terms]
+order = np.argsort(quality)
+for label, index in (("worst", int(order[0])), ("best", int(order[-1]))):
+    run = scored_runs[index]
+    print(f"{label}: {run['name']}")
+    kx.plot(
+        [run["image"]],
+        [run["truth"]],
+        [run["labels"] > 0],
+        "segmask",
+        title=f"{label}: PQ {quality[index]:.3f}",
+    )
+
+    figure(f"self-evaluation-{label}")

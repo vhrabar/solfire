@@ -208,7 +208,8 @@
     The IoU head adds a BCE term of weight 0.5 against the earned score, which is the IoU of the mask cut at 0.5 with each record's filament, set to zero if it does not exceed 0.5, and averaged over the records.
     Training runs for 12 epochs with AdamW, batch size 32, a peak learning rate of $3\times10^{-4}$ ($0.5\times$ on the encoder), one warm-up epoch and cosine decay, with flips, transposes, and gamma and gain jitter on the observation channel.
     The refiner of a fold trains only on the other folds, and OOF scores use the refiner that did not see the observation.
-    Training needs held-out maps, so there is no full-data retrain; the released variants ship the refiner of fold 0.
+    The released variants ship the refiner of fold 0.
+    A refiner trained on the held-out proposals of all five folds is possible, since every observation was held out once, but was not trained: its expected gain is below the refiner's seed noise of $\pm0.001$, averaging the five fold refiners did not help (their masks match the single one at foreground IoU 0.97), and no held-out data could score it.
 
     \textbf{Assembly.}
     Masks and predicted IoUs are averaged over the original window and its two flips, and each mask is resized back to native resolution, cut, and reduced to its largest component.
@@ -244,7 +245,7 @@
 \section{Evaluation}\label{sec:evaluation}
     \subsection{Released Variants}\label{subsec:variants}
     Table~\ref{tab:presets} gives the results of the four released variants.
-    The shipped models are retrained on all data, so their quality is measured on the five-fold set of the same recipe.
+    The shipped models are retrained on all data, so their quality is measured on the five-fold set of the same recipe; Section~\ref{sec:limitations} states what this does and does not show.
     Every variant ships with barbs enabled, and barb growth costs about 0.002 PQ in each case.
     Nested scores without barbs are 0.4655 for \texttt{fast} and 0.4628 for \texttt{lite}.
     For \texttt{final}, the nested score is 0.4691, but it is measured against the out-of-fold best cut (OOF 0.4700), while the shipped cut is stricter (OOF 0.4692).
@@ -356,6 +357,28 @@
             \bottomrule
         \end{tabular}
     \end{table}
+
+
+% ==================================== %
+%              LIMITATIONS             %
+% ==================================== %
+\section{Limitations}\label{sec:limitations}
+    \textbf{Validated and shipped systems differ.}
+    Every out-of-fold (OOF) score in this report, including the intervals, belongs to the five-fold system: models that each saw about 80\% of the observations, one crop refiner per fold, and cuts tuned on the pooled maps of those models.
+    The released variants are a different system: the same recipe retrained once on all 707 observations, with the final epoch kept, and the refiner of fold 0 alone, which saw four fifths of the held-out proposals and reads maps from models it was not trained on.
+    The cuts, tuned on the fold models' maps, are applied unchanged to the full-data models, whose maps may be distributed slightly differently.
+    No labelled data can score the shipped models without leakage, since every observation is in their training set, so their quality relative to the five-fold system is not measured.
+    Two indirect observations bear on it: keeping the final epoch rather than the validation-selected one changed OOF PQ by $+0.0009$, and every candidate, five-fold or full-data, scored 0.39 or 0.40 on the public leaderboard, which rounds to two decimals and cannot resolve differences below about 0.005.
+    We expect the difference to be small, but a nested check, training without fold 0 and scoring it with cuts tuned on the other four folds, was not run.
+    The released variants are therefore reported with the OOF score of their recipe and, separately, their rounded leaderboard score.
+
+    \textbf{Use of the test set.}
+    No test image or label enters any training stage: training, calibration and refiner training read only the 707 labelled observations and, for pretraining, the unlabelled GONG frames of 2023--2025, none of which is a test observation.
+    The test set did influence one released setting: the IoU cut of \texttt{final} (0.32 against an OOF best of 0.28) follows leaderboard probes (Section~\ref{subsec:progression}).
+
+    \textbf{Other limits.}
+    Folds are not separated in time (Section~\ref{sec:data}), so neither the OOF nor the test score covers unseen periods.
+    Each configuration is one training run, so the intervals leave out seed variation of up to 0.007, and the unexplained gap of about 0.07 between OOF and leaderboard PQ means the OOF figures should be read as a ranking of methods on this data rather than a forecast of the test score.
 
 
 % ==================================== %

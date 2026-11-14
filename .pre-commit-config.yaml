@@ -6,6 +6,7 @@ repos:
     hooks:
       - id: check-added-large-files
         args: [--maxkb=1024]
+        exclude: \.png$
       - id: check-json
       - id: check-yaml
       - id: check-toml

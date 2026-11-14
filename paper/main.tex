@@ -20,7 +20,7 @@
 % Template packages live in preamble.tex.
 % Citations live in main.bib. Edit this file with your paper content.
 % =============================================================================
-% cSpell:words pdflatex acmart sigconf Kaggle ESAIR grayscale pretraining pretrained pycocotools
+% cSpell:words pdflatex acmart sigconf Kaggle ESAIR greyscale pretraining pretrained pycocotools
 % cSpell:words Lovász binarises bilinearly autocast thresholded CLAHE Tversky Magnetogram
 % cSpell:words Learmonth Udaipur Instituto Astrofísica Canarias Tololo Interamerican
 
@@ -52,7 +52,7 @@
 \email{vedran.hrabar@fer.unizg.hr}
 
 \begin{abstract}
-    This report describes a solution to the Solar Filament Segmentation Challenge~2026, a Kaggle competition on automatic segmentation of solar filaments in GONG H-$\alpha$ observations.
+    This report describes a solution to the Solar Filament Segmentation Challenge~2026, a Kaggle competition on automatic segmentation of solar filaments in GONG H-alpha observations.
     On the training labels, one annotator scored against another reaches a Panoptic Quality (PQ) of only 0.34, so post-processing is calibrated on pooled out-of-fold maps, apart from one cut set by leaderboard probes, and each change is compared against a matching control.
     In the \texttt{final} variant, four networks from three encoder families (ResNet34, MiT-B2 and HRNet-W32, the last also at twice the input resolution) produce a probability map.
     A crop refiner then redraws and scores every proposal, and barbs are grown from the observation without labels.
@@ -113,7 +113,7 @@
 
     \subsection{Preprocessing and Targets}\label{subsec:preprocessing}
     \textbf{Input.}
-    Each $2048\times2048$ JPEG observation is read as one grayscale channel in $[0,1]$ and standardised with the ImageNet~\cite{deng2009imagenet} statistics used in encoder pretraining.
+    Each $2048\times2048$ JPEG observation is read as one greyscale channel in $[0,1]$ and standardised with the ImageNet~\cite{deng2009imagenet} statistics used in encoder pretraining.
     No contrast enhancement is applied (Section~\ref{sec:negative}).
     The same steps are used for training and inference.
 
@@ -128,7 +128,7 @@
     Encoders start from ImageNet weights, with the first convolution reduced to one input channel.
     The four networks hold 125.5\,M parameters (26.1, 27.5, 36.0 and 36.0\,M).
 
-    \textbf{Domain pretraining.} In \texttt{final} and \texttt{fast}, the ResNet34 U-Net++ is first pretrained in the style of SimMIM~\cite{xie2022simmim} on 1300 unlabelled GONG~\cite{harvey1996gong} H$\alpha$ frames from 2023--2025, which do not overlap the 2011--2022 MAGFiLO observations.
+    \textbf{Domain pretraining.} In \texttt{final} and \texttt{fast}, the ResNet34 U-Net++ is first pretrained in the style of SimMIM~\cite{xie2022simmim} on 1300 unlabelled GONG~\cite{harvey1996gong} H-alpha frames from 2023--2025, which do not overlap the 2011--2022 MAGFiLO observations.
     The frames are raw FITS from the NSO archive\footnote{\url{https://gong2.nso.edu/HA/haf}}, converted to JPEG with the MLEcoFi FITS2JPEG converter\footnote{\url{https://bitbucket.org/dataresearchlab/mleco-fits2jpegconvertor}} of the MAGFiLO authors' group, and kept only in bursts of five that pass brightness and dark-patch checks; they are published as~\cite{vedran_hrabar_2026}.
     In each $512\times512$ crop, 60\% of the $32\times32$ patches are replaced by the crop mean, and the whole network learns to reconstruct them with an L1 loss on per-patch normalised targets, as in MAE~\cite{he2022mae}.
     Unlike SimMIM, the network is convolutional and the hidden patches are filled with the mean rather than a learned token.
@@ -220,7 +220,7 @@
 
     \subsection{Barb Growth}\label{subsec:barbs}
     \textbf{Candidates.}
-    Barbs not mostly not labelled in the annotations, and a dedicated head failed to learn them (Section~\ref{sec:negative}), so every variant grows them from the observation as its last step, without labels.
+    Barbs are mostly unlabelled in the annotations, and a dedicated head failed to learn them (Section~\ref{sec:negative}), so every variant grows them from the observation as its last step, without labels.
     The contrast of a pixel is $(B-I)/B$, where $I$ is the observation and $B$ a median over about 60\,px, smoothed with a Gaussian of $\sigma=1$.
     In a 20\,px band around each instance, a pixel is a candidate if its contrast exceeds 0.05 and a Sato ridge filter~\cite{sato1998line} with $\sigma\in\{1,2\}$ exceeds 0.025.
 
@@ -292,7 +292,7 @@
     Table~\ref{tab:progression} lists the steps that make up \texttt{final}; each row keeps the steps above it.
     The gain of the Lovász row includes 0.007 from the extra fine-tuning alone.
     The finer grid and the SimMIM-style pretraining fall below the adoption bar on the nested score (+0.0016, +0.0002) but are kept, as they add no inference cost.
-    The last two rows lower PQ on purpose: the stricter cut follows leaderboard probes (0.40 at two strict cuts, 0.37 at a liberal one, 0.36 and 0.37 with fattened and thinned masks), which suggest that the test labels keep fewer faint filaments, and barbs are grown for the additional barb score.
+    The last two rows lower PQ on purpose: the stricter cut follows leaderboard probes (0.40 at two strict cuts, 0.37 at a liberal one, 0.36 and 0.37 with fattened and thinned masks), which suggest that the test labels keep fewer faint filaments, and the last row adds barb growth.
     A ten-model ensemble first reached 0.40 (OOF 0.4507); every later model scored 0.39 or 0.40 on the two-decimal leaderboard, so later steps could only be judged out of fold.
 
     \begin{table}[t]

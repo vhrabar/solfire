@@ -18,30 +18,29 @@
 # pooled over the 707 training observations; the full-data models reuse the cut-offs found there. The public
 # leaderboard only shows two decimals.
 #
-# **Quick start on Kaggle.** Add the competition, the model variation you want, `kx-plot` and the GONG dataset as
+# Quick start on Kaggle: add the competition, the model variation you want, `kx-plot` and the GONG dataset as
 # inputs, keep `TRAIN = False` and run all. A T4 needs about 2.5 h for `final`, 53 min for `fast`, 24 min for `lite`
 # and 12 min for `tiny`. You get `submission.csv` in the working folder.
 #
 # ![SOLFIRE pipeline](https://github.com/vhrabar/solfire/raw/main/paper/out/pipeline.png)
 #
-# *The pipeline of `final`. Dashed arrows carry what training produces into inference. (The image loads from GitHub, so
-# it does not show with Kaggle's internet switched off.)*
+# *The pipeline of `final`. Dashed arrows carry what training produces into inference.
 #
 # ## How it works
 #
-# **Models.** U-Net++ on ResNet-34, U-Net on MiT-B2 (SegFormer) and U-Net on HRNet-W32, plus a second HRNet-W32 that
+# Models: U-Net++ on ResNet-34, U-Net on MiT-B2 (SegFormer) and U-Net on HRNet-W32, plus a second HRNet-W32 that
 # sees the observation upsampled 2x (`zoom`), so thin filaments cover more pixels. The ResNet-34 of `final` and `fast`
 # starts from masked-image pretraining on 1,300 unlabelled GONG frames from 2023-2025 (`scripts/pretrain_mim.py`); the
 # other encoders start from ImageNet. Every model is trained on all 707 training observations and keeps its last epoch.
 # The weights are float16 copies, which give the same submission as the float32 checkpoints under fp16 autocast.
 #
-# **Training.** Per family and fold: 40 epochs on random 512 px windows at native resolution (filaments are only
+# Training: each family and fold gets 40 epochs on random 512 px windows at native resolution (filaments are only
 # about 11 px wide, so nothing is downsampled), most windows centred on an annotated filament. The target is the
 # average of the annotators' masks, and the loss is BCE (positive weight 5) plus soft Dice. Then 8 epochs of
 # fine-tuning at a lower learning rate with a Lovasz hinge added, a surrogate for the IoU that Panoptic Quality is
 # built on.
 #
-# **Inference.** The observation is cut into overlapping 512 px windows (overlap 0.25, cosine-blended) and averaged
+# Inference: the observation is cut into overlapping 512 px windows (overlap 0.25, cosine-blended) and averaged
 # over four flips; `final` adds the four flips of the quarter-turned image at overlap 0.5. The models' probabilities
 # are averaged, thresholded, eroded by one pixel and split into 8-connected pieces. A crop refiner (a ResNet-34
 # U-Net) then redraws each piece on a window around it and predicts the IoU it will earn, and that prediction decides
@@ -69,8 +68,7 @@
 #   the working folder, the notebook reads them and only reruns the few observations the figures show. Set
 #   `RERUN = True` in the prediction cell to predict everything again.
 #
-# Source: https://github.com/vhrabar/solfire. This notebook is generated from `notebook/pipeline.py` by
-# `scripts/build_notebook.py`.
+# Source: https://github.com/vhrabar/solfire. This notebook is generated from `notebook/pipeline.py`.
 
 # %%
 import csv
@@ -239,7 +237,7 @@ def figure(name: str) -> None:
 # %% [markdown]
 # ## Data
 #
-# 707 training observations (2048 x 2048 grayscale JPEG) carry 1,154 annotator records: an observation can be
+# 707 training observations (2048 x 2048 greyscale JPEG) carry 1,154 annotator records: an observation can be
 # annotated by up to three people. Every record is a COCO image entry whose polygons are the filaments.
 # Folds group all records of one observation together.
 
@@ -297,7 +295,7 @@ def kfold_split(fold: int) -> tuple[list, list]:
 
 
 # %% [markdown]
-# Masks are filled with pycocotools, exactly as the scored masks are, and observations are read as grayscale in
+# Masks are filled with pycocotools, exactly as the scored masks are, and observations are read as greyscale in
 # [0, 1].
 
 
@@ -331,7 +329,7 @@ def polygon_mask(polygon, height: int, width: int, origin=(0, 0)) -> np.ndarray:
 
 def load_image(path, window=None) -> Tensor:
     """
-    A grayscale observation, or one square window of it, as a (1, H, W) float tensor in [0, 1].
+    A greyscale observation, or one square window of it, as a (1, H, W) float tensor in [0, 1].
     :param path: Observation file
     :param window: (x, y, edge) of the window, or None for the whole observation
     :return: (1, H, W) tensor
@@ -692,7 +690,7 @@ if GONG is not None:
 # ## Model
 #
 # A `segmentation_models_pytorch` decoder on an ImageNet encoder. smp collapses the first convolution to one input
-# channel by summing its RGB kernels, so the grayscale observation only needs ImageNet's mean and std.
+# channel by summing its RGB kernels, so the greyscale observation only needs ImageNet's mean and std.
 
 # %%
 IMAGENET_MEAN, IMAGENET_STD = 0.449, 0.226  # averaged over the colour channels
@@ -845,7 +843,7 @@ def predict_tiled(
 # probability is too low, are dropped: under Panoptic Quality every false positive costs half a point, the same as
 # a miss.
 #
-# Panoptic Quality as the organizers compute it: a prediction matches an annotated filament at IoU > 0.5, and
+# Panoptic Quality as the organisers compute it: a prediction matches an annotated filament at IoU > 0.5, and
 # `PQ = sum(matched IoU) / (TP + FP/2 + FN/2)`. Every annotator record of an observation is scored against the same
 # prediction.
 
@@ -898,7 +896,7 @@ def label_instances(probabilities: np.ndarray, threshold, offset=0, min_area=0, 
 
 
 # %% [markdown]
-# Scoring: the organizers' Panoptic Quality, per annotator record.
+# Scoring: the organisers' Panoptic Quality, per annotator record.
 
 
 # %%
@@ -1287,10 +1285,12 @@ def train_run(family: str, stage: str, fold: int, init=None) -> Path:
 # %% [markdown]
 # ## Calibration
 #
-# Every observation is predicted by the three models (one per family) that did not train on it. The averaged map
-# is scored against all its annotator records for every combination in `CALIBRATION_GRID`. Area and score cuts only
-# remove columns from the IoU matrices, so components are labelled once per (threshold, offset). Maps are rounded
-# to 8 bits before averaging. The averaged maps are kept in `OOF_DIR`: the crop refiner learns from them.
+# Every observation is predicted by the three models (one per family) that did not train on it. The averaged map is
+# scored against all its annotator records for every combination in `CALIBRATION_GRID`.
+#
+# Area and score cuts only remove columns from the IoU matrices, so components are labelled once per
+# (threshold, offset). Maps are rounded to 8 bits before averaging. The averaged maps are kept in `OOF_DIR`, because
+# the crop refiner learns from them.
 
 
 # %%
@@ -1373,17 +1373,18 @@ def calibrate(checkpoints) -> dict:
 # %% [markdown]
 # ## Crop refiner
 #
-# The ensemble finds most filaments but draws many of them a little wrong: a partial mask (IoU under 0.5) counts as
-# both a miss and a false positive. The refiner takes a second look at every predicted instance. It cuts a square
-# window around it (1.5x its longer box side, at least 128 px), resamples it to 256 px, and reads three channels:
-# the observation, the ensemble's probabilities and the instance's own mask. A ResNet-34 U-Net redraws the instance,
-# and a head on its bottleneck predicts the IoU the redrawn mask will earn; that prediction is the keep/drop score.
-# Two fragments of one filament are both redrawn as the whole filament, so a mask mostly covered by a higher
-# scoring one is dropped.
+# The ensemble finds most filaments but draws many of them a little wrong. A partial mask (IoU under 0.5) counts as
+# both a miss and a false positive, so the refiner takes a second look at every predicted instance.
 #
-# It learns from the instances of the pooled out-of-fold maps (cut at three thresholds), so it trains on the
-# proposals it meets at test time. The refiner of fold k trains on the other folds only and is scored on fold k.
-# The released presets keep the fold-0 refiner; with `TRAIN = True` the five fold refiners are averaged.
+# It cuts a square window around the instance (1.5x its longer box side, at least 128 px) and resamples it to 256 px.
+# It reads three channels: the observation, the ensemble's probabilities and the instance's own mask. A ResNet-34
+# U-Net redraws the instance, and a head on its bottleneck predicts the IoU the redrawn mask will earn. That
+# prediction is the keep/drop score. Two fragments of one filament are both redrawn as the whole filament, so a mask
+# mostly covered by a higher-scoring one is dropped.
+#
+# It learns from the instances of the pooled out-of-fold maps, cut at three thresholds, so it trains on the proposals
+# it meets at test time. The refiner of fold k trains on the other folds only and is scored on fold k. The released
+# presets keep the fold-0 refiner. With `TRAIN = True`, the five fold refiners are averaged.
 
 
 # %%
@@ -2421,12 +2422,15 @@ figure("pipeline-instances")
 # %% [markdown]
 # ## Self-evaluation on training observations
 #
-# The organizers' self-evaluation notebook scores a prediction file against the ground truth and draws the IoU and
-# Dice distributions of every (annotated, predicted) pair and the many-to-one / one-to-many matches. Here the same
-# is done for `SELF_EVAL` training observations, run through the pipeline above. The Panoptic Quality is the
-# organizers' formula (checked against their notebook on 40 observations with perturbed annotations: the two agree to
-# 1e-9). **The released models were trained on these observations**, so the scores are optimistic: they check that
-# the pipeline and the scoring work, not how well it generalises (that is the out-of-fold PQ above).
+# The organisers' self-evaluation notebook scores a prediction file against the ground truth. It draws the IoU and
+# Dice distributions of every (annotated, predicted) pair, and the many-to-one and one-to-many matches. Here the same
+# is done for `SELF_EVAL` training observations run through the pipeline above.
+#
+# The Panoptic Quality is the organisers' formula. It was checked against their notebook on 40 observations with
+# perturbed annotations, and the two agree to 1e-9.
+#
+# **The released models were trained on these observations**, so the scores are optimistic. They show that the
+# pipeline and the scoring work, not how well the model generalises. For that, see the out-of-fold PQ above.
 
 
 # %%

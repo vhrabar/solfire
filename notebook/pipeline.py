@@ -8,13 +8,13 @@
 #
 # | `PRESET` | Models | TTA | Refiner | Out-of-fold PQ | Public LB | s / image |
 # |---|---|---|---|---|---|---|
-# | **`final`** (the evaluated submission) | SSL ResNet-34, MiT-B2, HRNet-W32, zoom HRNet-W32 | D4, overlap 0.5 | yes | 0.4668 (0.4692 without barbs) | 0.40 | 10.8 |
-# | `fast` | the same 4 | 4 flips | yes | 0.4664 without barbs | 0.40 | 4.1 |
-# | `lite` | ImageNet ResNet-34, MiT-B2, HRNet-W32 | 4 flips | yes | 0.4637 without barbs | 0.39 | 2.0 |
-# | `tiny` | HRNet-W32 | 4 flips | no | 0.4531 without barbs | 0.39 | 1.2 |
+# | **`final`** (the evaluated submission) | SSL ResNet-34, MiT-B2, HRNet-W32, zoom HRNet-W32 | D4, overlap 0.5 | yes | 0.4668 | 0.40 | 10.8 |
+# | `fast` | the same 4 | 4 flips | yes | 0.4642 | 0.40 | 4.1 |
+# | `lite` | ImageNet ResNet-34, MiT-B2, HRNet-W32 | 4 flips | yes | 0.4614 | 0.39 | 2.0 |
+# | `tiny` | HRNet-W32 | 4 flips | no | 0.4508 | 0.39 | 1.2 |
 #
 # Seconds per image are for the 180 test images including image loading, on an RTX 5070 Ti. A Kaggle T4 takes about
-# 4.5 times as long (50.6, 17.7, 7.8 and 4.0 s). Out-of-fold PQ comes from the five-fold models of the same recipe,
+# 3 to 5 times as long (50.6, 17.7, 7.8 and 4.0 s). Out-of-fold PQ, with barbs, comes from the five-fold models of the same recipe,
 # pooled over the 707 training observations; the full-data models reuse the cut-offs found there. The public
 # leaderboard only shows two decimals.
 #

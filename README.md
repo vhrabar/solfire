@@ -280,19 +280,24 @@ without barbs; s/img is on an RTX 5070 Ti.
 ## Repository layout
 
 ```
-src/solfire/           the package: the final method
-  main.py              CLI (`solfire`): train, predict, calibrate, evaluate
-  extension.py         hooks the experiments plug into
-  data/                dataset, crop sampling, target rasterisation, preprocessing cache
-  networks/            pretrained-encoder U-Net / U-Net++ (smp)
-  training/            losses, engine, calibration, evaluation, metrics, crop refiner training
-  inference/           tiling, TTA, prediction, crop refiner, barb growth, post-processing
-  experiments/         every dropped experiment, still runnable with `solfire-lab` (see its README.md)
-scripts/               sweeps, submission, model upload, notebook build, SSL pretraining, refiner
-scripts/experiments/   data and analysis scripts of the dropped experiments
-sweeps/                specs of the final method's runs (JSON)
-sweeps/experiments/    specs of the dropped experiments, run through solfire-lab
-tests/                 unit tests; tests/experiments/ for the experiments
+src/solfire/         the package: the final method
+  main.py            CLI (`solfire`): train, predict, calibrate, evaluate
+  data/              dataset, crop sampling, preprocessing cache
+  networks/          pretrained-encoder U-Net / U-Net++ (smp)
+  training/          losses, engine, calibration, evaluation, crop refiner training
+  inference/         tiling, TTA, prediction, crop refiner, barb growth, post-processing
+  experiments/       dropped experiments, runnable with `solfire-lab` (see its README.md)
+scripts/             sweeps, SSL pretraining, release and Kaggle upload, submission, ledger, notebook build
+  experiments/       data and analysis scripts of the dropped experiments
+sweeps/              specs of the final method's runs (JSON); experiments/ for the dropped ones
+tests/               unit tests; experiments/ for the dropped experiments
+weights/final/       shipped fp16 weights, refiners and one calibration per preset
+notebook/            Kaggle notebook (pipeline.py builds `Final pipeline.ipynb`)
+kaggle/              metadata for the Kaggle dataset, model and notebook
+results/             submission.csv of each released preset on the 180 test observations
+paper/               the paper (LaTeX source, figures, the scripts behind its tables)
+docs/                submissions.csv (every Kaggle submission)
+external/            submodule: FITS to JPEG converter for the GONG frames
 ```
 
 ## Tests

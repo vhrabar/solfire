@@ -37,3 +37,7 @@ ref,date,description,models,val_pq,public,private,seconds_per_image,predict_seco
 57783908,2026-10-29 22:17:55,ensembles/b6-zoom-ssl-tta-refined (4 models) | val pq 0.4700,4,0.4700,0.40,,12.11,2178.9,NVIDIA GeForce RTX 5070 Ti,COMPLETE,runs/ensembles/predictions_b6-zoom-ssl-tta-refined
 57784797,2026-10-29 23:20:56,ensembles/b6-zoom-ssl-tta32-refined (4 models) | val pq 0.4692,4,0.4692,0.40,,12.09,2177.0,NVIDIA GeForce RTX 5070 Ti,COMPLETE,runs/ensembles/predictions_b6-zoom-ssl-tta32-refined
 57851962,2026-10-31 22:21:02,ensembles/b6-zoom-ssl-tta32-barbs (4 models) | val pq 0.4668,4,0.4668,0.40,,12.72,2289.2,NVIDIA GeForce RTX 5070 Ti,COMPLETE,runs/ensembles/predictions_b6-zoom-ssl-tta32-barbs
+58034622,2026-11-05 20:14:50,ensembles/solfire-tiny (1 models) | val pq 0.4508,1,0.4508,0.39,,1.19,213.9,NVIDIA GeForce RTX 5070 Ti,COMPLETE,runs/ensembles/predictions_solfire-tiny
+58036021,2026-11-05 21:40:54,ensembles/solfire-final (4 models) | val pq 0.4668,4,0.4668,0.40,,10.76,1936.2,NVIDIA GeForce RTX 5070 Ti,COMPLETE,runs/ensembles/predictions_solfire-final
+58053248,2026-11-06 09:28:03,ensembles/solfire-fast (4 models) | val pq 0.4642,4,0.4642,0.40,,4.07,732.6,NVIDIA GeForce RTX 5070 Ti,COMPLETE,runs/ensembles/predictions_solfire-fast
+58053253,2026-11-06 09:28:12,ensembles/solfire-lite (3 models) | val pq 0.4614,3,0.4614,0.39,,2.05,368.5,NVIDIA GeForce RTX 5070 Ti,COMPLETE,runs/ensembles/predictions_solfire-lite

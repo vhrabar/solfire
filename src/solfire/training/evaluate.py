@@ -56,6 +56,33 @@ def evaluate_observation(labels, n_labels, records) -> dict:
     return result
 
 
+def bootstrap_pq(counts, other=None, draws: int = 2000, seed: int = 0) -> tuple[float, float]:
+    """
+    Percentile bootstrap interval of PQ, resampling whole observations with replacement.
+
+    PQ is a ratio of sums, so every draw only re-adds the per-observation counts. Observations are the
+    resampling unit because the records of one observation are not independent. This covers the sampling
+    noise of the evaluation set, not the training seed noise, which needs several runs.
+    :param counts: ``(n_observations, 4)`` per-observation ``matched_iou, tp, fp, fn`` of :func:`evaluate_observation`
+    :param other: Counts of a second method over the same observations; the interval is then of the paired
+        difference ``counts - other``, drawing the same observations for both
+    :param draws: Number of bootstrap draws
+    :param seed: Seed of the draws, so the interval is reproducible
+    :return: Tuple of the 2.5 % and 97.5 % percentiles
+    """
+    counts = np.asarray(counts, dtype=float)
+    picks = np.random.default_rng(seed).integers(len(counts), size=(draws, len(counts)))
+
+    def pq_of(table):
+        total = np.asarray(table, dtype=float)[picks].sum(axis=1)
+        denominator = total[:, 1] + 0.5 * total[:, 2] + 0.5 * total[:, 3]
+        return np.divide(total[:, 0], denominator, out=np.zeros(draws), where=denominator > 0)
+
+    values = pq_of(counts) - (pq_of(other) if other is not None else 0.0)
+    low, high = np.percentile(values, [2.5, 97.5])
+    return float(low), float(high)
+
+
 def summarise(results) -> dict:
     """
     Reduce per-observation results to the numbers the judging looks at.
@@ -76,6 +103,7 @@ def summarise(results) -> dict:
 
     return {
         "pq": pq_from_counts(matched_iou, tp, fp, fn),
+        "pq_ci": bootstrap_pq([r["counts"] for r in results]),
         "sq": float(matched_iou / tp) if tp else 0.0,
         "rq": float(tp / (tp + 0.5 * fp + 0.5 * fn)) if tp + fp + fn else 0.0,
         "tp": int(tp),

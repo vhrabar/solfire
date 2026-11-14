@@ -23,37 +23,60 @@ ENSEMBLES = Path("runs/ensembles")
 # inference settings every preset runs with; the cut-offs stay those of the source calibration
 RUNTIME = {"tile": 512, "overlap": 0.25, "tta": True, "precision": "fp16", "skip_dark": True}
 BARBS = {"contrast": 0.05, "ridge": 0.025, "band": 20, "min_ratio": 4.0, "max_width": 4.0}
-# s/img: 6 test observations on an RTX 5070 Ti, batch 1, fp16 (2026-11-04)
+# s/img: 180 test observations incl. image loading on an RTX 5070 Ti, fp16 (paper/results/vram_bench.json)
 PRESETS = {
     "final": {
         "source": ENSEMBLES / "b6-zoom-ssl-tta32-barbs.calibration.json",
-        "summary": "4 models with TTA (o0.5 + turned), crop refiner, barbs",
-        "seconds_per_image": 12.9,
+        "summary": "4 models with D4 TTA (o0.5 + turned), crop refiner, barbs",
+        "oof_pq": 0.4668,
+        "seconds_per_image": 10.8,
         "public_lb": 0.40,
+        "note": (
+            "Four full-data models (SSL ResNet34, MiT-B2, HRNet-W32, zoom HRNet) with D4 TTA, the crop refiner "
+            "trained on the TTA maps, and barb growth. The cuts come from the pooled out-of-fold maps of the "
+            "five-fold system. The refiner IoU cut is 0.32 although the out-of-fold best is 0.28: it follows "
+            "leaderboard probes."
+        ),
     },
     "fast": {
         "source": ENSEMBLES / "b6-zoom-ssl-refined.calibration.json",
-        "summary": "the same 4 models without TTA, crop refiner, barbs",
-        "seconds_per_image": 5.1,
+        "summary": "the same 4 models with flip TTA only, crop refiner, barbs",
+        "oof_pq": 0.4642,
+        "seconds_per_image": 4.1,
         "public_lb": 0.40,
+        "note": (
+            "The four models of final with the four flips at 25 % overlap instead of D4 TTA, the crop refiner "
+            "and barb growth. The cuts come from the pooled out-of-fold maps of the five-fold system."
+        ),
     },
     "lite": {
         "source": ENSEMBLES / "b6-full-fp16-refined.calibration.json",
         "summary": "3 models (ImageNet ResNet34 U-Net++, MiT-B2, HRNet-W32), crop refiner, barbs",
-        "seconds_per_image": 2.7,
-        "public_lb": 0.40,
+        "oof_pq": 0.4614,
+        "seconds_per_image": 2.0,
+        "public_lb": 0.39,
+        "note": (
+            "Three full-data models (ImageNet ResNet34, MiT-B2, HRNet-W32) with flip TTA, the crop refiner and "
+            "barb growth. The cuts come from the pooled out-of-fold maps of the five-fold system of the same "
+            "three families."
+        ),
     },
     "tiny": {
         "source": ENSEMBLES / "ctl-hrnet-oof.calibration.json",
         # the cut-offs come from the five fold HRNets at their final epoch, the same recipe as the full-data one
         "checkpoints": ["runs/full/c06_full-lovasz-hrnet32_seed1/best.pt"],
         "summary": "the full-data HRNet-W32 U-Net alone, barbs",
-        "seconds_per_image": 1.5,
-        "public_lb": None,
+        "oof_pq": 0.4508,
+        "seconds_per_image": 1.2,
+        "public_lb": 0.39,
+        "note": (
+            "The full-data HRNet-W32 U-Net alone with flip TTA and barb growth, no crop refiner. The cuts come "
+            "from the pooled out-of-fold maps of the five fold HRNets."
+        ),
     },
 }
-# measured cost of the barbs on the refined out-of-fold instances of `final` (0.4692 -> 0.4668)
-FINAL_BARBS_PQ = 0.4668
+# `oof_pq` is the pooled out-of-fold PQ of the five-fold system with the barbs (paper, Table 1)
+# `public_lb` is the two-decimal public leaderboard score of the released preset
 
 
 def half(state: dict) -> dict:
@@ -117,16 +140,21 @@ def preset_calibration(name: str, spec: dict, refiner_fold: int) -> tuple[dict, 
         refiner["checkpoints"] = kept
         refiner.pop("table", None)
         pq_without_barbs = refiner.get("pq_without_barbs", refiner["pq"])
+    calibration["note"] = spec["note"]
     calibration["preset"] = {
         "name": name,
         "summary": spec["summary"],
         "source_calibration": str(spec["source"]),
         # pooled out-of-fold PQ of the source fold models through these cut-offs; the barbs lower it slightly
         "oof_pq_without_barbs": round(pq_without_barbs, 4),
-        "oof_pq": FINAL_BARBS_PQ if name == "final" else None,
+        "oof_pq": spec["oof_pq"],
         "seconds_per_image": spec["seconds_per_image"],
         "public_lb": spec["public_lb"],
         "refiner_fold": refiner_fold if refiner else None,
+        "pq_fields": (
+            "oof_pq and oof_pq_without_barbs are the scores of this preset; the top-level pq and refiner.pq "
+            "are those of its source calibration and are not comparable between presets"
+        ),
     }
 
     released = copy.deepcopy(calibration)

@@ -13,7 +13,8 @@ The `final` variant averages four networks from three encoder families (ResNet34
 at twice the input resolution). A crop refiner then redraws and scores every proposal, and barbs, which the
 organisers want in the masks, are grown from the observation without labels. It reaches an out-of-fold PQ of 0.4668
 over 1154 annotation records and 0.40 on the public leaderboard. Four released variants span 0.4508 to 0.4668 PQ at
-1.2 to 10.8 s per observation; see [Usage](#usage) to run them.
+1.2 to 10.8 s per observation; see [Usage](#usage) to run them, or open the
+[Kaggle notebook](https://www.kaggle.com/code/vhrabar/solfire-final-pipeline) that predicts the test set with the released weights.
 
 ## Results
 
@@ -235,7 +236,9 @@ uv run --group cuda-134 solfire predict \
 ```
 
 The calibration holds the cut-offs, TTA variants, fp16, barbs and the refiner; `fast`, `lite` and `tiny` work the same way
-with their own calibration. `notebook/Final pipeline.ipynb` does the same on Kaggle.
+with their own calibration. `notebook/Final pipeline.ipynb` does the same on Kaggle:
+[SOLFIRE Final Pipeline](https://www.kaggle.com/code/vhrabar/solfire-final-pipeline), with the weights attached as the
+[Kaggle model](https://www.kaggle.com/models/vhrabar/filament-segmentation-2026).
 
 ### Reproduce the `final` preset from scratch
 
@@ -329,7 +332,8 @@ uv run --group cuda-134 pytest
   `requirements.txt` is its export and CI checks that they agree.
 - Weights: `weights/final/` (in the repository) and the Kaggle models `solfire-<preset>/1` are the same fp16 files, one
   calibration JSON per preset.
-- Predicting the test set: `notebook/Final pipeline.ipynb` (`PRESET = "final"`) loads those weights and writes the
+- Predicting the test set: `notebook/Final pipeline.ipynb` (`PRESET = "final"`, also on Kaggle as
+  [solfire-final-pipeline](https://www.kaggle.com/code/vhrabar/solfire-final-pipeline)) loads those weights and writes the
   submission. It gives the same output as `solfire predict` on all 180 test images.
 - Determinism: inference is not bit-exact across GPUs; masks can differ by 1–2 px at the borders, which does not
   change the score at the reported precision.

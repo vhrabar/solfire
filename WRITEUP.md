@@ -6,6 +6,8 @@ Vedran Hrabar, Faculty of Electrical Engineering and Computing, University of Za
 
 - Competition: <https://kaggle.com/competitions/filament-segmentation-2026>
 - Code and weights: <https://github.com/vhrabar/solfire>
+- Kaggle notebook: <https://www.kaggle.com/code/vhrabar/solfire-final-pipeline>
+- Kaggle model (the same weights): <https://www.kaggle.com/models/vhrabar/filament-segmentation-2026>
 - Unlabelled GONG pretraining frames: <https://www.kaggle.com/dsv/21047890> (doi:10.34740/KAGGLE/DSV/21047890)
 
 This is the long form of the four-page report (`paper/main.tex`). It repeats the report's numbers and adds the detail the page limit removed: hyperparameter tables, efficiency measurements, fine-structure analysis and reproduction notes.

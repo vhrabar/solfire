@@ -108,7 +108,7 @@
 %              METHODOLOGY             %
 % ==================================== %
 \section{Methodology}\label{sec:methodology}
-    Figure~\ref{fig:pipeline} shows the pipeline of the \texttt{final} variant.
+    Figure~\ref{fig:pipeline} shows the pipeline of the \texttt{final} variant\footnote{Kaggle notebook: \url{https://www.kaggle.com/code/vhrabar/solfire-final-pipeline}.}.
 
     \begin{figure*}[t]
         \centering
@@ -129,7 +129,7 @@
     Observations therefore carry equal weight in training, however many records they have.
 
     \subsection{Models}\label{subsec:models}
-    The \texttt{final} variant averages four networks from three encoder families, all built with Segmentation Models PyTorch~\cite{iakubovskii2019smp}.
+    The \texttt{final} variant averages four networks\footnote{The same weights as a Kaggle model: \url{https://www.kaggle.com/models/vhrabar/filament-segmentation-2026}.} from three encoder families, all built with Segmentation Models PyTorch~\cite{iakubovskii2019smp}.
     The three families are a U-Net++~\cite{zhou2018unetpp} with a ResNet34 encoder~\cite{he2016resnet}, a U-Net~\cite{ronneberger2015unet} with the MiT-B2 encoder of SegFormer~\cite{xie2021segformer}, and a U-Net with an HRNet-W32 encoder~\cite{wang2021hrnet}.
     A second HRNet-W32 U-Net, the zoom member, reads the observation at twice its resolution.
     Encoders start from ImageNet weights, with the first convolution reduced to one input channel.

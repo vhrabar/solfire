@@ -1,0 +1,34 @@
+{
+ "tiny": {
+  "seconds": 213.93067674100007,
+  "max_allocated_mib": 1165.28466796875,
+  "max_reserved_mib": 1570.0,
+  "smi_baseline_mib": 47,
+  "smi_peak_mib": 1914,
+  "s_per_image": 1.1885037596722225
+ },
+ "lite": {
+  "seconds": 368.51606829599996,
+  "max_allocated_mib": 2709.154296875,
+  "max_reserved_mib": 3594.0,
+  "smi_baseline_mib": 47,
+  "smi_peak_mib": 4004,
+  "s_per_image": 2.047311490533333
+ },
+ "fast": {
+  "seconds": 732.6283216259999,
+  "max_allocated_mib": 2922.296875,
+  "max_reserved_mib": 3776.0,
+  "smi_baseline_mib": 47,
+  "smi_peak_mib": 4186,
+  "s_per_image": 4.070157342366666
+ },
+ "final": {
+  "seconds": 1936.2363560909998,
+  "max_allocated_mib": 2930.796875,
+  "max_reserved_mib": 3776.0,
+  "smi_baseline_mib": 47,
+  "smi_peak_mib": 4186,
+  "s_per_image": 10.75686864495
+ }
+}

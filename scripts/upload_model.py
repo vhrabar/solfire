@@ -66,7 +66,7 @@ def usage(preset: dict, owner: str, model_slug: str) -> str:
         f"In a Kaggle notebook, attach this variation and run `{NOTEBOOK}` from the repository with\n\n"
         f'```python\nMODEL_HANDLE = "{handle}/<version>"\nCALIBRATION_NAME = "{calibration}"\n```\n\n'
         f"Locally, from a checkout of the repository with the `solfire` package installed, and these files in "
-        f"`weights/final/` (where `git lfs pull` puts them; the calibration names its checkpoints there):\n\n"
+        f"`weights/final/` (they are in the repository; the calibration names its checkpoints there):\n\n"
         f"```bash\nsolfire predict --calibration weights/final/{calibration} \\\n"
         f"  --checkpoint {' '.join(f'weights/final/{name}' for name in preset['files'] if not name.startswith('refiner-'))}\n```\n"
     )

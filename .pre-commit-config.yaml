@@ -6,6 +6,7 @@ repos:
     hooks:
       - id: check-added-large-files
         args: [--maxkb=1024]
+        exclude: ^weights/final/
       - id: check-json
       - id: check-yaml
       - id: check-toml
@@ -53,7 +54,7 @@ repos:
         require_serial: true
       - id: no-weights
         name: block model checkpoints
-        entry: model weights belong in weights/final/ (Git LFS), nowhere else in git
+        entry: model weights belong in weights/final/, nowhere else in git
         language: fail
         files: \.(pt|pth|ckpt|safetensors|onnx|npz)$
         exclude: ^weights/final/

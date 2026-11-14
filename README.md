@@ -283,7 +283,7 @@ uv run --group cuda-134 python scripts/submit.py <checkpoints> --calibration <ca
 
 ## Weights
 
-`weights/final/` (Git LFS) holds the shipped weights in float16 and one calibration per preset. Out-of-fold PQ is
+`weights/final/` holds the shipped weights in float16 (plain files in the repository, about 430 MB in total) and one calibration per preset. Out-of-fold PQ is
 without barbs; s/img is on an RTX 5070 Ti.
 
 | Preset  | Models                                                             | OOF PQ | s / img | Size   |
@@ -327,7 +327,7 @@ uv run --group cuda-134 pytest
 
 - Environment: `uv.lock` pins every package, including the torch build per hardware group ( [Setup](#setup));
   `requirements.txt` is its export and CI checks that they agree.
-- Weights: `weights/final/` (Git LFS) and the Kaggle models `solfire-<preset>/1` are the same fp16 files, one
+- Weights: `weights/final/` (in the repository) and the Kaggle models `solfire-<preset>/1` are the same fp16 files, one
   calibration JSON per preset.
 - Predicting the test set: `notebook/Final pipeline.ipynb` (`PRESET = "final"`) loads those weights and writes the
   submission. It gives the same output as `solfire predict` on all 180 test images.

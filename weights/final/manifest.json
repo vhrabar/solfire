@@ -2,13 +2,14 @@
   "presets": {
     "final": {
       "name": "final",
-      "summary": "4 models with TTA (o0.5 + turned), crop refiner, barbs",
+      "summary": "4 models with D4 TTA (o0.5 + turned), crop refiner, barbs",
       "source_calibration": "runs/ensembles/b6-zoom-ssl-tta32-barbs.calibration.json",
       "oof_pq_without_barbs": 0.4692,
       "oof_pq": 0.4668,
       "seconds_per_image": 10.8,
       "public_lb": 0.4,
       "refiner_fold": 0,
+      "pq_fields": "oof_pq and oof_pq_without_barbs are the scores of this preset; the top-level pq and refiner.pq are those of its source calibration and are not comparable between presets",
       "calibration": "final.calibration.json",
       "files": [
         "c02_full-lovasz-ssl-r34_seed1-best.pt",
@@ -21,13 +22,14 @@
     },
     "fast": {
       "name": "fast",
-      "summary": "the same 4 models without TTA, crop refiner, barbs",
+      "summary": "the same 4 models with flip TTA only, crop refiner, barbs",
       "source_calibration": "runs/ensembles/b6-zoom-ssl-refined.calibration.json",
       "oof_pq_without_barbs": 0.4664,
-      "oof_pq": null,
+      "oof_pq": 0.4642,
       "seconds_per_image": 4.1,
       "public_lb": 0.4,
       "refiner_fold": 0,
+      "pq_fields": "oof_pq and oof_pq_without_barbs are the scores of this preset; the top-level pq and refiner.pq are those of its source calibration and are not comparable between presets",
       "calibration": "fast.calibration.json",
       "files": [
         "c02_full-lovasz-ssl-r34_seed1-best.pt",
@@ -43,10 +45,11 @@
       "summary": "3 models (ImageNet ResNet34 U-Net++, MiT-B2, HRNet-W32), crop refiner, barbs",
       "source_calibration": "runs/ensembles/b6-full-fp16-refined.calibration.json",
       "oof_pq_without_barbs": 0.4637,
-      "oof_pq": null,
+      "oof_pq": 0.4614,
       "seconds_per_image": 2.0,
-      "public_lb": 0.4,
+      "public_lb": 0.39,
       "refiner_fold": 0,
+      "pq_fields": "oof_pq and oof_pq_without_barbs are the scores of this preset; the top-level pq and refiner.pq are those of its source calibration and are not comparable between presets",
       "calibration": "lite.calibration.json",
       "files": [
         "c02_full-lovasz-r34_seed1-best.pt",
@@ -61,10 +64,11 @@
       "summary": "the full-data HRNet-W32 U-Net alone, barbs",
       "source_calibration": "runs/ensembles/ctl-hrnet-oof.calibration.json",
       "oof_pq_without_barbs": 0.4531,
-      "oof_pq": null,
+      "oof_pq": 0.4508,
       "seconds_per_image": 1.2,
-      "public_lb": null,
+      "public_lb": 0.39,
       "refiner_fold": null,
+      "pq_fields": "oof_pq and oof_pq_without_barbs are the scores of this preset; the top-level pq and refiner.pq are those of its source calibration and are not comparable between presets",
       "calibration": "tiny.calibration.json",
       "files": [
         "c06_full-lovasz-hrnet32_seed1-best.pt"

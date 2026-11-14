@@ -35,9 +35,11 @@
     "summary": "the full-data HRNet-W32 U-Net alone, barbs",
     "source_calibration": "runs/ensembles/ctl-hrnet-oof.calibration.json",
     "oof_pq_without_barbs": 0.4531,
-    "oof_pq": null,
-    "seconds_per_image": 1.5,
-    "public_lb": null,
-    "refiner_fold": null
-  }
+    "oof_pq": 0.4508,
+    "seconds_per_image": 1.2,
+    "public_lb": 0.39,
+    "refiner_fold": null,
+    "pq_fields": "oof_pq and oof_pq_without_barbs are the scores of this preset; the top-level pq and refiner.pq are those of its source calibration and are not comparable between presets"
+  },
+  "note": "The full-data HRNet-W32 U-Net alone with flip TTA and barb growth, no crop refiner. The cuts come from the pooled out-of-fold maps of the five fold HRNets."
 }

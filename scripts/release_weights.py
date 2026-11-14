@@ -23,24 +23,24 @@ ENSEMBLES = Path("runs/ensembles")
 # inference settings every preset runs with; the cut-offs stay those of the source calibration
 RUNTIME = {"tile": 512, "overlap": 0.25, "tta": True, "precision": "fp16", "skip_dark": True}
 BARBS = {"contrast": 0.05, "ridge": 0.025, "band": 20, "min_ratio": 4.0, "max_width": 4.0}
-# s/img: 6 test observations on an RTX 5070 Ti, batch 1, fp16 (2026-11-04)
+# s/img: 180 test observations incl. image loading on an RTX 5070 Ti, fp16 (paper/results/vram_bench.json)
 PRESETS = {
     "final": {
         "source": ENSEMBLES / "b6-zoom-ssl-tta32-barbs.calibration.json",
         "summary": "4 models with TTA (o0.5 + turned), crop refiner, barbs",
-        "seconds_per_image": 12.9,
+        "seconds_per_image": 10.8,
         "public_lb": 0.40,
     },
     "fast": {
         "source": ENSEMBLES / "b6-zoom-ssl-refined.calibration.json",
         "summary": "the same 4 models without TTA, crop refiner, barbs",
-        "seconds_per_image": 5.1,
+        "seconds_per_image": 4.1,
         "public_lb": 0.40,
     },
     "lite": {
         "source": ENSEMBLES / "b6-full-fp16-refined.calibration.json",
         "summary": "3 models (ImageNet ResNet34 U-Net++, MiT-B2, HRNet-W32), crop refiner, barbs",
-        "seconds_per_image": 2.7,
+        "seconds_per_image": 2.0,
         "public_lb": 0.40,
     },
     "tiny": {
@@ -48,7 +48,7 @@ PRESETS = {
         # the cut-offs come from the five fold HRNets at their final epoch, the same recipe as the full-data one
         "checkpoints": ["runs/full/c06_full-lovasz-hrnet32_seed1/best.pt"],
         "summary": "the full-data HRNet-W32 U-Net alone, barbs",
-        "seconds_per_image": 1.5,
+        "seconds_per_image": 1.2,
         "public_lb": None,
     },
 }

@@ -271,10 +271,10 @@ without barbs; s/img is on an RTX 5070 Ti.
 
 | Preset  | Models                                                             | OOF PQ | s / img | Size   |
 |---------|--------------------------------------------------------------------|--------|---------|--------|
-| `final` | 4 (SSL ResNet34, MiT-B2, HRNet-W32, zoom HRNet) + D4 TTA + refiner | 0.4692 | 12.9    | 303 MB |
-| `fast`  | the same 4, flips only, + refiner                                  | 0.4664 | 5.1     | 303 MB |
-| `lite`  | 3 (ImageNet ResNet34, MiT-B2, HRNet-W32) + refiner                 | 0.4637 | 2.7     | 230 MB |
-| `tiny`  | HRNet-W32                                                          | 0.4531 | 1.5     | 73 MB  |
+| `final` | 4 (SSL ResNet34, MiT-B2, HRNet-W32, zoom HRNet) + D4 TTA + refiner | 0.4692 | 10.8    | 303 MB |
+| `fast`  | the same 4, flips only, + refiner                                  | 0.4664 | 4.1     | 303 MB |
+| `lite`  | 3 (ImageNet ResNet34, MiT-B2, HRNet-W32) + refiner                 | 0.4637 | 2.0     | 230 MB |
+| `tiny`  | HRNet-W32                                                          | 0.4531 | 1.2     | 73 MB  |
 
 
 ## Repository layout

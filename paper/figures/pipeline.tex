@@ -21,10 +21,10 @@
     \node[model] (m2) at (2.95, 0.21) {MiT-B2 U-Net};
     \node[model, above=0.05cm of m2] (m1) {SSL-R34 U-Net++};
     \node[model, below=0.05cm of m2] (m3) {HRNet-W32 U-Net};
-    \node[model, below=0.05cm of m3] (m4) {HRNet-W32 U-Net, $2\times$ input};
+    \node[model, below=0.05cm of m3] (m4) {HRNet-W32 U-Net, zoom ($2\times$ input)};
     \begin{scope}[on background layer]
         \node[draw=figInk, rounded corners=1.5pt, fill=figInfer, inner sep=2pt, fit=(m1)(m4),
-            label={[font=\scriptsize, inner sep=1pt, text=figInk]below:512 px tiles, D4 TTA}] (ensemble) {};
+            label={[font=\scriptsize, inner sep=1pt, text=figInk]below:tiling, D4 TTA}] (ensemble) {};
     \end{scope}
     \node[infer, text width=1.95cm] (props) at (6.25, 0) {\textbf{Proposals}\\mean map $\ge 0.35$,\\erode 1 px,\\components};
     \node[infer, text width=2.45cm] (refiner) at (8.95, 0) {\textbf{Crop refiner}\\window $1.5\times$ box, 256 px;\\image, map, proposal $\to$\\mask, predicted IoU};
@@ -40,7 +40,7 @@
     \draw[flow] (barbs) -- (out);
 
     % Training
-    \node[train, text width=1.3cm] (ssl) at (0.25, 2.15) {\textbf{SimMIM-style}\\R34 on 1300\\GONG frames};
+    \node[train, text width=1.45cm] (ssl) at (0.25, 2.15) {\textbf{SimMIM-style pretraining}\\R34 on 1300\\GONG frames};
     \node[train, text width=2.75cm] (recipe) at (m2 |- ssl) {\textbf{Training recipe}\\40 epochs BCE + Dice, then\\8 epochs + Lovász (zoom: 12)};
     \node[train, text width=1.95cm] (oof) at (props |- ssl) {\textbf{Out-of-fold maps}\\grid search for\\proposal cuts};
     \node[train, text width=2.45cm] (rtrain) at (refiner |- ssl) {\textbf{Refiner training}\\on out-of-fold proposals,\\one model per fold};

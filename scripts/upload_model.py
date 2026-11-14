@@ -1,5 +1,6 @@
 """
 Publish the presets of ``weights/final`` (``scripts/release_weights.py``) to Kaggle Models, one variation each.
+``--card-only`` updates just the model card (``kaggle/model/README.md``) and creates no version.
 """
 
 import argparse
@@ -247,6 +248,11 @@ def main() -> int:
     parser.add_argument("--weights", type=Path, default=REPO / "weights" / "final", help="release directory")
     parser.add_argument("--stage", type=Path, default=REPO / "build" / "kaggle-model", help="staging dir to upload from")
     parser.add_argument("--dry-run", action="store_true", help="stage and report, upload nothing")
+    parser.add_argument(
+        "--card-only",
+        action="store_true",
+        help="update the model card only: no variation is touched and no version is created",
+    )
     args = parser.parse_args()
 
     weights = args.weights.resolve()
@@ -268,6 +274,9 @@ def main() -> int:
     notes = args.message or f"release {datetime.now(UTC):%Y-%m-%d %H:%M UTC}"
     stage_root = args.stage.resolve()
     push_model(api, metadata, stage_root / "model", args.dry_run)
+    if args.card_only:
+        print("card only: no variation was touched and no version was created")
+        return 0
     for name in names:
         folder = stage_root / name
         stage(weights, presets[name], folder)

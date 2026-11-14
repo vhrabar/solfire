@@ -115,7 +115,7 @@ typical; their PQ (0.38, 0.62, 0.54) is printed beside each.
   another's mask only 0.40 of the time (0.54 within 2 px), so the model is already at the level of a second
   annotator. Filling in every missed thin pixel would raise PQ by only 0.015. (Measured on the out-of-fold maps of the
   three-family fine-tuned ensemble, before the zoom model and the refiner.)
-- Barb growth adds the structures in orange. They are short, 166 px in total over the three examples above, and the
+- Barb growth adds the structures in orange. They are short, 419 px in total over the three examples above, and the
   figure shows them only in the 12× column. Only the clearest barbs are added. Growing them costs about 0.002 PQ,
   because the annotations hardly label barbs.
 - On the same maps the hit rate is lowest for small, barb-heavy filaments (0.60, mean best IoU 0.45) and next lowest
@@ -128,7 +128,7 @@ typical; their PQ (0.38, 0.62, 0.54) is printed beside each.
 
 Measured over the 180 test images, including image loading, on an NVIDIA GeForce RTX 5070 Ti.
 The same runs on a Kaggle Tesla T4 reproduce the predictions (99.8 % of masks have
-IoU ≥ 0.99 against the local ones) but are about 4.5× slower per image.
+IoU ≥ 0.99 against the local ones) but are 3 to 5 times slower per image.
 
 | Preset  | s / img (5070 Ti) | s / img (T4) | Peak GPU | Out-of-fold PQ |
 |---------|------------------:|-------------:|---------:|---------------:|
@@ -146,8 +146,10 @@ not established. The same holds for `fast` over `lite` (+0.0028, −0.0003 to 0.
 ## What didn't work
 
 Changes that were tested and rejected, as pooled out-of-fold PQ after calibration against a control with the same
-setup. Seeds alone move a five-model set by up to 0.007 and the crop refiner by ±0.001, so a change is adopted only
-if it beats its control by more than 0.002 after the full pipeline, with the nested score agreeing. None did.
+setup. Rerun noise is about 0.0006 on average for the three-family ensemble (four comparisons that should have no
+effect) and 0.007 at most (one single-family five-model set), and ±0.001 for the crop refiner. A change is therefore
+adopted only if it beats its control by more than 0.002 after the full pipeline, with the nested score agreeing.
+None did.
 
 | Change                             |     PQ | Control |    Gain |
 |------------------------------------|-------:|--------:|--------:|
@@ -177,7 +179,8 @@ gain (best +0.0001) and barely raised thin-structure recall: it extended filamen
   observations, with the final epoch kept and the refiner of fold 0. No labelled data can score them without leakage.
 - Folds are not separated in time: the median out-of-fold observation lies 2.0 days from a training one, the median
   test observation 1.5 days.
-- Each configuration is one training run; seeds alone move a five-model set by up to 0.007.
+- Each configuration is one training run; rerun noise is about 0.0006 on average for the three-family ensemble
+  and 0.007 at most for a single-family five-model set.
 - Only the IoU cut of `final` (0.32 against an out-of-fold best of 0.28) follows leaderboard probes; no test image or
   label enters training. The out-of-fold to leaderboard gap is about 0.07 and unexplained, so out-of-fold PQ ranks
   methods rather than forecasts the test score.

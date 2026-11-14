@@ -75,7 +75,7 @@ PRESETS = {
         ),
     },
 }
-# `oof_pq` is the pooled out-of-fold PQ of the five-fold system with the barbs (paper, Table 2)
+# `oof_pq` is the pooled out-of-fold PQ of the five-fold system with the barbs (paper, Table 1)
 # `public_lb` is the two-decimal public leaderboard score of the released preset
 
 

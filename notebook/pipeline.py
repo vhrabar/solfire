@@ -1,79 +1,76 @@
 # %% [markdown]
 # # Solar filament segmentation: full pipeline
 #
-# Segments solar filaments in GONG H-alpha observations (MAGFiLO 1.0) and writes the competition's
-# `submission.csv`, one compressed-RLE mask per filament.
-#
-# **Model: SOLFIRE** (SOLar FIlament Refined Ensemble), released in `weights/final` of the repository and on Kaggle
-# Models as `vhrabar/filament-segmentation-2026`, one variation per preset. Pick one with `PRESET`.
+# This notebook finds solar filaments in GONG H-alpha observations (MAGFiLO 1.0) and writes the competition's
+# `submission.csv`, one compressed-RLE mask per filament. The model is SOLFIRE (SOLar FIlament Refined Ensemble). Its
+# weights are on Kaggle Models as `vhrabar/filament-segmentation-2026`, one variation per preset, and in `weights/final`
+# of the repository. Pick a preset with `PRESET`:
 #
 # | `PRESET` | Models | TTA | Refiner | Out-of-fold PQ | Public LB | s / image |
 # |---|---|---|---|---|---|---|
-# | **`final`** (the evaluated submission) | SSL ResNet-34, MiT-B2, HRNet-W32, zoom HRNet-W32 | D4, overlap 0.5 | yes | 0.4668 (0.4692 without barbs) | 0.40 | 12.9 |
-# | `fast` | the same 4 | 4 flips | yes | 0.4664 without barbs | 0.40 | 5.1 |
-# | `lite` | ImageNet ResNet-34, MiT-B2, HRNet-W32 | 4 flips | yes | 0.4637 without barbs | 0.39 | 2.7 |
-# | `tiny` | HRNet-W32 | 4 flips | no | 0.4531 without barbs | 0.39 | 1.5 |
+# | **`final`** (the evaluated submission) | SSL ResNet-34, MiT-B2, HRNet-W32, zoom HRNet-W32 | D4, overlap 0.5 | yes | 0.4668 (0.4692 without barbs) | 0.40 | 10.8 |
+# | `fast` | the same 4 | 4 flips | yes | 0.4664 without barbs | 0.40 | 4.1 |
+# | `lite` | ImageNet ResNet-34, MiT-B2, HRNet-W32 | 4 flips | yes | 0.4637 without barbs | 0.39 | 2.0 |
+# | `tiny` | HRNet-W32 | 4 flips | no | 0.4531 without barbs | 0.39 | 1.2 |
 #
-# - Segmentation models: U-Net++ on ResNet-34, U-Net on MiT-B2 (SegFormer) and U-Net on HRNet-W32, plus an HRNet-W32
-#   U-Net that sees the observation upsampled 2x (`zoom`), so thin filaments span more pixels. The ResNet-34 of
-#   `final` and `fast` starts from masked-image pretraining on 1,300 unlabelled GONG H-alpha frames (2023-2025,
-#   `scripts/pretrain_mim.py` in the repository); the other encoders from ImageNet. Each is trained on all 707
-#   training observations and keeps its final epoch.
-# - Crop refiner: one ResNet-34 U-Net per preset (see *Crop refiner*).
-# - Barbs are grown from the image into every instance (see *Barbs*); the organisers asked for them in the masks.
-# - Weights are float16 copies (tensors of two or more dimensions); under fp16 autocast they give the same submission
-#   as the float32 training checkpoints.
+# Seconds per image are for the 180 test images including image loading, on an RTX 5070 Ti. A Kaggle T4 takes about
+# 4.5 times as long (50.6, 17.7, 7.8 and 4.0 s). Out-of-fold PQ comes from the five-fold models of the same recipe,
+# pooled over the 707 training observations; the full-data models reuse the cut-offs found there. The public
+# leaderboard only shows two decimals.
 #
-# Out-of-fold PQ is pooled over the 707 training observations, from the five-fold models of the same recipe through
-# the same cut-offs: that is how the cut-offs were calibrated, and the full-data models reuse them. The public
-# leaderboard rounds to two decimals.
-# Seconds per observation on an RTX 5070 Ti; a Kaggle T4 is slower.
+# **Quick start on Kaggle.** Add the competition, the model variation you want, `kx-plot` and the GONG dataset as
+# inputs, keep `TRAIN = False` and run all. A T4 needs about 2.5 h for `final`, 53 min for `fast`, 24 min for `lite`
+# and 12 min for `tiny`. You get `submission.csv` in the working folder.
 #
-# **Recipe**, per family and fold:
-# 1. 40 epochs from ImageNet on random 512 px windows at native resolution (filaments are ~11 px wide, so
-#    nothing is downsampled). Most windows are centred on an annotated filament. Targets are averaged over the
-#    annotators of an observation. Loss: BCE (positive weight 5) + soft Dice.
-# 2. An 8-epoch fine-tune from the best epoch of stage 1 at a lower learning rate, with a Lovász hinge term added.
-#    Lovász is a surrogate for IoU, the quantity Panoptic Quality is built on.
+# ![SOLFIRE pipeline](https://github.com/vhrabar/solfire/raw/main/paper/out/pipeline.png)
 #
-# **Inference.** Tiled 512 px windows (overlap 0.25, cosine-blended) with 4-flip TTA; `final` also adds
-# the four flips of the quarter-turned observation and a second pass at overlap 0.5. Probabilities are averaged
-# over the models, then thresholded, eroded by one pixel, and split into 8-connected instances. Instances with a
-# mean probability below the cut are dropped. Threshold, offset, minimum area and score cut are chosen by grid
-# search, scored with the organizers' Panoptic Quality on the pooled out-of-fold predictions of all 707 training
-# observations. Then a crop refiner (ResNet-34 U-Net) redraws every instance on a window around it and predicts the
-# IoU it will earn, which replaces the mean probability as the keep/drop score (see *Crop refiner*). Last, the
-# visible barbs are grown into every instance.
+# *The pipeline of `final`. Dashed arrows carry what training produces into inference. (The image loads from GitHub, so
+# it does not show with Kaggle's internet switched off.)*
 #
-# **Where it runs.** The notebook detects its environment: with `/kaggle/input` and `/kaggle/working` present it is in
-# *Kaggle mode*, otherwise in *local mode*.
-# - Kaggle mode reads the competition data, the weights (Models `vhrabar/filament-segmentation-2026`), the figure
-#   package (Dataset `vhrabar/kx-plot`) and the GONG data (Dataset `vhrabar/gong-solar-filaments`) from
-#   `/kaggle/input`, so attach all four with *Add Input*; a missing one stops the notebook with a message saying which.
-#   It writes to `/kaggle/working`.
-# - Local mode uses the repository checkout: `data/` (or `$FILAMENT_DATA_ROOT`), `weights/final`, kx-plot from the
-#   `uv` environment and the GONG downloads in `runs/external` (GONG figures and pretraining are skipped when that
-#   folder is absent). It writes to `build/notebook`.
+# ## How it works
 #
-# **Running it.**
-# - `TRAIN = False` (default): loads the `PRESET` weights and their calibration, then predicts the test set. They
-#   are looked for in `WEIGHTS_DIR`, then in `weights/final` of a repository checkout, then among the attached Kaggle
-#   inputs, and last downloaded with `kagglehub` from `MODEL_HANDLE`.
-# - `TRAIN = True`: trains the 5-fold recipe of the three families (30 runs) and the 5 refiners, calibrates, then
-#   predicts with those 15 models (0.4637 out-of-fold). With the GONG frames available and `SSL = True`, the
-#   ResNet-34 first learns masked-image reconstruction on them (*Masked-image pretraining*) and starts from that
-#   instead of ImageNet; the zoom family and the full-data retrain are not repeated. That is about 20 GPU-hours on an RTX 5070 Ti, more than one Kaggle
-#   session. Finished runs are skipped, so the notebook can be rerun until it completes.
+# **Models.** U-Net++ on ResNet-34, U-Net on MiT-B2 (SegFormer) and U-Net on HRNet-W32, plus a second HRNet-W32 that
+# sees the observation upsampled 2x (`zoom`), so thin filaments cover more pixels. The ResNet-34 of `final` and `fast`
+# starts from masked-image pretraining on 1,300 unlabelled GONG frames from 2023-2025 (`scripts/pretrain_mim.py`); the
+# other encoders start from ImageNet. Every model is trained on all 707 training observations and keeps its last epoch.
+# The weights are float16 copies, which give the same submission as the float32 checkpoints under fp16 autocast.
 #
-# - `TRAIN` is the only switch for training: it trains the models and the crop refiners together. Whether
-#   inference refines is read from the calibration (a preset with a refiner, or the one `TRAIN` just made).
-# - A finished prediction is not repeated: when `submission.csv` and `inference.json` of this `PRESET` (or of
-#   `TRAIN`) are in the working folder, the notebook reads them, runs the pipeline again only on the few observations
-#   the figures show, and keeps the self-evaluation overlaps. Set `RERUN = True` (in the prediction cell) to predict
-#   everything again.
+# **Training.** Per family and fold: 40 epochs on random 512 px windows at native resolution (filaments are only
+# about 11 px wide, so nothing is downsampled), most windows centred on an annotated filament. The target is the
+# average of the annotators' masks, and the loss is BCE (positive weight 5) plus soft Dice. Then 8 epochs of
+# fine-tuning at a lower learning rate with a Lovasz hinge added, a surrogate for the IoU that Panoptic Quality is
+# built on.
 #
-# Source: https://github.com/vhrabar/solfire
-# (this notebook is generated from `notebook/pipeline.py` by `scripts/build_notebook.py`).
+# **Inference.** The observation is cut into overlapping 512 px windows (overlap 0.25, cosine-blended) and averaged
+# over four flips; `final` adds the four flips of the quarter-turned image at overlap 0.5. The models' probabilities
+# are averaged, thresholded, eroded by one pixel and split into 8-connected pieces. A crop refiner (a ResNet-34
+# U-Net) then redraws each piece on a window around it and predicts the IoU it will earn, and that prediction decides
+# whether the piece is kept (`tiny` has no refiner and keeps pieces by their mean probability). Last, barbs are grown from the image into every instance, since the organisers want
+# them in the masks. The cut-offs come from a grid search that scores the organisers' PQ on the pooled out-of-fold
+# predictions.
+#
+# ## Running it
+#
+# The notebook works out where it is. With `/kaggle/input` and `/kaggle/working` present it runs in Kaggle mode: it
+# reads the competition data, the weights, `kx-plot` and the GONG data from the attached inputs and writes to
+# `/kaggle/working`. Otherwise it runs in local mode, from a checkout of the repository: `data/` (or
+# `$FILAMENT_DATA_ROOT`), `weights/final`, kx-plot from the `uv` environment and the GONG downloads in `runs/external`,
+# writing to `build/notebook`. Without the GONG folder the GONG figures and the pretraining are skipped.
+#
+# - `TRAIN = False` (default) loads the `PRESET` weights and predicts. The weights are looked up in `WEIGHTS_DIR`,
+#   then in `weights/final`, then among the attached inputs, and finally downloaded with `kagglehub` from
+#   `MODEL_HANDLE`.
+# - `TRAIN = True` trains the five-fold recipe for the three families (30 runs) and the five refiners, calibrates,
+#   and predicts with those 15 models (0.4637 out of fold). With the GONG frames and `SSL = True`, the ResNet-34 first
+#   learns masked-image reconstruction on them. The zoom family and the full-data retrain are not repeated. That is
+#   about 20 GPU-hours on an RTX 5070 Ti, more than one Kaggle session, but finished runs are skipped, so you can
+#   rerun until it completes.
+# - A finished prediction is not repeated. If `submission.csv` and `inference.json` for this `PRESET` are already in
+#   the working folder, the notebook reads them and only reruns the few observations the figures show. Set
+#   `RERUN = True` in the prediction cell to predict everything again.
+#
+# Source: https://github.com/vhrabar/solfire. This notebook is generated from `notebook/pipeline.py` by
+# `scripts/build_notebook.py`.
 
 # %%
 import csv
@@ -137,7 +134,7 @@ TILE, OVERLAP, TILE_BATCH = 512, 0.25, 8
 CALIBRATION_GRID = {
     "threshold": (0.25, 0.3, 0.325, 0.35, 0.375, 0.4, 0.45, 0.5, 0.65),
     "offset": (-2, -1, 0, 1),  # signed one-pixel dilation/erosion steps
-    "min_area": (0, 256),
+    "min_area": (0, 128, 256, 512),
     "min_score": (0.0, 0.6, 0.625, 0.65, 0.675, 0.7, 0.725, 0.75, 0.8, 0.85, 0.88, 0.91, 0.94),
 }
 
@@ -1963,6 +1960,44 @@ else:
     preset = calibration.get("preset") or {}
     if preset:
         print(f"preset {preset['name']}: {preset['summary']}; out-of-fold PQ {preset['oof_pq_without_barbs']:.4f} without barbs")
+
+
+# %% [markdown]
+# The released presets side by side, from the release's `manifest.json`: how much each step up in inference cost buys
+# in out-of-fold PQ, and what the barbs cost.
+
+
+# %%
+manifest_path = weights / "manifest.json" if not TRAIN else None
+if manifest_path is not None and manifest_path.is_file():
+    released = pd.DataFrame(json.loads(manifest_path.read_text(encoding="utf-8"))["presets"]).T
+    released = released.dropna(subset=["oof_pq", "seconds_per_image"])
+    released = released.astype({"oof_pq": float, "oof_pq_without_barbs": float, "seconds_per_image": float})
+    print(released[["oof_pq", "oof_pq_without_barbs", "public_lb", "seconds_per_image"]].round(4).to_string())
+    axs = kx.grid(2)
+    kx.plot(
+        released.rename(columns={"seconds_per_image": "seconds per image", "oof_pq": "out-of-fold PQ"}),
+        "seconds per image",
+        "out-of-fold PQ",
+        "scatter",
+        ax=axs[0],
+        title="presets: out-of-fold PQ (y) against seconds per image (x)",
+    )
+    for name, row in released.iterrows():
+        label = f"{name}\nLB {float(row['public_lb']):.2f}" if row["public_lb"] == row["public_lb"] else name
+        axs[0].annotate(label, (row["seconds_per_image"], row["oof_pq"]), textcoords="offset points", xytext=(6, -14), fontsize=8)
+    axs[0].set_xlim(0, released["seconds_per_image"].max() * 1.2)
+    kx.plot(
+        released.reset_index(names="preset").rename(columns={"oof_pq": "with barbs", "oof_pq_without_barbs": "without barbs"}),
+        "preset",
+        "with barbs",
+        "without barbs",
+        spec="bar-leg",
+        ax=axs[1],
+        title="out-of-fold PQ with and without barbs (axis from 0.44)",
+    )
+    axs[1].set_ylim(0.44, 0.475)
+    figure("presets")
 
 
 # %% [markdown]

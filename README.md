@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE)
 [![Python 3.15](https://img.shields.io/badge/python-3.15-blue.svg?style=flat-square)](pyproject.toml)
-<!-- DOI badge-->
+[![DOI](https://zenodo.org/badge/1318428092.svg)](https://doi.org/10.5281/zenodo.24232262)
 
 SOLFIRE segments solar filaments in GONG H-alpha full-disk observations (MAGFiLO 1.0). It is a solution to the
 [IEEE BigData Cup 2026 — Solar Filament Segmentation](https://www.kaggle.com/competitions/filament-segmentation-2026)

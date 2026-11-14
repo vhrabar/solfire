@@ -1,0 +1,111 @@
+cff-version: 1.2.0
+message: "If you use this software or its weights, please cite the technical report below."
+type: software
+title: "SOLFIRE: Solar Filament Refined Ensemble"
+abstract: >-
+  Calibrated three-family ensemble (ResNet34, MiT-B2, HRNet-W32) with a crop
+  refiner and label-free barb growth for segmenting solar filaments in GONG
+  H-alpha observations, submitted to the Solar Filament Segmentation
+  Challenge 2026.
+authors:
+  - family-names: Hrabar
+    given-names: Vedran
+    email: vedran.hrabar@fer.unizg.hr
+    affiliation: "Faculty of Electrical Engineering and Computing, University of Zagreb"
+version: 1.0.0
+doi: 10.5281/zenodo.24232262
+date-released: 2026-11-14
+license: MIT
+repository-code: "https://github.com/vhrabar/solfire"
+url: "https://github.com/vhrabar/solfire"
+keywords:
+  - solar filaments
+  - instance segmentation
+  - H-alpha
+  - GONG
+  - panoptic quality
+
+preferred-citation:
+  type: report
+  title: "Beyond Annotator Agreement: A Calibrated Three-Family Ensemble with Crop Refinement for Solar Filaments"
+  authors:
+    - family-names: Hrabar
+      given-names: Vedran
+      email: vedran.hrabar@fer.unizg.hr
+      affiliation: "Faculty of Electrical Engineering and Computing, University of Zagreb"
+  institution:
+    name: "Faculty of Electrical Engineering and Computing, University of Zagreb"
+    city: Zagreb
+    country: HR
+  year: 2026
+  notes: "A Solution to the Solar Filament Segmentation Challenge 2026"
+  url: "https://vhrabar.github.io/solfire-tech-report.pdf"
+
+references:
+  - type: generic
+    title: "Solar Filament Segmentation Challenge 2026"
+    authors:
+      - family-names: Ahmadzadeh
+        given-names: Azim
+      - family-names: Kempton
+        given-names: Dustin J.
+      - family-names: Li
+        given-names: Qin
+      - family-names: Pevtsov
+        given-names: Alexei A.
+    year: 2026
+    url: "https://kaggle.com/competitions/filament-segmentation-2026"
+  - type: article
+    title: "A dataset of manually annotated filaments from H-alpha observations"
+    authors:
+      - family-names: Ahmadzadeh
+        given-names: Azim
+      - family-names: Adhyapak
+        given-names: Rohan
+      - family-names: Chaurasiya
+        given-names: Kartik
+      - family-names: Nagubandi
+        given-names: Laxmi Alekhya
+      - family-names: Aparna
+        given-names: V.
+      - family-names: Martens
+        given-names: Petrus C.
+      - family-names: Pevtsov
+        given-names: Alexei
+      - family-names: Bertello
+        given-names: Luca
+      - family-names: Pevtsov
+        given-names: Alexander
+      - family-names: Douglas
+        given-names: Naomi
+      - family-names: McDonald
+        given-names: Samuel
+      - family-names: Bawa
+        given-names: Apaar
+      - family-names: Kang
+        given-names: Eugene
+      - family-names: Wu
+        given-names: Riley
+      - family-names: Kempton
+        given-names: Dustin J.
+      - family-names: Abdelkarem
+        given-names: Aya
+      - family-names: Copeland
+        given-names: Patrick M.
+      - family-names: Seelamneni
+        given-names: Sri Harsha
+    journal: "Scientific Data"
+    volume: 11
+    start: 1031
+    year: 2024
+    doi: 10.1038/s41597-024-03876-y
+  - type: dataset
+    title: "GONG Multi-Channel Data for Solar Filaments"
+    authors:
+      - family-names: Hrabar
+        given-names: Vedran
+    publisher:
+      name: Kaggle
+    year: 2026
+    doi: 10.34740/KAGGLE/DSV/21047890
+    url: "https://www.kaggle.com/dsv/21047890"

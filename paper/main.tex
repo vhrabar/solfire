@@ -69,17 +69,16 @@
 %              INTRODUCTION            %
 % ==================================== %
 \section{Introduction}\label{sec:introduction}
-    This report goes over the details of the submitted solution\footnote{Code and weights: \url{https://github.com/vhrabar/solfire}} to the Solar Filament Segmentation Challenge~2026~\cite{filament-segmentation-2026}.
-    The challenge, organized by the Earth-Space AI Research (ESAIR) Lab\footnote{\href{https://www.esairlab.com/home}{www.esairlab.com/}}, evaluates segmentation algorithms on the MAGFiLO dataset~\cite{ahmadzadeh2024dataset}.
+    This report goes over the details of our submitted solution to the Solar Filament Segmentation Challenge~2026~\cite{filament-segmentation-2026}. The challenge, launched on July~10,~2026, is organized by the Earth-Space AI Research (ESAIR) Lab\footnote{\href{https://www.esairlab.com/home}{www.esairlab.com/}}. This challenge utilizes the MAGFiLO dataset for evaluation of the segmentation algorithms~\cite{ahmadzadeh2024dataset}.
 
-    The solution makes four contributions: an ensemble of three encoder families trained on annotator-averaged targets; a crop refiner that redraws each proposal and predicts the IoU it will earn, raising out-of-fold PQ from 0.4611 to 0.4700; a label-free barb growth step; and a validation protocol with pooled and nested scores that separates real gains from seed noise, with the rejected changes reported in Section~\ref{sec:negative}.
+    The solution\footnote{Code and weights: \url{https://github.com/vhrabar/solfire}} makes four contributions: an ensemble of three encoder families trained on annotator-averaged targets; a crop refiner that redraws each proposal and predicts the IoU it will earn, raising out-of-fold PQ from 0.4594 to 0.4637 on the 15-model ensemble (Table~\ref{tab:progression}); a label-free barb growth step; and a validation protocol with pooled and nested scores that separates real gains from seed noise, with the rejected changes reported in Section~\ref{sec:negative}.
 
 
 % ==================================== %
 %      DATA AND VALIDATION PROTOCOL    %
 % ==================================== %
 \section{Data and Validation Protocol}\label{sec:data}
-    \textbf{Labels.} The training set contains 707 observations and 1154 annotation records (411 observations with one annotator, 145 with two, 151 with three).
+    The training set contains 707 observations and 1154 annotation records (411 observations with one annotator, 145 with two, 151 with three).
     Together, these records hold 8199 filament polygons with a median area of 1228 px.
     Thin structures under about 5 px account for only 1.9\% of the annotated area.
     One annotator's set was scored against another's on the 296 observations with several records.
@@ -87,14 +86,14 @@
     Scored on the same 296 observations, the final model reaches 0.468 out of fold (0.470 at the shipped cuts).
     Record by record, the model's PQ against a record exceeds that of the other annotators of the observation on 82\% of the 743 records (median gain 0.12), and for each of the 14 record-ID prefixes with at least 15 records.
 
-    \textbf{Scoring.} PQ~\cite{kirillov2019panoptic} matches a prediction to a filament at IoU~$>0.5$ and computes $\mathrm{PQ}=\sum_{\mathrm{TP}}\mathrm{IoU}\,/\,(|\mathrm{TP}|+\tfrac12|\mathrm{FP}|+\tfrac12|\mathrm{FN}|)$.
+    PQ~\cite{kirillov2019panoptic} matches a prediction to a filament at IoU~$>0.5$ and computes $\mathrm{PQ}=\sum_{\mathrm{TP}}\mathrm{IoU}\,/\,(|\mathrm{TP}|+\tfrac12|\mathrm{FP}|+\tfrac12|\mathrm{FN}|)$.
     Ground-truth instances are the individual polygons rasterised as COCO RLE~\cite{lin2014coco}, and each record is scored separately.
 
-    \textbf{Protocol.} Five-fold cross-validation grouped by observation is used.
+    Five-fold cross-validation grouped by observation is used.
     Folds are not separated in time: the median out-of-fold observation lies 2.0 days from a training one and the median test observation 1.5 days, so neither score covers unseen periods.
     The score is out-of-fold (OOF) PQ, with TP, FP, FN and IoU pooled over all 1154 records as the evaluator does.
     A \emph{nested} score is also reported, with parameters chosen on four folds and applied to the fifth.
-    Seeds alone move a five-model set by up to 0.007 and the refiner by $\pm0.001$.
+    Rerun noise is about 0.0006 on average for the three-family ensemble (four no-effect comparisons) and 0.007 at most (one single-family five-model set); for the refiner it is $\pm0.001$.
     A change is therefore compared with a control on the same seed and folds, and adopted only if it beats that control by $>0.002$ after the full pipeline, with the nested score agreeing.
 
 
@@ -112,43 +111,37 @@
     \end{figure*}
 
     \subsection{Preprocessing and Targets}\label{subsec:preprocessing}
-    \textbf{Input.}
     Each $2048\times2048$ JPEG observation is read as one greyscale channel in $[0,1]$ and standardised with the ImageNet~\cite{deng2009imagenet} statistics used in encoder pretraining.
     No contrast enhancement is applied (Section~\ref{sec:negative}).
     The same steps are used for training and inference.
 
-    \textbf{Targets.}
     Each polygon is rasterised with pycocotools, as in the evaluator, and the polygons of one annotation record are merged into a binary mask.
     The target of an observation is the mean of its record masks, so each pixel holds the fraction of annotators who marked it.
     Each observation therefore carries the same weight in training, however many records it has.
 
     \subsection{Models}\label{subsec:models}
-    \textbf{Ensemble.} The \texttt{final} variant averages the probabilities of four networks from three encoder families, all built with Segmentation Models PyTorch~\cite{iakubovskii2019smp}:
+    The \texttt{final} variant averages the probabilities of four networks from three encoder families, all built with Segmentation Models PyTorch~\cite{iakubovskii2019smp}:
     a U-Net++~\cite{zhou2018unetpp} with a ResNet34 encoder~\cite{he2016resnet}, a U-Net~\cite{ronneberger2015unet} with the MiT-B2 encoder of SegFormer~\cite{xie2021segformer}, a U-Net with an HRNet-W32 encoder~\cite{wang2021hrnet}, and a second HRNet-W32 U-Net, the zoom member, that reads the observation at twice its resolution.
     Encoders start from ImageNet weights, with the first convolution reduced to one input channel.
     The four networks hold 125.5\,M parameters (26.1, 27.5, 36.0 and 36.0\,M).
 
-    \textbf{Domain pretraining.} In \texttt{final} and \texttt{fast}, the ResNet34 U-Net++ is first pretrained in the style of SimMIM~\cite{xie2022simmim} on 1300 unlabelled GONG~\cite{harvey1996gong} H-alpha frames from 2023--2025, which do not overlap the 2011--2022 MAGFiLO observations.
+    \textbf{SimMIM-style pretraining.} In \texttt{final} and \texttt{fast}, the ResNet34 U-Net++ is first pretrained in the style of SimMIM~\cite{xie2022simmim} on 1300 unlabelled GONG~\cite{harvey1996gong} H-alpha frames from 2023--2025, which do not overlap the 2011--2022 MAGFiLO observations.
     The frames are raw FITS from the NSO archive\footnote{\url{https://gong2.nso.edu/HA/haf}}, converted to JPEG with the MLEcoFi FITS2JPEG converter\footnote{\url{https://bitbucket.org/dataresearchlab/mleco-fits2jpegconvertor}} of the MAGFiLO authors' group, and kept only in bursts of five that pass brightness and dark-patch checks; they are published as~\cite{vedran_hrabar_2026}.
     In each $512\times512$ crop, 60\% of the $32\times32$ patches are replaced by the crop mean, and the whole network learns to reconstruct them with an L1 loss on per-patch normalised targets, as in MAE~\cite{he2022mae}.
     Unlike SimMIM, the network is convolutional and the hidden patches are filled with the mean rather than a learned token.
     After 30 epochs, the output layer is dropped and the rest initialises supervised training.
 
     \subsection{Training}\label{subsec:training}
-    \textbf{Sampling.}
     Each epoch draws seven $512\times512$ crops per observation at native resolution.
     With probability 0.7, a crop contains a random vertex of a random filament polygon at a random position; otherwise it is placed uniformly.
     Augmentation consists of flips, quarter turns, and gamma, brightness and contrast jitter.
 
-    \textbf{Base stage.}
     Each model trains for 40 epochs on an equally weighted sum of BCE (positive weight 5) and a soft Dice loss~\cite{milletari2016vnet}.
     AdamW~\cite{loshchilov2019adamw} is used with batch size 8, weight decay 0.01, and a peak learning rate of $4\times10^{-4}$ ($0.25\times$ on the encoder), with three warm-up epochs and cosine decay.
 
-    \textbf{Fine-tune stage.}
     Each model then trains for 8 more epochs at $10^{-4}$ with a Lovász hinge~\cite{berman2018lovasz} of weight 0.5 added, which binarises the soft targets at 0.5.
     The zoom member instead starts from the base HRNet and trains for 12 epochs at $2\times$ input.
 
-    \textbf{Full-data retrain.}
     The shipped models repeat both stages on all 707 observations and keep the final epoch, as nothing is held out for selection.
     A control over the fine-tune stage supports this: on OOF, the final epoch scores 0.4602 and the validation-selected epoch 0.4593.
 
@@ -167,23 +160,17 @@
     \textbf{Zoom member.}
     The zoom member receives the observation upsampled bilinearly by $2\times$, so that a thin filament covers more pixels.
     The same tiling is applied, and the output map is downsampled back to native resolution.
-
-    \textbf{Ensemble.}
     The probability maps of the members are averaged with equal weights.
     All models run in fp16 under autocast.
 
     \subsection{Post-processing and Calibration}\label{subsec:calibration}
-    \textbf{Instances.}
     The ensemble map is thresholded, grown or shrunk by a signed number of 4-connected steps, and split into 8-connected components.
     Each component is scored by its mean probability, and components below a minimum score or area are dropped.
     A low threshold keeps a filament in one piece, and the score cut then removes uncertain ones, since under PQ a false positive costs as much as a miss.
-
-    \textbf{Calibration.}
     The four parameters are chosen jointly for each variant by grid search on its pooled OOF maps.
     The grid holds 9 thresholds in $[0.25, 0.65]$, offsets from $-2$ to $+1$, minimum areas of 0--512\,px, and 13 minimum scores in $[0, 0.94]$, 1872 settings in all.
     Components are labelled once per threshold and offset, as the area and score cuts only remove them.
 
-    \textbf{Chosen cuts.}
     Every variant settles on one step of erosion, no area cut, a threshold of 0.35 or 0.375, and a minimum score of 0.65 or 0.675.
     In \texttt{tiny} this is the output.
     In the other variants, the threshold and offset only cut the proposals, and the refiner sets its own cuts (Section~\ref{subsec:refiner}).
@@ -197,12 +184,13 @@
     A ResNet34 U-Net (24.4\,M parameters, ImageNet weights) reads the observation, the ensemble map and the binary proposal as three channels.
     It redraws the mask of that one filament, and a head on the bottleneck predicts the IoU the mask will earn.
 
-    \textbf{Training.}
+    \textbf{Refiner training.}
     Samples are the components of the variant's pooled OOF maps at thresholds 0.3, 0.375 and 0.45, so the refiner trains on proposals like those it sees at test time; a proposal within IoU 0.85 of one already taken is skipped, leaving 18{,}840 samples for \texttt{final}.
     In each annotation record, the target is the filament that overlaps the proposal best.
     The mask loss is BCE plus soft Dice against the mean of these filaments over the records.
     The IoU head adds a BCE term of weight 0.5 against the earned score, which is the IoU of the mask cut at 0.5 with each record's filament, set to zero if it does not exceed 0.5, and averaged over the records.
     Training runs for 12 epochs with AdamW, batch size 32, a peak learning rate of $3\times10^{-4}$ ($0.5\times$ on the encoder), one warm-up epoch and cosine decay, with flips, transposes, and gamma and gain jitter on the observation channel.
+
     The refiner of a fold trains only on the other folds, and OOF scores use the refiner that did not see the observation.
     The released variants ship the refiner of fold 0.
     A refiner trained on the held-out proposals of all five folds is possible, since every observation was held out once, but was not trained: its expected gain is below the refiner's seed noise of $\pm0.001$, averaging the five fold refiners did not help (their masks match the single one at foreground IoU 0.97), and no held-out data could score it.
@@ -212,25 +200,21 @@
     Instances are painted in order of predicted IoU, and only onto free pixels.
     An instance is dropped if its predicted IoU is below the cut or less than half of its pixels are free, because two fragments of one filament are both redrawn as the whole filament.
 
-    \textbf{Cuts and effect.}
     The mask and IoU cuts are grid-searched on the refined OOF instances (7 mask cuts in $[0.3, 0.6]$ and 31 IoU cuts in $[0, 0.6]$).
     The shipped pairs are 0.45 and 0.32 for \texttt{final}, 0.5 and 0.32 for \texttt{fast}, and 0.45 and 0.28 for \texttt{lite}; the IoU cut of \texttt{final} is stricter than its OOF best of 0.28 because of leaderboard probes (Section~\ref{subsec:progression}).
-    At its best cuts, the refiner of \texttt{final} reaches 0.4700 against 0.4611 for the same proposals scored by mean probability; the smaller gain in Table~\ref{tab:progression} was measured when the refiner was first added, on the 15-model ensemble.
+    On the \texttt{final} ensemble the refiner reaches 0.4700 at its best cuts (0.4692 as shipped, 0.4668 with barbs) against 0.4611 for the same proposals scored by mean probability, a gain of 0.0089; the smaller gain of 0.0043 in Table~\ref{tab:progression} was measured when the refiner was first added, on the 15-model ensemble.
     Using the predicted IoU alone on the unrefined masks gives 0.4632, so most of the gain comes from the redrawn masks.
 
     \subsection{Barb Growth}\label{subsec:barbs}
-    \textbf{Candidates.}
     Barbs are mostly unlabelled in the annotations, and a dedicated head failed to learn them (Section~\ref{sec:negative}), so every variant grows them from the observation as its last step, without labels.
     The contrast of a pixel is $(B-I)/B$, where $I$ is the observation and $B$ a median over about 60\,px, smoothed with a Gaussian of $\sigma=1$.
     In a 20\,px band around each instance, a pixel is a candidate if its contrast exceeds 0.05 and a Sato ridge filter~\cite{sato1998line} with $\sigma\in\{1,2\}$ exceeds 0.025.
 
-    \textbf{Selection.}
     Only the 8-connected candidate pieces that touch the instance are considered.
     The length of a piece is the distance from its point nearest the instance to its farthest point, and its mean width is its area over this length.
     A piece is kept if its length is at least four times its mean width and that width is at most 4\,px.
     Kept pixels only fill background, so instances never take pixels from each other.
 
-    \textbf{Trade-off.}
     PQ cannot select these settings: every contrast and ridge cut tried lowers it, by 0.0006 to 0.047 before the shape filter.
     The shipped setting adds 49{,}000 pixels over the OOF observations and moves \texttt{final} from 0.4692 to 0.4668.
 
@@ -269,10 +253,9 @@
         \end{tabular}
     \end{table*}
 
-    \textbf{Confidence intervals.}
     PQ with barbs has 95\,\% percentile bootstrap intervals over the 707 observations (2000 draws, whole observations resampled because their records are not independent): \texttt{final} 0.4668 [0.4581, 0.4758], \texttt{fast} 0.4642 [0.4556, 0.4731], \texttt{lite} 0.4614 [0.4528, 0.4705] and \texttt{tiny} 0.4508 [0.4416, 0.4602].
     Paired, \texttt{final} beats \texttt{lite} by 0.0054 [0.0021, 0.0086] and \texttt{tiny} by 0.0160 [0.0115, 0.0207]; \texttt{final} against \texttt{fast} (+0.0026 [$-$0.0005, 0.0056]) and \texttt{fast} against \texttt{lite} (+0.0028 [$-$0.0003, 0.0059]) are not resolved, so the gains of D4 TTA and the zoom model are not established.
-    The intervals cover evaluation-set sampling only; each variant is one full-data training, and training seeds alone move a five-model set by up to 0.007.
+    The intervals cover evaluation-set sampling only; each variant is one full-data training, whose seed noise (about 0.0006, at most 0.007) is not included.
 
     \subsection{Qualitative Results}\label{subsec:qualitative}
     Figure~\ref{fig:qualitative} shows held-out observations at the 90th, 50th and 10th percentiles of per-observation PQ among the 192 that have at least two records and four filaments per record, so the rows are not hand-picked.
@@ -358,13 +341,11 @@
 % ==================================== %
 \section{Limitations}\label{sec:limitations}
     \small
-    \textbf{Validated and shipped systems differ.}
     All OOF scores and intervals belong to the five-fold system (models on about 80\% of the observations, one refiner per fold).
     The released variants are the same recipe retrained once on all 707 observations, with the final epoch kept and the refiner of fold 0, and with the cuts applied unchanged.
     No labelled data can score them without leakage, so their quality relative to the five-fold system is not measured; keeping the final epoch rather than the validation-selected one changed OOF PQ by only $+0.0009$.
     A nested check without fold 0 was not run.
 
-    \textbf{Test set and other limits.}
     No test image or label enters any training stage; only the IoU cut of \texttt{final} (0.32 against an OOF best of 0.28) follows leaderboard probes (Section~\ref{subsec:progression}).
     Each configuration is one training run, and the unexplained OOF-to-leaderboard gap of about 0.07 means the OOF figures rank methods rather than forecast the test score.
 

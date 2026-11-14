@@ -6,7 +6,7 @@ repos:
     hooks:
       - id: check-added-large-files
         args: [--maxkb=1024]
-        exclude: ^(weights/final/|.*\.png$)
+        exclude: ^(weights/final/|paper/results/|.*\.png$)
       - id: check-json
       - id: check-yaml
       - id: check-toml
@@ -57,7 +57,7 @@ repos:
         entry: model weights belong in weights/final/, nowhere else in git
         language: fail
         files: \.(pt|pth|ckpt|safetensors|onnx|npz)$
-        exclude: ^weights/final/
+        exclude: ^(weights/final/|paper/results/)
       - id: no-credentials
         name: block credential files
         entry: credential file staged

@@ -3,7 +3,7 @@
 <html lang="en">
 <head><meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<title>Final pipeline</title><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.1.10/require.min.js"></script>
+<title>SOLFIRE final pipeline — solar filament segmentation in GONG H-alpha</title><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.1.10/require.min.js"></script>
 <style type="text/css">
     pre { line-height: 125%; }
 td.linenos .normal { color: inherit; background-color: transparent; padding-left: 5px; padding-right: 5px; }
@@ -7793,7 +7793,15 @@ a.anchor-link {
     white-space: normal;
   }
 </style>
-<!-- End of mermaid configuration --></head>
+<!-- End of mermaid configuration --><meta name="description" content="Kaggle notebook pipeline of SOLFIRE, a calibrated three-family ensemble with crop refinement that predicts instance masks of solar filaments in GONG H-alpha observations (Solar Filament Segmentation Challenge 2026)."/>
+<meta name="author" content="Vedran Hrabar"/>
+<meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1"/>
+<link rel="canonical" href="https://vhrabar.github.io/solfire/"/>
+<link rel="icon" type="image/svg+xml" href="https://vhrabar.github.io/favicon.svg"/>
+<link rel="icon" type="image/png" sizes="96x96" href="https://vhrabar.github.io/favicon-96.png"/>
+<link rel="apple-touch-icon" href="https://vhrabar.github.io/apple-touch-icon.png"/>
+<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "WebPage", "@id": "https://vhrabar.github.io/solfire/#webpage", "url": "https://vhrabar.github.io/solfire/", "name": "SOLFIRE final pipeline — solar filament segmentation in GONG H-alpha", "description": "Kaggle notebook pipeline of SOLFIRE, a calibrated three-family ensemble with crop refinement that predicts instance masks of solar filaments in GONG H-alpha observations (Solar Filament Segmentation Challenge 2026).", "inLanguage": "en", "isPartOf": {"@id": "https://vhrabar.github.io/#website"}, "about": {"@id": "https://vhrabar.github.io/solfire/#software"}, "author": {"@id": "https://vhrabar.github.io/#person"}}, {"@type": "SoftwareSourceCode", "@id": "https://vhrabar.github.io/solfire/#software", "name": "SOLFIRE: SOLar FIlament Refined Ensemble", "description": "Kaggle notebook pipeline of SOLFIRE, a calibrated three-family ensemble with crop refinement that predicts instance masks of solar filaments in GONG H-alpha observations (Solar Filament Segmentation Challenge 2026).", "codeRepository": "https://github.com/vhrabar/solfire", "programmingLanguage": "Python", "license": "https://opensource.org/licenses/MIT", "url": "https://vhrabar.github.io/solfire/", "isAccessibleForFree": true, "author": {"@id": "https://vhrabar.github.io/#person"}}]}</script>
+</head>
 <body class="jp-Notebook" data-jp-theme-light="true" data-jp-theme-name="JupyterLab Light">
 <main>
 <div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=cell-000">
@@ -10897,7 +10905,7 @@ confidence of its filaments), the one with the most filaments, and one without a
 <div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
 <div class="jp-RenderedText jp-OutputArea-output" data-mime-type="text/plain" tabindex="0">
 <pre>1153 filaments over 177/180 observations -&gt; /home/vhrabar/Programing/SolarFilamentSegmentationChallenge/build/notebook/submission.csv
-2330 s (first run), 12.9 s per observation on NVIDIA GeForce RTX 5070 Ti
+1936 s, 10.8 s per observation on NVIDIA GeForce RTX 5070 Ti
 </pre>
 </div>
 </div>

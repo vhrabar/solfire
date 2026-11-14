@@ -48,8 +48,8 @@ Quality of the released presets beyond PQ, over the 1154 records of the training
 ## Method
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/vhrabar/solfire/raw/paper/paper/out/pipeline-dark.png">
-  <img alt="SOLFIRE pipeline of the final variant: SSL pretraining, two-stage training, out-of-fold calibration and refiner training (top) feed the inference chain of 4-model ensemble, proposals, crop refiner, assembly and barb growth (bottom)" src="https://github.com/vhrabar/solfire/raw/paper/paper/out/pipeline.png">
+  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/vhrabar/solfire/raw/main/paper/out/pipeline-dark.png">
+  <img alt="SOLFIRE pipeline of the final variant: SSL pretraining, two-stage training, out-of-fold calibration and refiner training (top) feed the inference chain of 4-model ensemble, proposals, crop refiner, assembly and barb growth (bottom)" src="https://github.com/vhrabar/solfire/raw/main/paper/out/pipeline.png">
 </picture>
 
 *Pipeline of the `final` variant, dashed arrows carry training outputs into inference.*
@@ -86,13 +86,14 @@ Quality of the released presets beyond PQ, over the 1154 records of the training
 
 ### Inference and post-processing
 
-- **Ensemble:** 512 px tiles, probabilities averaged over the members; `final` uses D4 TTA with 50 % tile overlap,
-  the other presets flips with 25 % overlap. fp16, dark (off-disk) tiles skipped.
+- **Ensemble:** 512 px tiles, probabilities averaged over the members; `final` uses D4 TTA (the four flips at 50 % tile
+  overlap and the four flips of the quarter-turned image at 25 %), the other presets the four flips at 25 % overlap. fp16, dark (off-disk) tiles skipped.
 - **Proposals:** threshold the mean map (0.35 in `final`), erode 1 px, split into connected components.
 - **Crop refiner** (all presets but `tiny`): for each proposal, a 256 px crop of a window 1.5× its box (image,
   ensemble map, proposal) goes through a refiner network that predicts the instance mask and its IoU. It is trained
   on out-of-fold proposals; fold 0's model ships.
-- **Assembly:** refined masks are thresholded (0.45) and filtered by predicted IoU (≥ 0.32), then placed in order
+- **Assembly:** refined masks are thresholded (0.45) and filtered by predicted IoU (≥ 0.32 in `final`; its out-of-fold best is 0.28, the stricter cut follows
+  leaderboard probes), then placed in order
   of IoU; a mask is kept if at least half of its pixels are still free.
 - **Barb growth:** thin, long side structures are grown from each mask using local contrast and a ridge filter
   within a 20 px band. It costs about 0.002 PQ but is the only method that adds barbs, which the organisers want.
@@ -100,7 +101,7 @@ Quality of the released presets beyond PQ, over the 1154 records of the training
 
 ### Morphology on H-alpha
 
-![Three held-out observations: H-alpha image, the annotators' outlines, the `final` instances with grown barbs in orange, and a 12× zoom on the barbs](https://github.com/vhrabar/solfire/raw/paper/paper/out/qualitative.png)
+![Three held-out observations: H-alpha image, the annotators' outlines, the `final` instances with grown barbs in orange, and a 12× zoom on the barbs](https://github.com/vhrabar/solfire/raw/main/paper/out/qualitative.png)
 
 *Held-out observations with at least two annotator records. They were chosen for their grown barbs (among those
 whose barb pixels mostly fall inside the annotators' masks, the ones that read clearly at 12×), so they are not
@@ -114,9 +115,9 @@ typical; their PQ (0.38, 0.62, 0.54) is printed beside each.
   thin pixels fall inside another's mask only 0.40 of the time (0.54 within 2 px), so the model is already at the
   level of a second annotator. Filling in every missed thin pixel would raise PQ by only 0.015.
   (Measured on the out-of-fold maps of the three-family fine-tuned ensemble, before the zoom model and the refiner.)
-- **Barb growth** adds the structures in orange. They are short, about 50–120 px per observation in the examples
-  above, and the figure shows them only in the 12× column. Growing them costs about 0.002 PQ, so it is on because the
-  organisers want barbs in the masks, not because it scores.
+- **Barb growth** adds the structures in orange. They are short, 166 px in total over the three examples above, and
+  the figure shows them only in the 12× column. Growth is conservative: the masks hold the filament bodies and only
+  the clearest barbs. Growing them costs about 0.002 PQ, because the annotations hardly label barbs.
 - **Where hits are lost.** On the same maps the hit rate is lowest for small, barb-heavy filaments (0.60, mean best
   IoU 0.45) and next lowest for the largest ones (0.62, IoU 0.49), against 0.65–0.68 and about 0.51 in between.
   For the largest the problem is where a filament ends, not whether it is found.
@@ -167,6 +168,18 @@ if it beats its control by more than 0.002 after the full pipeline, with the nes
 
 Losses with clDice or differentiable morphology terms were also tried and dropped. A dedicated barb head gave no PQ
 gain (best +0.0001) and barely raised thin-structure recall: it extended filament edges rather than adding barbs.
+
+## Limitations
+
+- **Validated and shipped systems differ.** Every out-of-fold score belongs to the five-fold system (models on about
+  80 % of the observations, one refiner per fold). The released presets are the same recipe retrained once on all 707
+  observations, with the final epoch kept and the refiner of fold 0. No labelled data can score them without leakage.
+- Folds are not separated in time: the median out-of-fold observation lies 2.0 days from a training one, the median
+  test observation 1.5 days.
+- Each configuration is one training run; seeds alone move a five-model set by up to 0.007.
+- Only the IoU cut of `final` (0.32 against an out-of-fold best of 0.28) follows leaderboard probes; no test image or
+  label enters training. The out-of-fold to leaderboard gap is about 0.07 and unexplained, so out-of-fold PQ ranks
+  methods rather than forecasts the test score.
 
 ## Setup
 
@@ -326,6 +339,20 @@ uv run --group cuda-134 pytest
 - **Training time** (NVIDIA GeForce RTX 5070 Ti): the four shipped models take about 4 h on all 707 observations
   (SSL-R34 77 min, MiT-B2 61 min, HRNet-W32 88 min, zoom HRNet 22 min), plus about 1.8 h of SSL pretraining. The 5-fold
   out-of-fold runs used for calibration and for training the refiner cost roughly 5× that per model.
+
+## Citation
+
+```bibtex
+@techreport{hrabar2026solfire,
+  title       = {Beyond Annotator Agreement: A Calibrated Three-Family Ensemble with Crop Refinement for Solar Filaments},
+  author      = {Hrabar, Vedran},
+  institution = {Faculty of Electrical Engineering and Computing, University of Zagreb},
+  address     = {Zagreb, Croatia},
+  year        = {2026},
+  note        = {A Solution to the Solar Filament Segmentation Challenge 2026},
+  url         = {https://github.com/vhrabar/solfire}
+}
+```
 
 ## Disclaimer on the use of the LLM tools
 
